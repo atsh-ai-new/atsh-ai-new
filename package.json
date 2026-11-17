@@ -1,0 +1,16 @@
+{
+  "name": "atsh-ai",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @atsh/web",
+    "dev:api": "npm run start:dev -w @atsh/api",
+    "build": "npm run build -w @atsh/api && npm run build -w @atsh/web",
+    "test": "npm run test -w @atsh/api",
+    "typecheck": "npm run typecheck -w @atsh/api && npm run typecheck -w @atsh/web"
+  }
+}
