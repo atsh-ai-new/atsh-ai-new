@@ -63,7 +63,8 @@ export default function CatalogManager() {
       const data=await response.json().catch(()=>({}));
       if(!response.ok)throw Error(data.message||data.error||"تعذر الحفظ");
       setItems(next);setSectors(nextSectors);setNotice(message);setUpdatedAt(data?.page?.updated_at?new Date(data.page.updated_at).toISOString():updatedAt);setVersion(v=>v+1);
-    }catch(e){setError(e instanceof Error?e.message:"فشل الحفظ");}
+      return true;
+    }catch(e){setError(e instanceof Error?e.message:"فشل الحفظ");return false;}
     finally{setBusy(false);}
   };
   const saveItem=async(e:FormEvent)=>{
@@ -88,8 +89,9 @@ export default function CatalogManager() {
     if(updated.subcategoryId&&!placement.subcategory){setError("اختر تصنيفًا فرعيًا تابعًا لهذا القطاع.");return;}
     updated.category=placement.subcategory?.name||placement.sector.name;
     const next=originalSlug?items.map(x=>x.slug===originalSlug?updated:x):[...items,updated];
-    await saveAll(next,"تم حفظ الكتالوج وتحديث حالته.");
-    setDraft(empty());setOriginalSlug("");
+    if(await saveAll(next,"تم حفظ الكتالوج وتحديث حالته.")){
+      setDraft(empty());setOriginalSlug("");
+    }
   };
   const edit=(item:CatalogItem)=>{const place=resolvePlacement(item,sectors);setDraft({...item,sectorId:place.sector?.id,subcategoryId:place.subcategory?.id});setAddonText(item.pricedAddons.map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\n"));setOriginalSlug(item.slug);setError("");setNotice("");};
   const update=(key:keyof CatalogItem,value:unknown)=>setDraft(d=>({...d,[key]:value}));
@@ -103,16 +105,18 @@ export default function CatalogManager() {
     const id=sectorDraft.id.trim().toLowerCase(),name=sectorDraft.name.trim();
     if(!validCatalogId(id)||!name){setError("حدد رمز قطاع إنجليزيًا واسمًا صحيحًا.");return;}
     if(sectors.some(x=>x.id===id)){setError("رمز القطاع موجود بالفعل، استخدم تعديل القطاع الموجود.");return;}
-    await saveAll(items,"تم إضافة القطاع الرئيسي.",[...sectors,{...sectorDraft,id,name,sortOrder:sectors.length*10,isPublished:true,subcategories:[]}]);
-    setSectorDraft({id:"",name:"",icon:"📁",description:""});
+    if(await saveAll(items,"تم إضافة القطاع الرئيسي.",[...sectors,{...sectorDraft,id,name,sortOrder:sectors.length*10,isPublished:true,subcategories:[]}])){
+      setSectorDraft({id:"",name:"",icon:"📁",description:""});
+    }
   };
   const saveSubcategory=async(e:FormEvent)=>{
     e.preventDefault();
     const id=subDraft.id.trim().toLowerCase(),name=subDraft.name.trim();
     if(!validCatalogId(id)||!name||!sectors.some(s=>s.id===subDraft.sectorId)){setError("حدد قطاعًا ورمز تصنيف صحيحين.");return;}
     if(sectors.find(s=>s.id===subDraft.sectorId)?.subcategories.some(c=>c.id===id)){setError("رمز التصنيف مستخدم داخل القطاع.");return;}
-    await saveAll(items,"تم إضافة التصنيف الفرعي.",sectors.map(s=>s.id===subDraft.sectorId?{...s,subcategories:[...s.subcategories,{id,name,sortOrder:s.subcategories.length*10,isPublished:true}]}:s));
-    setSubDraft({sectorId:"",id:"",name:""});
+    if(await saveAll(items,"تم إضافة التصنيف الفرعي.",sectors.map(s=>s.id===subDraft.sectorId?{...s,subcategories:[...s.subcategories,{id,name,sortOrder:s.subcategories.length*10,isPublished:true}]}:s))){
+      setSubDraft({sectorId:"",id:"",name:""});
+    }
   };
   const renameSector=async(sector:CatalogSector)=>{
     const value=window.prompt("اسم القطاع الجديد",sector.name)?.trim();
