@@ -66,7 +66,7 @@ export default function CatalogManager() {
     if(slug!==originalSlug && items.some(x=>x.slug===slug)){setError("الرابط مستخدم بالفعل.");return;}
     const pricedAddons:PricedAddon[]=[];
     const codes=new Set<string>();
-    for(const raw of addonText.split("\\n").map(x=>x.trim()).filter(Boolean)){
+    for(const raw of addonText.split("\n").map(x=>x.trim()).filter(Boolean)){
       const [code,name,priceText,type]=raw.split("|").map(x=>x.trim());
       const amount=Number(priceText);
       if(!/^[a-z0-9_-]{1,80}$/.test(code)||!name||codes.has(code)||!Number.isFinite(amount)||amount<0||Math.round(amount*100)!==Math.round(amount*10000)/100||!["fixed","monthly","yearly"].includes(type)){
@@ -80,7 +80,7 @@ export default function CatalogManager() {
     await saveAll(next,"تم حفظ الكتالوج وتحديث حالته.");
     setDraft(empty());setOriginalSlug("");
   };
-  const edit=(item:CatalogItem)=>{setDraft({...item});setAddonText(item.pricedAddons.map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\\n"));setOriginalSlug(item.slug);setError("");setNotice("");};
+  const edit=(item:CatalogItem)=>{setDraft({...item});setAddonText(item.pricedAddons.map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\n"));setOriginalSlug(item.slug);setError("");setNotice("");};
   const update=(key:keyof CatalogItem,value:unknown)=>setDraft(d=>({...d,[key]:value}));
   const toggle=async(item:CatalogItem,patch:Partial<CatalogItem>)=>saveAll(items.map(x=>x.slug===item.slug?{...x,...patch}:x),"تم تحديث حالة الكتالوج.");
   const archive=async(item:CatalogItem)=>{
