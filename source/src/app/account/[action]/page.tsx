@@ -1,7 +1,7 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from "react";
 import {useParams,useSearchParams} from "next/navigation";
-import { syncCustomerWorkspace, type CustomerWorkspace } from "@/lib/customer-workspace";
+import { syncCustomerWorkspace, loadGuestWorkspace, type CustomerWorkspace } from "@/lib/customer-workspace";
 
 type Order={id:string;reference:string;status:string;total:number;currency:string;project_id:string};
 type Quote={id:number;status:string;total_piasters:number;currency:string};
@@ -17,10 +17,16 @@ declare global {interface Window {google?:GoogleApi}}
 export default function CustomerAccount(){
  const {action}=useParams<{action:string}>();const search=useSearchParams();const [email,setEmail]=useState("");const [name,setName]=useState("");const [password,setPassword]=useState("");const [message,setMessage]=useState("");const [deliverables,setDeliverables]=useState<Deliverable[]>([]);const [feedback,setFeedback]=useState<Record<string,string>>({});const [projects,setProjects]=useState<Project[]>([]);const [orders,setOrders]=useState<Order[]>([]);const [quotes,setQuotes]=useState<Quote[]>([]);const [contracts,setContracts]=useState<Contract[]>([]);const [invoices,setInvoices]=useState<Invoice[]>([]);const [invoicePayments,setInvoicePayments]=useState<Record<number,Payment[]>>({}),[openInvoice,setOpenInvoice]=useState<number|null>(null);const [projectId,setProjectId]=useState("");const [accessToken,setAccessToken]=useState("");const googleContainer=useRef<HTMLDivElement>(null);
  const [workspace,setWorkspace]=useState<CustomerWorkspace|null>(null);
+ const [guestPending,setGuestPending]=useState(false);
+ const [merging,setMerging]=useState(false);
  useEffect(()=>{
    if(action!=="dashboard")return;
    let active=true;
-   void syncCustomerWorkspace().then(draft=>{if(active)setWorkspace(draft);}).catch(()=>{if(active)setMessage("تعذر دمج اختياراتك السابقة مع حسابك؛ ما زالت محفوظة على هذا المتصفح.");});
+   const guest=loadGuestWorkspace();
+   setGuestPending(Object.keys(guest).length>0);
+   void fetch("/api/customer/auth/workspace",{credentials:"include",cache:"no-store"}).then(async r=>r.ok?r.json():null)
+    .then(data=>{if(active)setWorkspace(data?.workspace?.draft??{});})
+    .catch(()=>{if(active)setMessage("تعذر تحميل مسودة حسابك.");});
    return()=>{active=false;};
  },[action]);
  const loadProjects=useCallback(async()=>{try{const r=await fetch("/api/customer/auth/projects",{credentials:"include",cache:"no-store"});if(!r.ok)throw Error();const d=await r.json();setProjects(d.projects);}catch{setMessage("سجّل الدخول لعرض مشروعاتك");}},[]);
@@ -52,6 +58,10 @@ export default function CustomerAccount(){
  {action==="dashboard"&&<>
  <section style={{border:"1px solid #d4e2ef",borderRadius:12,padding:16,background:"#f5faff",marginBottom:18}}>
    <h2>اختياراتي المحفوظة من جميع مسارات المنصة</h2>
+   {guestPending&&<div style={{padding:12,background:"#fff4db",borderRadius:10,marginBottom:12}}>
+     <p>هذا المتصفح يحتفظ باختيارات قبل تسجيل الدخول. لضمان عدم خلط بيانات زوار مختلفين، اختر نقلها إلى حسابك الحالي صراحةً.</p>
+     <button disabled={merging} type="button" onClick={async()=>{setMerging(true);try{const result=await syncCustomerWorkspace();setWorkspace(result);setGuestPending(false);setMessage("تم ضم اختيارات المتصفح إلى حسابك بنجاح.");}catch{setMessage("فشل نقل الاختيارات. البيانات ما زالت محفوظة في المتصفح.");}finally{setMerging(false);}}}>{merging?"جارٍ الدمج…":"نقل اختيارات هذا المتصفح إلى حسابي"}</button>
+   </div>}
    {workspace?<><p>القطاع: {workspace.sectorName||workspace.sectorSlug||"لم يُحدد"} · النشاط: {workspace.businessName||"لم يُحدد"}</p>
     <p>الباقة: {workspace.packageId||"لم تُحدد"} · طريقة التسليم: {workspace.deliveryMethod||"لم تُحدد"}</p>
     {workspace.sectorSlug&&<a href={`/catalog/${encodeURIComponent(workspace.sectorSlug)}`}>فتح النموذج المختار</a>}
