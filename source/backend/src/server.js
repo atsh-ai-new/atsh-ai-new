@@ -60,6 +60,7 @@ await pool.query(await readFile(new URL("../db/customer_workspace_stage41.sql", 
 await pool.query(await readFile(new URL("../db/contract_templates_stage43.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_project_drafts_stage44.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_preview_stage45.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/customer_project_logos_stage46.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sql", import.meta.url), "utf8"));
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim()).filter(Boolean);
@@ -89,6 +90,7 @@ app.use("/api/admin/content-studio", (req,res,next) => {
 });
 // File uploads are streamed by the delivery router, never buffered in Express.
 app.use("/api/customer/auth/workspace/logo",express.raw({type:["image/png","image/jpeg","image/webp"],limit:"2mb"}));
+app.use(/^\/api\/customer\/auth\/project-drafts\/[0-9a-f-]{36}\/logo\/?$/i,express.raw({type:["image/png","image/jpeg","image/webp"],limit:"2mb"}));
 app.use("/api/customer/auth/project-drafts",express.raw({type:["image/png","image/jpeg","image/webp"],limit:"2mb"}));
 app.use("/api/internal/verified-payments",express.raw({type:"application/json",limit:"16kb"}));
 // Allow a wider structured sector catalog while keeping other JSON endpoints tightly bounded.
