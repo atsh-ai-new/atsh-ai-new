@@ -42,7 +42,7 @@ try{
  const forbidden=await req(`/api/customer/auth/project-drafts/${id}`,{cookie:cookieFor(accountB)});
  assert.equal(forbidden.status,404);
  const updated=await req(`/api/customer/auth/project-drafts/${id}`,{method:"PATCH",cookie:cookieFor(accountA),body:{expectedRevision:1,patch:{businessName:"عيادتي الجديدة"}}});
- assert.equal(updated.status,200,JSON.stringify(updated));assert.equal(updated.result.projectDraft.revision,2);
+ assert.equal(updated.status,200,JSON.stringify(updated));assert.equal(Number(updated.result.projectDraft.revision),2);
  const stale=await req(`/api/customer/auth/project-drafts/${id}`,{method:"PATCH",cookie:cookieFor(accountA),body:{expectedRevision:1,patch:{businessName:"بيانات قديمة"}}});
  assert.equal(stale.status,409);
  const preview=await req(`/api/customer/auth/project-drafts/${id}/previews`,{method:"POST",cookie:cookieFor(accountA),body:{}});
