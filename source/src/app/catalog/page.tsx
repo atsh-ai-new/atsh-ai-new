@@ -47,7 +47,7 @@ export default function CatalogPage() {
     {visible.length===0&&<p role="status">لا توجد نماذج مطابقة للبحث. جرّب مجالًا آخر.</p>}
     <section aria-label="القطاعات المتاحة" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,255px),1fr))",gap:18}}>
       {visible.map(item=><article key={item.slug} style={{background:"#fff",border:"1px solid #e3e1d9",borderRadius:18,padding:23,boxShadow:"0 9px 25px #20395809",display:"flex",flexDirection:"column",gap:12}}>
-        {item.imageUrl?.startsWith("https://")?<img src={item.imageUrl} alt={item.name} style={{width:"100%",height:155,objectFit:"cover",borderRadius:12}}/>:<span aria-hidden style={{fontSize:34}}>{item.icon||"📁"}</span>}
+        {(item.imageUrl?.startsWith("https://")||item.imageUrl?.startsWith("/api/site-media/"))?<img src={item.imageUrl} alt={item.name} style={{width:"100%",height:155,objectFit:"cover",borderRadius:12}}/>:<span aria-hidden style={{fontSize:34}}>{item.icon||"📁"}</span>}
         <small style={{color:"#4c78ae"}}>{item.category}</small><h2 style={{margin:0,color:"#203958"}}>{item.name}</h2>
         <p style={{lineHeight:1.9,color:"#64748b",flex:1}}>{item.description}</p>
         <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{(item.features??[]).map(f=><span key={f} style={{background:"#edf3f8",padding:"5px 10px",borderRadius:99,fontSize:12}}>{f}</span>)}</div>
