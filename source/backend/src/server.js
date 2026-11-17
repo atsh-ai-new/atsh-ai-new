@@ -17,7 +17,6 @@ import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
 import { buildVisitorInstructions } from "./visitor-assistant.js";
 import { priceSectorSelection } from "./sector-pricing.js";
-import {checkDomainAvailability,validateDomainName,namecheapConfig} from "./namecheap-domain.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
 import {queueJourneyEvent,deliverJourneyEvents,eventDestination} from "./customer-event-outbox.js";
@@ -382,19 +381,6 @@ app.post("/api/visitor/assistant",
   })
 );
 
-// Public availability lookup through configured registrar. A positive result is NOT a reservation.
-app.get("/api/domains/check",rateLimit({windowMs:60*1000,limit:8,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
- const domain=validateDomainName(req.query.domain ?? req.query.name);
- if(!domain)return res.status(400).json({error:"اكتب اسم نطاق كاملًا وصحيحًا."});
- if(!namecheapConfig())return res.status(503).json({error:"التحقق المباشر من الدومينات غير مفعّل بعد."});
- try{
-  const result=await checkDomainAvailability(domain);
-  res.set("Cache-Control","no-store").json(result);
- }catch(error){
-  console.error(JSON.stringify({event:"domain_lookup_failed",message:error instanceof Error?error.message:"Lookup error"}));
-  res.status(502).json({error:"تعذر تأكيد التوافر من المسجل حاليًا. لا يمكن اعتبار النطاق متاحًا."});
- }
-}));
 app.get("/api/catalog", route(async (_req,res) => {
   const [p,o] = await Promise.all([
     pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote FROM packages WHERE is_published=true ORDER BY sort_order,created_at"),
