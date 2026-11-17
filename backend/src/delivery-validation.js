@@ -1,1 +1,0 @@
-export function safeAssetUrl(value){try{const u=new URL(value);return u.protocol==='https:' && !u.username && !u.password && !['localhost','127.0.0.1','::1'].includes(u.hostname) && !u.hostname.endsWith('.local') && !u.hostname.endsWith('.internal') && !u.hostname.endsWith('.localhost');}catch{return false;}}
