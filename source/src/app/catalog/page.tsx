@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { sectorTemplates, type SectorTemplate } from "@/lib/sector-catalog";
+import { saveGuestWorkspace } from "@/lib/customer-workspace";
 type Item = SectorTemplate & { published?:boolean; archived?:boolean; sortOrder?:number; imageUrl?:string; previewUrl?:string };
 const fallback:Item[]=sectorTemplates.map((item,index)=>({...item,published:true,sortOrder:index*10}));
 export default function CatalogPage() {
@@ -50,8 +51,8 @@ export default function CatalogPage() {
         <small style={{color:"#4c78ae"}}>{item.category}</small><h2 style={{margin:0,color:"#203958"}}>{item.name}</h2>
         <p style={{lineHeight:1.9,color:"#64748b",flex:1}}>{item.description}</p>
         <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{(item.features??[]).map(f=><span key={f} style={{background:"#edf3f8",padding:"5px 10px",borderRadius:99,fontSize:12}}>{f}</span>)}</div>
-        <Link href={`/catalog/${encodeURIComponent(item.slug)}`} style={{padding:"12px 14px",background:"#203958",color:"white",borderRadius:10,textAlign:"center",fontWeight:700}}>افتح المعاينة التفاعلية ←</Link>
-        <Link href={`/?sector=${encodeURIComponent(item.slug)}#configurator`} style={{textAlign:"center",fontSize:13,color:"#203958",textDecoration:"underline"}}>اختر هذا النموذج واطلب عرض سعر</Link>
+        <Link onClick={()=>saveGuestWorkspace({sectorSlug:item.slug,sectorName:item.name,source:"catalog"})} href={`/catalog/${encodeURIComponent(item.slug)}`} style={{padding:"12px 14px",background:"#203958",color:"white",borderRadius:10,textAlign:"center",fontWeight:700}}>افتح المعاينة التفاعلية ←</Link>
+        <Link onClick={()=>saveGuestWorkspace({sectorSlug:item.slug,sectorName:item.name,source:"catalog"})} href={`/?sector=${encodeURIComponent(item.slug)}#configurator`} style={{textAlign:"center",fontSize:13,color:"#203958",textDecoration:"underline"}}>اختر هذا النموذج واطلب عرض سعر</Link>
       </article>)}
     </section>
   </main>;
