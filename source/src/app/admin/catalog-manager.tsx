@@ -22,6 +22,7 @@ export default function CatalogManager() {
   const [uploading,setUploading]=useState(false);
   const [addonText,setAddonText]=useState("");
   const [version,setVersion]=useState(0);
+  const [updatedAt,setUpdatedAt]=useState<string|null>(null);
   const [pageWasPublished,setPageWasPublished]=useState(true);
 
   useEffect(()=>{
@@ -33,6 +34,7 @@ export default function CatalogManager() {
       setItems(normalize(raw));
       setSectors(normalizeCatalogSectors(catalog?.content?.sectors));
       setPageWasPublished(catalog?.is_published!==false);
+      setUpdatedAt(catalog?.updated_at?new Date(catalog.updated_at).toISOString():null);
       setReady(true);
       if(!catalog)setNotice("لا توجد صفحة كتالوج محفوظة بعد. احفظ لنشر النسخة الأولية.");
     }).catch(e=>active&&setError(e instanceof Error?e.message:"تعذر تحميل الكتالوج."));
@@ -57,10 +59,10 @@ export default function CatalogManager() {
   const saveAll=async(next:CatalogItem[],message:string,nextSectors:CatalogSector[]=sectors)=>{
     setBusy(true);setError("");setNotice("");
     try{
-      const response=await fetch("/api/admin/pages/catalog",{method:"PATCH",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({locale:"ar",isPublished:pageWasPublished,content:{title:"معرض الأنظمة",items:next,sectors:nextSectors}})});
+      const response=await fetch("/api/admin/pages/catalog",{method:"PATCH",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({locale:"ar",isPublished:pageWasPublished,expectedUpdatedAt:updatedAt,content:{title:"معرض الأنظمة",items:next,sectors:nextSectors}})});
       const data=await response.json().catch(()=>({}));
       if(!response.ok)throw Error(data.message||data.error||"تعذر الحفظ");
-      setItems(next);setSectors(nextSectors);setNotice(message);setVersion(v=>v+1);
+      setItems(next);setSectors(nextSectors);setNotice(message);setUpdatedAt(data?.page?.updated_at?new Date(data.page.updated_at).toISOString():updatedAt);setVersion(v=>v+1);
     }catch(e){setError(e instanceof Error?e.message:"فشل الحفظ");}
     finally{setBusy(false);}
   };
