@@ -209,6 +209,31 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   res.set('Cache-Control','no-store').json({workspace:result.rows[0]});
  }));
 
+ // Branding belongs to a specific project draft and may be read only by its verified owner.
+ router.post('/project-drafts/:id/logo',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Project not found'});
+  const owned=await pool.query("SELECT id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2",[req.params.id,req.customer.id]);
+  if(!owned.rowCount)return res.status(404).json({error:'Project not found'});
+  const mime=String(req.get('content-type')||'').split(';')[0].trim().toLowerCase();
+  const bytes=req.body;
+  if(!Buffer.isBuffer(bytes)||!bytes.length||bytes.length>2097152)return res.status(413).json({error:'Logo must be an image up to 2 MB'});
+  const png=bytes.length>=8&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+  const jpeg=bytes.length>=3&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff;
+  const webp=bytes.length>=12&&bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP';
+  const actual=png?'image/png':jpeg?'image/jpeg':webp?'image/webp':null;
+  if(!actual||actual!==mime)return res.status(415).json({error:'Invalid image type'});
+  await pool.query(`INSERT INTO customer_project_logos(draft_id,mime_type,data) VALUES($1,$2,$3)
+   ON CONFLICT(draft_id) DO UPDATE SET mime_type=EXCLUDED.mime_type,data=EXCLUDED.data,updated_at=now()`,[req.params.id,actual,bytes]);
+  res.set('Cache-Control','private, no-store').json({saved:true});
+ }));
+ router.get('/project-drafts/:id/logo',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).end();
+  const result=await pool.query(`SELECT logos.mime_type,logos.data FROM customer_project_logos logos
+   JOIN customer_project_drafts projects ON projects.id=logos.draft_id
+   WHERE logos.draft_id=$1 AND projects.customer_id=$2`,[req.params.id,req.customer.id]);
+  if(!result.rowCount)return res.status(404).end();
+  res.set({'Content-Type':result.rows[0].mime_type,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}).send(result.rows[0].data);
+ }));
  router.post('/workspace/logo',requireCustomer,safe(async(req,res)=>{
   const mime=String(req.get('content-type')||'').split(';')[0].trim().toLowerCase();
   const data=req.body;
