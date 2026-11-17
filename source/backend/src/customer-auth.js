@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
+import {queueJourneyEvent} from './customer-event-outbox.js';
 
 const emailSchema=z.string().trim().email().max(254).transform(v=>v.toLowerCase());
 const passwordSchema=z.string().min(12).max(128);
@@ -174,14 +175,22 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  router.post('/project-drafts/:id/previews/:previewId/decision',requireCustomer,safe(async(req,res)=>{
   const p=z.object({decision:z.enum(['approved','changes_requested']),comment:z.string().max(2000).default('')}).strict().safeParse(req.body);
   if(!p.success||!z.string().uuid().safeParse(req.params.id).success||!z.string().uuid().safeParse(req.params.previewId).success)return res.status(400).json({error:'Invalid approval request'});
-  const owned=await pool.query('SELECT id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2',[req.params.id,req.customer.id]);
-  if(!owned.rowCount)return res.status(404).json({error:'Not found'});
-  const result=await pool.query(`UPDATE customer_preview_versions SET approval_status=$3,customer_comment=$4,decided_at=now()
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const owned=await client.query('SELECT id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 FOR UPDATE',[req.params.id,req.customer.id]);
+    if(!owned.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Not found'});}
+    const result=await client.query(`UPDATE customer_preview_versions SET approval_status=$3,customer_comment=$4,decided_at=now()
      WHERE id=$1 AND draft_id=$2 AND approval_status='pending' AND revision=(SELECT max(revision) FROM customer_preview_versions WHERE draft_id=$2)
      RETURNING id,revision,approval_status,decided_at`,
      [req.params.previewId,req.params.id,p.data.decision,p.data.comment]);
-  if(!result.rowCount)return res.status(409).json({error:'Preview already reviewed or superseded'});
-  res.set('Cache-Control','private, no-store').json({preview:result.rows[0]});
+    if(!result.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'Preview already reviewed or superseded'});}
+    const preview=result.rows[0];
+    await queueJourneyEvent(client,p.data.decision==="approved"?"preview.approved":"preview.changes_requested",
+      `preview.${p.data.decision}:${preview.id}`,{previewId:preview.id,projectDraftId:req.params.id,revision:preview.revision,status:preview.approval_status});
+    await client.query('COMMIT');
+    res.set('Cache-Control','private, no-store').json({preview});
+  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
  }));
  router.get('/workspace',requireCustomer,safe(async(req,res)=>{
   const result=await pool.query('SELECT draft,revision,updated_at FROM customer_workspace_drafts WHERE customer_id=$1',[req.customer.id]);
