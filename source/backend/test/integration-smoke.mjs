@@ -78,6 +78,29 @@ try{
  const newlyIssued=await pool.query("SELECT template_revision,body_snapshot FROM customer_contracts WHERE id=$1",[issueNew.result.contract.id]);
  assert.equal(newlyIssued.rows[0].template_revision,2);
  assert.match(newlyIssued.rows[0].body_snapshot,/عقد محدث/);
+ // Signed quote + fully paid invoice gates actual journey paid state.
+ const reviewLink=await req(`/api/admin/commercial/quotes/${derived.result.quote.id}/review-link`,{method:"POST",cookie:adminCookie,body:{}});
+ assert.equal(reviewLink.status,201,JSON.stringify(reviewLink));
+ const customerSigned=await req(`/api/commercial/review/${reviewLink.result.reviewToken}/accept-and-sign`,{method:"POST",body:{signerName:"Client A Verified",consent:true}});
+ assert.equal(customerSigned.status,200,JSON.stringify(customerSigned));
+ const statusBefore=await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id]);
+ assert.equal(statusBefore.rows[0].status,"payment_pending");
+ const targetInvoice=await pool.query("INSERT INTO commercial_invoices(quote_id,amount_piasters) VALUES($1,114000) RETURNING id",[derived.result.quote.id]);
+ const eventFor=(amountPiasters,reference)=>Buffer.from(JSON.stringify({invoiceId:Number(targetInvoice.rows[0].id),amountPiasters,providerReference:reference,paidAt:new Date().toISOString(),status:"settled"}));
+ const bridge=async(raw)=>{
+  const timestamp=Math.floor(Date.now()/1000).toString();
+  const signed=signInternalPaymentEvent({raw,secret:process.env.ATSH_VERIFIED_PAYMENT_SECRET,timestamp});
+  const response=await fetch(base+"/api/internal/verified-payments",{method:"POST",headers:{"content-type":"application/json","x-atsh-timestamp":timestamp,"x-atsh-signature":signed},body:raw});
+  return {status:response.status,result:await response.json()};
+ };
+ const partialBridge=await bridge(eventFor(50000,"ci-partial-"+randomUUID()));
+ assert.equal(partialBridge.status,201,JSON.stringify(partialBridge));
+ const during=await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id]);
+ assert.equal(during.rows[0].status,"payment_pending","Partial payment must not allow delivery");
+ const settledBridge=await bridge(eventFor(64000,"ci-rest-"+randomUUID()));
+ assert.equal(settledBridge.status,201,JSON.stringify(settledBridge));
+ const after=await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id]);
+ assert.equal(after.rows[0].status,"paid");
  // Project-specific image ownership, even for separate drafts of the same customer.
  const png=Buffer.from([137,80,78,71,13,10,26,10,0,0,0,0]);
  const writeLogo=await fetch(base+`/api/customer/auth/project-drafts/${id}/logo`,{method:"POST",headers:{origin,"content-type":"image/png",cookie:cookieFor(accountA)},body:png});
