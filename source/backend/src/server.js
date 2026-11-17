@@ -61,6 +61,7 @@ await pool.query(await readFile(new URL("../db/contract_templates_stage43.sql", 
 await pool.query(await readFile(new URL("../db/customer_project_drafts_stage44.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_preview_stage45.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_project_logos_stage46.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/visitor_ai_usage_stage51.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sql", import.meta.url), "utf8"));
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim()).filter(Boolean);
@@ -364,6 +365,15 @@ app.post("/api/visitor/assistant",
       : [];
     const site=c.rows.find(row=>row.slug==="home")?.content||{};
     const knowledge=c.rows.find(row=>row.slug==="assistant-knowledge")?.content||{};
+    // Global daily guardrails: protects company API budget without storing message text.
+    const maxRequests=Number(process.env.ATSH_GPT_DAILY_REQUESTS||"300");
+    const maxOutputTokens=Number(process.env.ATSH_GPT_DAILY_OUTPUT_TOKENS||"100000");
+    if(!Number.isSafeInteger(maxRequests)||maxRequests<1||maxRequests>100000||!Number.isSafeInteger(maxOutputTokens)||maxOutputTokens<500||maxOutputTokens>100000000)
+      return res.status(503).json({error:"GPT usage limits are misconfigured"});
+    await pool.query("INSERT INTO visitor_ai_daily_usage(day) VALUES (CURRENT_DATE) ON CONFLICT(day) DO NOTHING");
+    const quota=await pool.query(`UPDATE visitor_ai_daily_usage SET requests=requests+1,updated_at=now()
+      WHERE day=CURRENT_DATE AND requests<$1 AND output_tokens<$2 RETURNING requests`,[maxRequests,maxOutputTokens]);
+    if(!quota.rowCount)return res.status(429).json({error:"تم بلوغ ميزانية استخدام المساعد اليوم. جرّب لاحقًا أو تابع عبر المعرض."});
     const instructions=buildVisitorInstructions({packages:p.rows,options:o.rows,sectors,site,knowledge});
     const input=parsed.data.messages.map(m=>({role:m.role,content:m.content}));
     let upstream;
@@ -375,6 +385,10 @@ app.post("/api/visitor/assistant",
     });}catch{return res.status(502).json({error:"GPT temporarily unavailable"});}
     if(!upstream.ok){await upstream.body?.cancel().catch(()=>undefined);return res.status(502).json({error:"GPT request was not completed"});}
     const result=await upstream.json().catch(()=>null);
+    const aiInputTokens=Number(result?.usage?.input_tokens),aiOutputTokens=Number(result?.usage?.output_tokens);
+    if(Number.isSafeInteger(aiInputTokens)&&aiInputTokens>=0&&Number.isSafeInteger(aiOutputTokens)&&aiOutputTokens>=0){
+      await pool.query(`UPDATE visitor_ai_daily_usage SET input_tokens=input_tokens+$1,output_tokens=output_tokens+$2,updated_at=now() WHERE day=CURRENT_DATE`,[aiInputTokens,aiOutputTokens]);
+    }
     const answer=extractAssistantText(result).slice(0,2500);
     if(!answer)return res.status(502).json({error:"GPT returned no response"});
     res.set("Cache-Control","no-store").json({answer,model:"gpt",automatedActions:false});
@@ -619,6 +633,10 @@ app.post("/api/admin/login",rateLimit({windowMs:15*60*1000,limit:5,standardHeade
 app.post("/api/admin/logout",(_req,res)=>{res.clearCookie(cookie,cookieOptions);res.json({authenticated:false});});
 app.get("/api/admin/me",requireAdmin,(req,res)=>res.json({authenticated:true,email:req.admin.email,role:req.admin.role}));
 app.get("/api/admin/email-status",requireAdmin,(_req,res)=>res.json({configured:Boolean(process.env.BREVO_API_KEY),from:process.env.BREVO_SENDER_EMAIL||"info@atsh-ai.com",replyTo:process.env.BREVO_REPLY_TO||"sales@atsh-ai.com"}));
+app.get("/api/admin/visitor-ai-usage",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{
+ const result=await pool.query("SELECT day,requests,input_tokens,output_tokens FROM visitor_ai_daily_usage ORDER BY day DESC LIMIT 31");
+ res.set("Cache-Control","private, no-store").json({days:result.rows});
+}));
 app.get("/api/admin/orders",requireAdmin,route(async(req,res)=>{
   const status=typeof req.query.status==="string"?req.query.status:null;
   const result=await pool.query("SELECT o.id,o.reference,o.customer_name,o.phone,o.email,o.status,o.currency,o.total,o.created_at,o.assigned_to,t.display_name AS assigned_to_name,p.name AS package_name FROM orders o LEFT JOIN team_members t ON t.id=o.assigned_to LEFT JOIN packages p ON p.id=o.package_id WHERE ($1::text IS NULL OR o.status=$1) ORDER BY o.created_at DESC LIMIT 200",[status]);
