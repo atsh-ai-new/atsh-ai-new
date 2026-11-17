@@ -78,6 +78,7 @@ app.use("/api/admin/content-studio", (req,res,next) => {
   next();
 });
 // File uploads are streamed by the delivery router, never buffered in Express.
+app.use("/api/customer/auth/workspace/logo",express.raw({type:["image/png","image/jpeg","image/webp"],limit:"2mb"}));
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 app.use("/api", rateLimit({ windowMs: 15*60*1000, limit: 120, standardHeaders: "draft-8", legacyHeaders: false }));
