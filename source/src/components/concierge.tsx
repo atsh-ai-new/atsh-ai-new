@@ -70,6 +70,7 @@ export default function Concierge() {
        {hint&&<small style={{color:"#96610e"}}>{hint}</small>}
      </div>
      <nav aria-label="اختصارات المساعد" style={{display:"flex",gap:7,flexWrap:"wrap",padding:"5px 12px"}}>
+       <Link href="/account/register" onClick={()=>setOpen(false)} style={{padding:"7px 9px",border:"1px solid #cbd5e1",borderRadius:99,fontSize:12}}>إنشاء حساب</Link>
        <Link href="/catalog" onClick={()=>setOpen(false)} style={{padding:"7px 9px",border:"1px solid #cbd5e1",borderRadius:99,fontSize:12}}>المعرض</Link>
        <a href="#configurator" onClick={()=>setOpen(false)} style={{padding:"7px 9px",border:"1px solid #cbd5e1",borderRadius:99,fontSize:12}}>التسعير</a>
        {sectorLinks.slice(0,2).map(x=><Link key={x.slug} href={`/catalog/${x.slug}`} style={{padding:"7px 9px",border:"1px solid #cbd5e1",borderRadius:99,fontSize:12}}>{x.name}</Link>)}
