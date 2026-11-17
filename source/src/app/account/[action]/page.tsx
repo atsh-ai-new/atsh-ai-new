@@ -22,6 +22,7 @@ export default function CustomerAccount(){
  const [projectDrafts,setProjectDrafts]=useState<ProjectDraft[]>([]);
  const [draftTitle,setDraftTitle]=useState("");
  const [selectedProjectDraft,setSelectedProjectDraft]=useState("");
+ const [projectLogoVersion,setProjectLogoVersion]=useState(0);
  const [previewVersions,setPreviewVersions]=useState<PreviewVersion[]>([]);
  const [previewFeedback,setPreviewFeedback]=useState("");
  const [guestPending,setGuestPending]=useState(false);
@@ -44,6 +45,18 @@ export default function CustomerAccount(){
    setProjectDrafts(body.drafts||[]);
   }catch{setMessage("تعذر تحميل مسودات مشروعاتك");}
  },[]);
+ const uploadProjectLogo=async(file?:File)=>{
+  if(!file||!selectedProjectDraft)return;
+  if(!["image/png","image/jpeg","image/webp"].includes(file.type)||file.size>2097152){
+    setMessage("اختر PNG أو JPEG أو WebP بحجم لا يزيد عن 2 ميجابايت");return;
+  }
+  try{
+   const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(selectedProjectDraft)}/logo`,{method:"POST",credentials:"include",headers:{"content-type":file.type},body:file});
+   const result=await response.json().catch(()=>({}));
+   if(!response.ok)throw Error(result.error||"تعذر رفع الشعار");
+   setProjectLogoVersion(n=>n+1);setMessage("تم حفظ شعار هذا المشروع في حسابك فقط");
+  }catch(e){setMessage(e instanceof Error?e.message:"تعذر رفع الشعار");}
+ };
  const loadPreviews=async(id:string)=>{
   if(!id){setPreviewVersions([]);return;}
   try{
@@ -140,6 +153,10 @@ export default function CustomerAccount(){
   {selectedProjectDraft&&<><h3>بيانات المشروع المحدد</h3><p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(projectDrafts.find(d=>d.id===selectedProjectDraft)?.draft??{},null,2)}</p>
    <a href={`/?draftId=${encodeURIComponent(selectedProjectDraft)}#configurator`} style={{display:"inline-block",margin:"12px 0",padding:"11px 15px",borderRadius:10,background:"#203958",color:"white"}}>استكمال الباقة والتسعير لهذا المشروع</a>
    <a href={`/account/project-preview/${encodeURIComponent(selectedProjectDraft)}`} style={{display:"inline-block",margin:"12px 8px",padding:"11px 15px",borderRadius:10,background:"#e6eef7",color:"#203958"}}>فتح المعاينة التفاعلية المحفوظة لهذا المشروع</a>
+   <div style={{display:"grid",gap:9,margin:"12px 0",padding:12,border:"1px solid #cbd5e1",borderRadius:12}}>
+    <label>شعار هذا المشروع فقط (حتى 2 ميجابايت)<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>void uploadProjectLogo(e.target.files?.[0])}/></label>
+    <a href={`/api/customer/auth/project-drafts/${encodeURIComponent(selectedProjectDraft)}/logo?v=${projectLogoVersion}`} target="_blank" rel="noopener noreferrer">عرض شعار المشروع المحفوظ (إن وجد)</a>
+   </div>
    <button type="button" onClick={()=>void savePreviewVersion()}>حفظ إصدار معاينة جديد</button>
    <p>المعاينة هنا توثيق لنسخة بيانات التخصيص فقط؛ ليست رابط نشر لنظام تجاري.</p>
    <label>ملاحظات على المعاينة<input maxLength={2000} value={previewFeedback} onChange={e=>setPreviewFeedback(e.target.value)}/></label>
