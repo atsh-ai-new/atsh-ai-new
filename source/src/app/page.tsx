@@ -53,7 +53,7 @@ export default function HomePage() {
   const [selectedSector, setSelectedSector] = useState<{ slug: string; name: string } | null>(null);
   const [sectorPricedAddons,setSectorPricedAddons]=useState<Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>>([]);
   const [sectorAddonCodes,setSectorAddonCodes]=useState<string[]>([]);
-  const [sectorPrice,setSectorPrice]=useState<{subtotal:number;monthly:number;yearly:number;needsCustomQuote:boolean;items:Array<{code:string;name:string;price:number;pricingType:string}>}|null>(null);
+  const [sectorPrice,setSectorPrice]=useState<{subtotal:number;monthly:number;yearly:number;needsCustomQuote:boolean;items:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>}|null>(null);
   const copy = (key: string) => { const value = siteConfig.page?.content?.[key]; return (typeof value === "string" ? value.trim() : "") || siteCopyDefaults[key] || ""; };
   const steps = Array.from({ length: 8 }, (_, index) => copy(`stepper${index}`));
   const startWindowLabel = ({ soon: copy("startSoon"), month: copy("startInMonth"), twoMonths: copy("startInTwoMonths"), exploring: copy("startExploring") } as Record<string, string>)[startWindow] ?? copy("startInMonth");
