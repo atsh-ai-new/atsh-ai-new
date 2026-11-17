@@ -1134,7 +1134,9 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
  const evidence={method:"typed_name_explicit_consent",ip:req.ip,userAgent:String(req.get("user-agent")||"").slice(0,250),consent:true};
  const c=await client.query("UPDATE customer_contracts SET status='signed',signer_name=$2,signed_at=now(),signature_evidence=$3::jsonb WHERE quote_id=$1 AND status='issued' RETURNING id,signed_at",[id,signerName.trim(),JSON.stringify(evidence)]);
  if(!c.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Contract unavailable"})}
- await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[id]);await queueJourneyEvent(client,"contract.signed",`contract.signed:${c.rows[0].id}`,{contractId:c.rows[0].id,quoteId:id,signedAt:c.rows[0].signed_at});
+ await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[id]);await client.query(`UPDATE customer_journey_projects SET status='payment_pending',updated_at=now()
+  WHERE id IN (SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true) AND status='quoted'`,[id]);
+ await queueJourneyEvent(client,"contract.signed",`contract.signed:${c.rows[0].id}`,{contractId:c.rows[0].id,quoteId:id,signedAt:c.rows[0].signed_at});
  await client.query("COMMIT");res.json({accepted:true,quoteId:id,contractId:c.rows[0].id,signedAt:c.rows[0].signed_at,paymentStatus:"not_started"});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
 }));
@@ -1186,6 +1188,8 @@ app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requireRole(
  const newPaid=Number(inv.rows[0].verified_paid_piasters)+amountPiasters;
  await client.query('UPDATE commercial_invoices SET verified_paid_piasters=$1,status=$2 WHERE id=$3',[newPaid,newPaid===Number(inv.rows[0].amount_piasters)?'paid':'part_paid',id]);
  await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.payment.manually_verified','commercial_invoice',$2,$3::jsonb)",[req.admin.email,String(id),JSON.stringify({amountPiasters,paymentId:payment.rows[0].id,providerReference:providerReference.trim()})]);
+ await queueJourneyEvent(client,"payment.verified",`payment.verified:${payment.rows[0].id}`,{invoiceId:id,paymentId:payment.rows[0].id,amountPiasters,invoiceStatus:newPaid===Number(inv.rows[0].amount_piasters)?'paid':'part_paid'});
+ await advancePaidJourneyIfEligible(client,id);
  await client.query('COMMIT');res.status(201).json({payment:payment.rows[0],remainingPiasters:Number(inv.rows[0].amount_piasters)-newPaid});
  }catch(e){await client.query('ROLLBACK');if(e.code==='23505')return res.status(409).json({error:'Duplicate payment reference'});throw e}finally{client.release()}
 }));
@@ -1239,10 +1243,31 @@ app.post("/api/internal/verified-payments",rateLimit({windowMs:60*1000,limit:40,
   const status=totalPaid===Number(invoice.rows[0].amount_piasters)?"paid":"part_paid";
   await client.query("UPDATE commercial_invoices SET verified_paid_piasters=$1,status=$2 WHERE id=$3",[totalPaid,status,invoiceId]);
   await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES('verified_gateway_adapter','invoice.payment.gateway_verified','commercial_invoice',gen_random_uuid(),$1::jsonb)",[JSON.stringify({invoiceId,paymentId:payment.rows[0].id,providerReference,amountPiasters})]);
+  await advancePaidJourneyIfEligible(client,invoiceId);
   await queueJourneyEvent(client,"payment.verified",`payment.verified:${payment.rows[0].id}`,{invoiceId,paymentId:payment.rows[0].id,amountPiasters,invoiceStatus:status});
   await client.query("COMMIT");res.status(201).json({accepted:true,paymentId:payment.rows[0].id,invoiceStatus:status,remainingPiasters:remaining-amountPiasters});
  }catch(error){await client.query("ROLLBACK");if(error.code==="23505")return res.status(409).json({error:"Duplicate payment reference"});throw error;}finally{client.release();}
 }));
+// Payments can unlock only a signed accepted quote with all invoices fully verified.
+async function advancePaidJourneyIfEligible(client,invoiceId){
+ const linked=await client.query(`SELECT l.project_id,l.quote_id
+  FROM commercial_invoices i JOIN commercial_order_quote_links l
+  ON l.quote_id=i.quote_id AND l.is_current=true WHERE i.id=$1`,[invoiceId]);
+ if(!linked.rowCount)return null;
+ const {project_id:projectId,quote_id:quoteId}=linked.rows[0];
+ const project=await client.query("SELECT status FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[projectId]);
+ if(project.rows[0]?.status!=="payment_pending")return null;
+ const valid=await client.query(`SELECT q.id FROM commercial_quotes q
+ JOIN customer_contracts c ON c.quote_id=q.id AND c.status='signed'
+ WHERE q.id=$1 AND q.status='accepted'
+ AND EXISTS(SELECT 1 FROM commercial_invoices x WHERE x.quote_id=q.id AND x.status='paid')
+ AND NOT EXISTS(SELECT 1 FROM commercial_invoices x WHERE x.quote_id=q.id AND x.status<>'paid')`,[quoteId]);
+ if(!valid.rowCount)return null;
+ const updated=await client.query("UPDATE customer_journey_projects SET status='paid',updated_at=now() WHERE id=$1 AND status='payment_pending' RETURNING id",[projectId]);
+ if(!updated.rowCount)return null;
+ await queueJourneyEvent(client,"project.payment_confirmed",`project.payment_confirmed:${projectId}`,{projectId,quoteId,verified:true});
+ return projectId;
+}
 // Stage 12: admin-only commercial management. Customer signing/payment verification deliberately NOT exposed.
 app.post("/api/admin/commercial/leads",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
  const {customerEmail,interest}=req.body||{};
@@ -1277,6 +1302,7 @@ app.post("/api/admin/commercial/orders/:orderId/quote",requireAdmin,requireRole(
     VALUES($1,$2,$3::jsonb,$4,$5,now()+interval '14 days') RETURNING id,revision,status,total_piasters,valid_until`,
     [selected.customer_email,selected.customer_account_id,JSON.stringify(priced.items),priced.totalPiasters,priced.currency]);
   await client.query("INSERT INTO commercial_order_quote_links(order_id,quote_id,project_id,draft_id) VALUES($1,$2,$3,$4)",[selected.id,quote.rows[0].id,selected.project_id,draft.rows[0].id]);
+  await client.query("UPDATE customer_journey_projects SET status='quoted',updated_at=now() WHERE id=$1 AND status IN ('draft','configured')",[selected.project_id]);
   await queueJourneyEvent(client,"quote.created",`quote.created:${quote.rows[0].id}`,{quoteId:quote.rows[0].id,orderId:selected.id,projectId:selected.project_id,totalPiasters:priced.totalPiasters});
   await client.query("COMMIT");
   res.status(201).json({quote:quote.rows[0],orderId:selected.id,requiresAdminIssue:true});
