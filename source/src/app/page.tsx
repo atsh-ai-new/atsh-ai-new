@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type CS
 import { addonOptions, calculateQuote, formatEgp, identityOptions, packages, type AddonId, type ContentId, type DomainId, type IdentityId, type PackageId } from "@/lib/catalog";
 import { siteCopyDefaults } from "@/lib/site-copy";
 import { findSector } from "@/lib/sector-catalog";
-import { loadGuestWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
+import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 import Concierge from "@/components/concierge";
 
 type Customer = { name: string; company: string; email: string; phone: string; details: string; compliance: string };
@@ -100,10 +100,20 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    const guest = loadGuestWorkspace();
-    const slug = new URLSearchParams(window.location.search).get("sector");
-    if (!slug && guest.sectorSlug && guest.sectorName) setSelectedSector({slug:guest.sectorSlug,name:guest.sectorName});
-    if (guest.packageId) setPackageId(guest.packageId);
+    let active=true;
+    const guest=loadGuestWorkspace();
+    const slug=new URLSearchParams(window.location.search).get("sector");
+    if(!slug&&guest.sectorSlug&&guest.sectorName)setSelectedSector({slug:guest.sectorSlug,name:guest.sectorName});
+    if(guest.packageId)setPackageId(guest.packageId);
+    // Account-owned draft is only read after authentication; never silently merge guest data into another account.
+    if(!guest.sectorSlug&&!guest.packageId&&!slug){
+      void loadAccountWorkspace().then(account=>{
+        if(!active||!account)return;
+        if(account.sectorSlug&&account.sectorName)setSelectedSector({slug:account.sectorSlug,name:account.sectorName});
+        if(account.packageId)setPackageId(account.packageId);
+      }).catch(()=>undefined);
+    }
+    return()=>{active=false;};
   }, []);
   useEffect(() => {
     if (selectedSector) saveGuestWorkspace({sectorSlug:selectedSector.slug,sectorName:selectedSector.name,source:"configurator"});
