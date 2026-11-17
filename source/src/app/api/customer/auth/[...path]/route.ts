@@ -8,4 +8,4 @@ async function proxy(req:Request,ctx:{params:Promise<{path:string[]}>}){
  const out=new NextResponse(response.body,{status:response.status});const contentType=response.headers.get('content-type');if(contentType)out.headers.set('content-type',contentType);
  const cookies=response.headers.getSetCookie();for(const c of cookies)out.headers.append('set-cookie',c);return out;
 }
-export {proxy as GET,proxy as POST};
+export {proxy as GET,proxy as POST,proxy as PATCH};
