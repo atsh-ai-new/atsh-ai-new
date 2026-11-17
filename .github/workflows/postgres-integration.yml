@@ -71,3 +71,4 @@ jobs:
           NODE
 
           node test/integration-smoke.mjs
+          node test/persistence-restart.mjs
