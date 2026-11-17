@@ -162,6 +162,11 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    const next=Number(latest.rows[0].revision||0)+1;
    const snapshot={...row.draft,projectTitle:row.title,sourceRevision:row.revision,mode:'customer_customization_demo'};
    const inserted=await client.query('INSERT INTO customer_preview_versions(draft_id,revision,snapshot) VALUES($1,$2,$3::jsonb) RETURNING id,revision,approval_status,created_at',[id,next,JSON.stringify(snapshot)]);
+   const logo=await client.query('SELECT mime_type,data FROM customer_project_logos WHERE draft_id=$1 FOR SHARE',[id]);
+   if(logo.rowCount){
+     const digest=hash(logo.rows[0].data);
+     await client.query('INSERT INTO customer_preview_logo_versions(preview_id,mime_type,data,digest) VALUES($1,$2,$3,$4)',[inserted.rows[0].id,logo.rows[0].mime_type,logo.rows[0].data,digest]);
+   }
    await client.query('COMMIT');
    res.status(201).set('Cache-Control','private, no-store').json({preview:inserted.rows[0]});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
@@ -172,6 +177,16 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   if(!owned.rowCount)return res.status(404).json({error:'Not found'});
   const result=await pool.query('SELECT id,revision,snapshot,approval_status,customer_comment,decided_at,created_at FROM customer_preview_versions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 100',[req.params.id]);
   res.set('Cache-Control','private, no-store').json({previews:result.rows});
+ }));
+ router.get('/project-drafts/:id/previews/:previewId/logo',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success||!z.string().uuid().safeParse(req.params.previewId).success)return res.status(404).end();
+  const result=await pool.query(`SELECT assets.mime_type,assets.data FROM customer_preview_logo_versions assets
+    JOIN customer_preview_versions previews ON previews.id=assets.preview_id
+    JOIN customer_project_drafts drafts ON drafts.id=previews.draft_id
+    WHERE assets.preview_id=$1 AND drafts.id=$2 AND drafts.customer_id=$3`,
+    [req.params.previewId,req.params.id,req.customer.id]);
+  if(!result.rowCount)return res.status(404).end();
+  res.set({'Content-Type':result.rows[0].mime_type,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}).send(result.rows[0].data);
  }));
  router.post('/project-drafts/:id/previews/:previewId/decision',requireCustomer,safe(async(req,res)=>{
   const p=z.object({decision:z.enum(['approved','changes_requested']),comment:z.string().max(2000).default('')}).strict().safeParse(req.body);
