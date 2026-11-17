@@ -41,6 +41,7 @@ export default function HomePage() {
   const [contactWindow, setContactWindow] = useState("anytime");
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [customer, setCustomer] = useState<Customer>({ name: "", company: "", email: "", phone: "", details: "", compliance: "" });
+  const [customerSignedIn,setCustomerSignedIn]=useState(false);
   const [requestState, setRequestState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [requestMessage, setRequestMessage] = useState("");
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -138,6 +139,17 @@ export default function HomePage() {
       .catch(()=>{if(active)setSectorPrice({subtotal:0,monthly:0,yearly:0,needsCustomQuote:true,items:[]});});
     return()=>{active=false;};
   },[selectedSector,sectorAddonCodes]);
+  useEffect(()=>{
+    let active=true;
+    fetch("/api/customer/auth/me",{credentials:"include",cache:"no-store"})
+      .then(async response=>response.ok?response.json():null)
+      .then(result=>{
+        if(!active||!result?.customer)return;
+        setCustomerSignedIn(true);
+        setCustomer(existing=>({...existing,name:existing.name||result.customer.name,email:result.customer.email}));
+      }).catch(()=>undefined);
+    return()=>{active=false};
+  },[]);
   const localPackageFor = (backendId: string) => packages.find((item) => backendPackageIds[item.id] === backendId);
   const apiOverrides = apiCatalog.packages.map((backend) => {
     const local = localPackageFor(backend.id);
@@ -442,6 +454,7 @@ export default function HomePage() {
                 {sectorNeedsQuote&&<p className="api-notice">تكلفة القطاع غير معتمدة، لا يمكن تسجيل شراء بهذه القيمة الجزئية.</p>}
                 <div className="review-section"><h4>{copy("reviewPriceTitle")}</h4>{sectorPrice&&!sectorPrice.needsCustomQuote&&sectorPrice.items.map(item=><div key={item.code} className="review-detail"><span>{item.name} · {item.pricingType==="yearly"?"سنوي":item.pricingType==="monthly"?"شهري":"مرة واحدة"}</span><b>{formatEgp(item.price)}</b></div>)}{quote.items.map((item) => <div key={item.id} className="review-detail"><span>{item.label}{item.period ? ` · ${item.period}` : ""}</span><b>{formatEgp(item.amount)}</b></div>)}<div className="review-detail review-subtotal"><span>{copy("reviewSubtotal")}</span><b>{formatEgp(quote.subtotal)}</b></div><div className="review-detail"><span>{copy("reviewTax")} {vatRate}%</span><b>{formatEgp(quote.tax)}</b></div><div className="review-total"><span>{copy("reviewTotal")}</span><strong>{formatEgp(quoteTotal)}</strong></div><div className="review-detail recurring-row"><span>{copy("recurringFees")}</span><b>{formatEgp(quoteRecurring)}</b></div></div>
                 <div className="review-section"><h4>{copy("reviewContactTitle")}</h4><div className="review-detail"><span>{copy("fullNameLabel")}</span><b>{customer.name || "—"}</b></div><div className="review-detail"><span>{copy("customerEmailLabel")}</span><b>{customer.email || "—"}</b></div><div className="review-detail"><span>{copy("customerPhoneLabel")}</span><b>{customer.phone || "—"}</b></div></div>
+                {!customerSignedIn&&<p className="api-notice">لإكمال رحلة المعاينة الشخصية والعقد وتسليم المشروع، <a href="/account/login" style={{textDecoration:"underline",fontWeight:700}}>سجّل الدخول</a> أو <a href="/account/register" style={{textDecoration:"underline",fontWeight:700}}>افتح حسابًا</a>. اختياراتك محفوظة مؤقتًا على هذا المتصفح لنقلها إلى حسابك بموافقتك.</p>}
                 <div className="review-actions"><button type="button" className="button button-outline" onClick={downloadSummary}>{copy("downloadSummaryButton")}</button><button className="button" type="submit" disabled={!apiConfigured || sectorNeedsQuote || requestState === "sending" || !customer.name || !customer.email || !customer.phone || !privacyAccepted}>{requestState === "sending" ? copy("sendingRequest") : copy("submitRequestButton")}<span>←</span></button></div>
                 {!apiConfigured && <p className="api-notice">{catalogStatus === "loading" ? copy("loadingCatalogMessage") : catalogStatus === "unavailable" ? copy("unavailableCatalogMessage") : copy("catalogMismatchMessage")}</p>}
                 {requestMessage && <p className={requestState === "sent" ? "success-message" : "error-message"} role="status">{requestMessage}</p>}
