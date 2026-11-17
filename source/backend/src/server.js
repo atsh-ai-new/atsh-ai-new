@@ -1172,7 +1172,7 @@ app.post("/api/admin/commercial/contracts/templates",requireAdmin,requireRole("o
   await client.query("BEGIN");
   const q=await client.query("INSERT INTO contract_templates(title,body,category,is_published,updated_by) VALUES($1,$2,$3,$4,$5) RETURNING *",[title,body,category,isPublished,req.admin.email]);
   await client.query("INSERT INTO contract_template_versions(template_id,revision,title,body,category,is_published,is_archived,edited_by) VALUES($1,1,$2,$3,$4,$5,false,$6)",[q.rows[0].id,title,body,category,isPublished,req.admin.email]);
-  await auditChange(client,req.admin.email,"contract_template.created","contract_template",q.rows[0].id,null,q.rows[0]);
+  await auditChange(client,req.admin.email,"contract_template.created","contract_template",null,null,{...q.rows[0],templateId:q.rows[0].id});
   await client.query("COMMIT");res.status(201).json({template:q.rows[0]});
  }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
@@ -1200,7 +1200,7 @@ app.patch("/api/admin/commercial/contracts/templates/:id",requireAdmin,requireRo
    WHERE id=$1 RETURNING *`,[req.params.id,title,body,category,isPublished,isArchived,req.admin.email]);
   const updated=result.rows[0];
   await client.query("INSERT INTO contract_template_versions(template_id,revision,title,body,category,is_published,is_archived,edited_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[updated.id,updated.revision,updated.title,updated.body,updated.category,updated.is_published,updated.is_archived,req.admin.email]);
-  await auditChange(client,req.admin.email,"contract_template.revised","contract_template",updated.id,before.rows[0],updated);
+  await auditChange(client,req.admin.email,"contract_template.revised","contract_template",null,{...before.rows[0],templateId:updated.id},{...updated,templateId:updated.id});
   await client.query("COMMIT");res.json({template:updated});
  }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
