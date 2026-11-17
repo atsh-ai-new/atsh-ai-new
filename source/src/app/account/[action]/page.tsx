@@ -138,6 +138,7 @@ export default function CustomerAccount(){
    <option value="">اختر مشروعًا</option>{projectDrafts.map(d=><option key={d.id} value={d.id}>{d.title} — إصدار {d.revision}</option>)}
   </select></label>
   {selectedProjectDraft&&<><h3>بيانات المشروع المحدد</h3><p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(projectDrafts.find(d=>d.id===selectedProjectDraft)?.draft??{},null,2)}</p>
+   <a href={`/?draftId=${encodeURIComponent(selectedProjectDraft)}#configurator`} style={{display:"inline-block",margin:"12px 0",padding:"11px 15px",borderRadius:10,background:"#203958",color:"white"}}>استكمال الباقة والتسعير لهذا المشروع</a>
    <button type="button" onClick={()=>void savePreviewVersion()}>حفظ إصدار معاينة جديد</button>
    <p>المعاينة هنا توثيق لنسخة بيانات التخصيص فقط؛ ليست رابط نشر لنظام تجاري.</p>
    <label>ملاحظات على المعاينة<input maxLength={2000} value={previewFeedback} onChange={e=>setPreviewFeedback(e.target.value)}/></label>
