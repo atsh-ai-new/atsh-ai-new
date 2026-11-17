@@ -3,7 +3,7 @@
 const env=process.env;
 const present=v=>typeof v==="string"&&v.trim().length>0&&!/[<>]/.test(v)&&!v.includes("example")&&!v.includes("change-me");
 const nonplaceholder=v=>present(v)&&v.length>=8;
-const urls=v=>{try{const u=new URL(v);return u.protocol==="https:"&&!/(?:\\.example|\\.test|\\.invalid)$/i.test(u.hostname)&&!u.hostname.includes("your-");}catch{return false;}};
+const urls=v=>{try{const u=new URL(v);return u.protocol==="https:"&&![".example",".test",".invalid"].some(suffix=>u.hostname.endsWith(suffix))&&!u.hostname.includes("your-");}catch{return false;}};
 const checks=[
  {id:"database",critical:true,ok:typeof env.DATABASE_URL==="string"&&env.DATABASE_URL.startsWith("postgres")},
  {id:"admin-password",critical:true,ok:typeof env.ADMIN_PASSWORD_HASH==="string"&&/^\$2[aby]\$/.test(env.ADMIN_PASSWORD_HASH)},
