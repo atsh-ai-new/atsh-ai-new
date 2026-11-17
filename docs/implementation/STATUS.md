@@ -8,7 +8,8 @@ This PR originally contained only `scripts/preflight.mjs`, while the branch had 
 ## Committed source
 - Next.js App Router Arabic RTL home and four-step request configuration form, responsive CSS.
 - NestJS API with health route and validated/throttled service-request intake.
-- New Prisma PostgreSQL schema with ServiceRequest model, no historic DB connection.
+- New Prisma PostgreSQL schema and initial SQL migration with ServiceRequest model, no historic DB connection.
+- Request idempotency key and payload hash comparison to prevent accidental duplicate submissions.
 - DTO validation unit tests, GitHub Actions checks, environment template.
 
 ## Outstanding — NOT complete
