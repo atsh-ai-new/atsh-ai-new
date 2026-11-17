@@ -58,3 +58,23 @@ Current CI status must be checked in GitHub Actions; never infer success from a 
 ## Master remaining-work checklist
 - Prioritized open tasks, definitions of done, and newly required **admin contract wording/template editor**: [`docs/REMAINING_BUILD_TASKS_MASTER.md`](REMAINING_BUILD_TASKS_MASTER.md).
 - The existing contract UI supports creation of templates but **not editing and versioning of existing templates**. This is explicitly tracked as `ATSH-004` (P0) and is not yet implemented.
+
+## Stage 43–51 update — real tests and security gates (2026-11-17)
+
+**Verified code progress**
+- Admin contract template wording editor, categories for managed plans/source-code/hosting, publish/archive/clone/preview and immutable revision history. Issued contract snapshots do not mutate when templates change.
+- Per-project customer drafts and logos are account-isolated; preview versions have explicit customer approval/change request and immutable logo snapshots.
+- Corrected frontend pricing split by one-time/monthly/yearly charges, stored server-calculated billing in order snapshots, and rejected null-priced packages as free.
+- Domain lookup with Namecheap API is **configuration-dependent**; lookup never implies reservation or standard price. WHM provisioning helper explicitly requires independently verified payment and administrator approval; it is not exposed to the public.
+- GPT guest assistant uses published company knowledge and catalog, with daily request/output-token quotas and aggregate usage counts readable only by authorized admins. Real OpenAI credentials are not set here.
+- Customer events are committed into a transactional outbox and dispatched to n8n with idempotency identifiers and bounded retries.
+- Catalog CMS refuses outdated concurrent writes and preserves unsaved form content on failed requests.
+- `npm run preflight` added to detect missing credentials and launch controls without printing secrets.
+
+**Verification**
+- Backend unit tests, frontend TypeScript + Next production build, and fresh isolated PostgreSQL API integration have passed on GitHub Actions after the above changes.
+- A new Chromium browser E2E workflow tested desktop and mobile catalog filtering, sector previews, test-record actions and configurator navigation: first complete run `44150921533` **passed**. Extra mobile overflow assertion was subsequently added and needs its own run result.
+- These tests cannot establish that registrar/hosting/payment/GPT/n8n credentials are configured or that external production operations work. All live-provider deployments and actual full-sector application previews remain launch blockers.
+- Main and the published domain remain unchanged.
+
+**Critical remaining release gates:** configure actual providers and test sandboxes, complete commercially representative sector apps (not demo placeholders), legally approve contract signature and policy, enforce entitlement-based delivery and renewals, run multi-tenant security/performance tests on staging, then obtain explicit approval before main merge or deployment.
