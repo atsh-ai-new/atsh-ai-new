@@ -31,6 +31,7 @@ export default function Concierge() {
  const [input,setInput]=useState("");
  const [sectors,setSectors]=useState<Sector[]>(sectorTemplates);
  const [hint,setHint]=useState("");
+ const [sending,setSending]=useState(false);
  useEffect(()=>{
    let active=true;
    fetch("/api/site-content/catalog",{cache:"no-store"}).then(async r=>r.ok?r.json():null).then(result=>{
@@ -41,10 +42,29 @@ export default function Concierge() {
    return()=>{active=false};
  },[]);
  const sectorLinks=useMemo(()=>sectors.slice(0,4),[sectors]);
- const send=(e:FormEvent)=>{e.preventDefault();const q=input.trim().slice(0,350);if(!q)return;setMessages(prev=>[...prev,{who:"customer",text:q},answer(q,sectors)]);setInput("");};
+ const send=async(e:FormEvent)=>{
+   e.preventDefault();
+   const q=input.trim().slice(0,350);
+   if(!q||sending)return;
+   const next=[...messages,{who:"customer" as const,text:q}];
+   setMessages(next);
+   setInput("");
+   setSending(true);
+   setHint("");
+   try{
+     const history=next.filter(m=>m!==initial).slice(-8).map(m=>({role:m.who==="customer"?"user":"assistant",content:m.text}));
+     const response=await fetch("/api/visitor/assistant",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:history})});
+     const data=await response.json().catch(()=>({}));
+     if(!response.ok||typeof data.answer!=="string")throw Error(typeof data.error==="string"?data.error:"GPT unavailable");
+     setMessages(prev=>[...prev,{who:"assistant",text:data.answer}]);
+   }catch{
+     setMessages(prev=>[...prev,answer(q,sectors)]);
+     setHint("تعذر الاتصال بـGPT الآن؛ الرد الحالي إرشاد بديل مبني على قواعد المنصة فقط.");
+   }finally{setSending(false);}
+ };
  return <div dir="rtl" style={{position:"fixed",bottom:18,left:18,zIndex:150,maxWidth:"calc(100vw - 36px)",fontFamily:"inherit"}}>
    {open&&<section role="dialog" aria-label="مساعد ATSH AI الإرشادي" style={{width:"min(370px,calc(100vw - 36px))",height:"min(560px,calc(100dvh - 100px))",background:"#fff",borderRadius:20,boxShadow:"0 18px 65px #0d244050",border:"1px solid #d7e1eb",display:"flex",flexDirection:"column",overflow:"hidden",marginBottom:12}}>
-     <header style={{padding:16,background:"#203958",color:"white",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><strong>مساعد ATSH AI</strong><small style={{display:"block",opacity:.8}}>إرشاد تفاعلي مبني على الكتالوج — ليس نموذج AI متصلًا بعد</small></div><button aria-label="إغلاق المساعد" onClick={()=>setOpen(false)} style={{background:"transparent",border:0,color:"white",fontSize:25,cursor:"pointer"}}>×</button></header>
+     <header style={{padding:16,background:"#203958",color:"white",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><strong>مساعد ATSH AI</strong><small style={{display:"block",opacity:.8}}>GPT مدرّب بالتعليمات على خدماتنا وباقاتنا — مع إرشاد احتياطي</small></div><button aria-label="إغلاق المساعد" onClick={()=>setOpen(false)} style={{background:"transparent",border:0,color:"white",fontSize:25,cursor:"pointer"}}>×</button></header>
      <div aria-live="polite" style={{flex:1,overflowY:"auto",padding:15,display:"flex",flexDirection:"column",gap:10}}>
        {messages.map((m,i)=><div key={i} style={{padding:"10px 12px",borderRadius:14,lineHeight:1.8,fontSize:13,maxWidth:"95%",alignSelf:m.who==="customer"?"flex-start":"flex-end",background:m.who==="customer"?"#e8f0fb":"#f3f5f8",color:"#203958"}}>{m.text}</div>)}
        {hint&&<small style={{color:"#96610e"}}>{hint}</small>}
@@ -56,7 +76,7 @@ export default function Concierge() {
      </nav>
      <form onSubmit={send} style={{padding:12,display:"flex",gap:8,borderTop:"1px solid #e2e8f0"}}>
        <input aria-label="رسالتك للمساعد" maxLength={350} value={input} onChange={e=>setInput(e.target.value)} placeholder="مجالك أو طلبك…" style={{flex:1,width:"100%",minWidth:0,padding:11,borderRadius:10,border:"1px solid #cbd5e1"}}/>
-       <button type="submit" disabled={!input.trim()} style={{border:0,borderRadius:10,padding:"10px 14px",background:"#203958",color:"white",cursor:"pointer"}}>إرسال</button>
+       <button type="submit" disabled={!input.trim()||sending} style={{border:0,borderRadius:10,padding:"10px 14px",background:"#203958",color:"white",cursor:"pointer"}}>{sending?"جارٍ الرد…":"إرسال"}</button>
      </form>
    </section>}
    <button aria-expanded={open} aria-label={open?"إغلاق مساعد ATSH AI":"فتح مساعد ATSH AI"} onClick={()=>setOpen(v=>!v)} style={{border:0,borderRadius:99,background:"#203958",color:"#fff",padding:"13px 19px",boxShadow:"0 8px 30px #20395844",cursor:"pointer",fontWeight:700}}>✦ {open?"إغلاق المساعد":"اسأل مساعد ATSH AI"}</button>
