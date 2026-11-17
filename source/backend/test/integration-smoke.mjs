@@ -29,8 +29,10 @@ try{
  assert.equal(v.status,200,JSON.stringify(v));assert.equal(v.result.template.revision,2);
  const conflict=await req(`/api/admin/commercial/contracts/templates/${templateId}`,{method:"PATCH",cookie:adminCookie,body:{expectedRevision:1,title:"قديم",body:"محاولة كتابة قديمة لا يجب قبولها ولا إعادة الكتابة.",category:"general",isPublished:true}});
  assert.equal(conflict.status,409);
- const snapshot=await pool.query("SELECT body_snapshot FROM customer_contracts WHERE id=$1",[issued.result.contract.id]);
+ const snapshot=await pool.query("SELECT body_snapshot,template_revision,template_category FROM customer_contracts WHERE id=$1",[issued.result.contract.id]);
  assert.equal(snapshot.rows[0].body_snapshot,initialBody);
+ assert.equal(snapshot.rows[0].template_revision,1);
+ assert.equal(snapshot.rows[0].template_category,"managed_monthly");
  const versions=await req(`/api/admin/commercial/contracts/templates/${templateId}/versions`,{cookie:adminCookie});
  assert.equal(versions.status,200);assert.equal(versions.result.versions.length,2);
  // Two projects are isolated to one account; stale writes and cross-account reads are denied.
