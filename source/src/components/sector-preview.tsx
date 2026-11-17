@@ -10,22 +10,39 @@ export default function SectorPreview({template}: {template: SectorTemplate}) {
   const [brand,setBrand]=useState("#203958");
   const [customTitle,setCustomTitle]=useState("");
   const [showForm,setShowForm]=useState(false);
+  const [logoData,setLogoData]=useState("");
+  const [customDescription,setCustomDescription]=useState("");
+  const [logoError,setLogoError]=useState("");
+  const uploadLogo=(file?:File)=>{
+    if(!file)return;
+    if(!["image/jpeg","image/png","image/webp"].includes(file.type)||file.size>2*1024*1024){setLogoError("الشعار يجب أن يكون PNG أو JPG أو WebP وأقل من 2 ميجابايت.");return;}
+    setLogoError("");
+    const reader=new FileReader();
+    reader.onload=()=>{if(typeof reader.result==="string")setLogoData(reader.result);};
+    reader.readAsDataURL(file);
+  };
   return <main dir="rtl" style={{maxWidth:1280,margin:"0 auto",padding:"20px",minHeight:"100vh"}}>
     <header style={{display:"flex",gap:12,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",marginBottom:20}}>
       <Link href="/catalog" style={{color:"#4c78ae"}}>← العودة للمعرض</Link>
       <span style={{background:"#fff2d2",color:"#815800",borderRadius:12,padding:"8px 12px",fontSize:12}}>معاينة تجريبية — بلا خادم أو دفع حقيقي</span>
       <Link href="/#configurator" style={{background:brand,color:"white",padding:"10px 16px",borderRadius:10}}>تخصيص الباقة والسعر</Link>
     </header>
+    <style>{`@media(max-width:700px){.sector-preview-grid{grid-template-columns:1fr!important}.sector-preview-nav{display:flex;overflow-x:auto;gap:5px}.sector-preview-nav button{min-width:max-content}}`}</style>
     <section style={{background:"white",borderRadius:18,border:"1px solid #e2e8f0",padding:20,marginBottom:18}}>
-      <h1 style={{margin:"0 0 8px",color:brand}}>{template.icon} {customTitle || template.name}</h1>
-      <p style={{color:"#64748b",lineHeight:1.8}}>{template.description}</p>
+      <h1 style={{margin:"0 0 8px",color:brand,display:"flex",alignItems:"center",gap:10}}>{logoData?<img src={logoData} alt="شعار النشاط التجريبي" style={{width:48,height:48,objectFit:"contain"}}/>:template.icon} {customTitle || template.name}</h1>
+      <p style={{color:"#64748b",lineHeight:1.8}}>{customDescription||template.description}</p>
       <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"end"}}>
         <label style={{display:"grid",gap:5}}>اسم النشاط التجريبي<input value={customTitle} onChange={e=>setCustomTitle(e.target.value)} placeholder={template.name} maxLength={50} style={{padding:10,border:"1px solid #cbd5e1",borderRadius:8}}/></label>
         <label style={{display:"grid",gap:5}}>لون الهوية<input aria-label="لون الهوية" type="color" value={brand} onChange={e=>setBrand(e.target.value)} style={{height:43,width:74,border:0}}/></label>
       </div>
+      <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"end",marginTop:14}}>
+        <label style={{display:"grid",gap:5,flex:"1 1 260px"}}>وصف النشاط التجريبي<input value={customDescription} onChange={e=>setCustomDescription(e.target.value)} maxLength={200} placeholder="اكتب النص الذي تريده في نموذجك" style={{padding:10,border:"1px solid #cbd5e1",borderRadius:8}}/></label>
+        <label style={{display:"grid",gap:5,flex:"1 1 200px"}}>ارفع شعارك (للمعاينة فقط)<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>uploadLogo(e.target.files?.[0])} /></label>
+      </div>
+      {logoError&&<p role="alert" style={{color:"#b91c1c"}}>{logoError}</p>}
     </section>
-    <div style={{display:"grid",gridTemplateColumns:"minmax(0,230px) minmax(0,1fr)",gap:16}}>
-      <nav aria-label="أقسام النموذج" style={{background:brand,color:"white",borderRadius:16,padding:14,alignSelf:"start"}}>
+    <div className="sector-preview-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,230px) minmax(0,1fr)",gap:16}}>
+      <nav className="sector-preview-nav" aria-label="أقسام النموذج" style={{background:brand,color:"white",borderRadius:16,padding:14,alignSelf:"start"}}>
         {template.modules.map(module=><button key={module} onClick={()=>setActive(module)} aria-current={active===module?"page":undefined} style={{display:"block",width:"100%",textAlign:"right",marginBottom:5,padding:12,borderRadius:9,border:0,cursor:"pointer",background:active===module?"#ffffff30":"transparent",color:"white",fontWeight:active===module?700:400}}>{module}</button>)}
       </nav>
       <section style={{minWidth:0}}>
