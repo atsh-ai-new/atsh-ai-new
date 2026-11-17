@@ -186,5 +186,13 @@ try{
  assert.equal(staleCatalog.status,409,"Stale admin write must fail without erasing newer data");
  const savedCatalog=await pool.query("SELECT content->>'title' AS title FROM site_pages WHERE slug='catalog' AND locale='ar'");
  assert.equal(savedCatalog.rows[0].title,"كتالوج اختبار التكامل");
+ // Private GPT usage dashboard and safe unconfigured fallback (no live provider credentials).
+ const usageAdmin=await req("/api/admin/visitor-ai-usage",{cookie:adminCookie});
+ assert.equal(usageAdmin.status,200);
+ assert.ok(Array.isArray(usageAdmin.result.days));
+ const usageGuest=await req("/api/admin/visitor-ai-usage");
+ assert.equal(usageGuest.status,401);
+ const assistantDisabled=await req("/api/visitor/assistant",{method:"POST",body:{messages:[{role:"user",content:"كم سعر الموقع؟"}]}});
+ assert.equal(assistantDisabled.status,503);
  console.log("PASS: contract revisions, immutable issuance, owner authorization, project isolation, conflict detection, customer preview approval and signed payment settlement");
 }finally{await pool.end();}
