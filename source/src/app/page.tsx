@@ -113,6 +113,12 @@ export default function HomePage() {
   }, [packageId]);
   useEffect(() => {
     if (!selectedSector){setSectorPrice(null);setSectorPricedAddons([]);return;}
+    // Restore options when the visitor enters from a saved workspace, not just a URL.
+    fetch("/api/site-content/catalog",{cache:"no-store"})
+      .then(async r=>r.ok?r.json():null).then(data=>{
+        const entry=(data?.page?.content?.items??[]).find((item:{slug?:string;published?:boolean;archived?:boolean})=>item.slug===selectedSector.slug&&item.published!==false&&!item.archived);
+        setSectorPricedAddons(Array.isArray(entry?.pricedAddons)?entry.pricedAddons:[]);
+      }).catch(()=>setSectorPricedAddons([]));
     let active=true;
     const params=new URLSearchParams({slug:selectedSector.slug});
     if(sectorAddonCodes.length)params.set("addons",sectorAddonCodes.join(","));
