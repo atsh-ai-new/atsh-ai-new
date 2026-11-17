@@ -208,6 +208,31 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
     res.set('Cache-Control','private, no-store').json({preview});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
  }));
+ // A draft's logo is owned by the draft's customer. Never expose it by account email.
+ router.post('/project-drafts/:id/logo',requireCustomer,safe(async(req,res)=>{
+  const draftId=req.params.id;
+  if(!z.string().uuid().safeParse(draftId).success)return res.status(404).json({error:'Not found'});
+  const owned=await pool.query("SELECT id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2",[draftId,req.customer.id]);
+  if(!owned.rowCount)return res.status(404).json({error:'Not found'});
+  const mime=String(req.get('content-type')||'').split(';')[0].trim().toLowerCase(),data=req.body;
+  if(!Buffer.isBuffer(data)||!data.length||data.length>2097152)return res.status(413).json({error:'Logo must be an image up to 2 MB'});
+  const png=data.length>=8&&data.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+  const jpeg=data.length>=3&&data[0]===255&&data[1]===216&&data[2]===255;
+  const webp=data.length>=12&&data.toString('ascii',0,4)==='RIFF'&&data.toString('ascii',8,12)==='WEBP';
+  const actual=png?'image/png':jpeg?'image/jpeg':webp?'image/webp':null;
+  if(!actual||actual!==mime)return res.status(415).json({error:'Invalid image type'});
+  await pool.query(`INSERT INTO customer_project_logos(draft_id,mime_type,data) VALUES($1,$2,$3)
+    ON CONFLICT(draft_id) DO UPDATE SET mime_type=EXCLUDED.mime_type,data=EXCLUDED.data,updated_at=now()`,[draftId,actual,data]);
+  res.set('Cache-Control','private, no-store').json({saved:true,draftId});
+ }));
+ router.get('/project-drafts/:id/logo',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).end();
+  const result=await pool.query(`SELECT l.mime_type,l.data FROM customer_project_logos l
+   JOIN customer_project_drafts d ON d.id=l.draft_id
+   WHERE l.draft_id=$1 AND d.customer_id=$2`,[req.params.id,req.customer.id]);
+  if(!result.rowCount)return res.status(404).end();
+  res.set({'Content-Type':result.rows[0].mime_type,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}).send(result.rows[0].data);
+ }));
  router.get('/workspace',requireCustomer,safe(async(req,res)=>{
   const result=await pool.query('SELECT draft,revision,updated_at FROM customer_workspace_drafts WHERE customer_id=$1',[req.customer.id]);
   res.set('Cache-Control','no-store').json({workspace:result.rows[0]||{draft:{},revision:0}});
