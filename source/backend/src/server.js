@@ -19,6 +19,7 @@ import { buildVisitorInstructions } from "./visitor-assistant.js";
 import { priceSectorSelection } from "./sector-pricing.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
+import {queueJourneyEvent,deliverJourneyEvents,eventDestination} from "./customer-event-outbox.js";
 import { buildProjectPlan, proposeVisualEdit } from "./project-builder.js";
 import {verifyCallback,validJobResult,canTransition} from "./builder-job-rules.js";
 import { operationGuard } from "./operation-guards.js";
@@ -57,6 +58,7 @@ await pool.query(await readFile(new URL("../db/customer_workspace_stage41.sql", 
 await pool.query(await readFile(new URL("../db/contract_templates_stage43.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_project_drafts_stage44.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_preview_stage45.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql", import.meta.url), "utf8"));
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim()).filter(Boolean);
 const cookie = "atsh_admin";
 const cookieOptions = { httpOnly: true, secure: process.env.COOKIE_SECURE !== "false", sameSite: "strict", path: "/", maxAge: 8 * 60 * 60 * 1000 };
@@ -1105,7 +1107,8 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
  const evidence={method:"typed_name_explicit_consent",ip:req.ip,userAgent:String(req.get("user-agent")||"").slice(0,250),consent:true};
  const c=await client.query("UPDATE customer_contracts SET status='signed',signer_name=$2,signed_at=now(),signature_evidence=$3::jsonb WHERE quote_id=$1 AND status='issued' RETURNING id,signed_at",[id,signerName.trim(),JSON.stringify(evidence)]);
  if(!c.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Contract unavailable"})}
- await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[id]);await client.query("COMMIT");res.json({accepted:true,quoteId:id,contractId:c.rows[0].id,signedAt:c.rows[0].signed_at,paymentStatus:"not_started"});
+ await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[id]);await queueJourneyEvent(client,"contract.signed",`contract.signed:${c.rows[0].id}`,{contractId:c.rows[0].id,quoteId:id,signedAt:c.rows[0].signed_at});
+ await client.query("COMMIT");res.json({accepted:true,quoteId:id,contractId:c.rows[0].id,signedAt:c.rows[0].signed_at,paymentStatus:"not_started"});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
 }));
 
@@ -1209,6 +1212,7 @@ app.post("/api/internal/verified-payments",rateLimit({windowMs:60*1000,limit:40,
   const status=totalPaid===Number(invoice.rows[0].amount_piasters)?"paid":"part_paid";
   await client.query("UPDATE commercial_invoices SET verified_paid_piasters=$1,status=$2 WHERE id=$3",[totalPaid,status,invoiceId]);
   await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES('verified_gateway_adapter','invoice.payment.gateway_verified','commercial_invoice',gen_random_uuid(),$1::jsonb)",[JSON.stringify({invoiceId,paymentId:payment.rows[0].id,providerReference,amountPiasters})]);
+  await queueJourneyEvent(client,"payment.verified",`payment.verified:${payment.rows[0].id}`,{invoiceId,paymentId:payment.rows[0].id,amountPiasters,invoiceStatus:status});
   await client.query("COMMIT");res.status(201).json({accepted:true,paymentId:payment.rows[0].id,invoiceStatus:status,remainingPiasters:remaining-amountPiasters});
  }catch(error){await client.query("ROLLBACK");if(error.code==="23505")return res.status(409).json({error:"Duplicate payment reference"});throw error;}finally{client.release();}
 }));
@@ -1352,6 +1356,14 @@ app.use((err,_req,res,_next)=>{
 });
 const port=Number(process.env.PORT||3000);
 const server=app.listen(port,"0.0.0.0",()=>console.log(`ATSH AI API listening on ${port}`));
-async function shutdown(){server.close();await pool.end();process.exit(0);}
+let eventsBusy=false;
+const eventTimer=eventDestination()?setInterval(async()=>{
+ if(eventsBusy)return;
+ eventsBusy=true;
+ try{await deliverJourneyEvents(pool);}catch(e){console.error(JSON.stringify({event:"n8n_outbox_dispatch_error",message:String(e?.message||e).slice(0,180)}));}
+ finally{eventsBusy=false;}
+},30000):null;
+eventTimer?.unref();
+async function shutdown(){if(eventTimer)clearInterval(eventTimer);server.close();await pool.end();process.exit(0);}
 process.on("SIGTERM",shutdown);
 process.on("SIGINT",shutdown);
