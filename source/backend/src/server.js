@@ -16,6 +16,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
 import { buildVisitorInstructions } from "./visitor-assistant.js";
+import { priceSectorSelection } from "./sector-pricing.js";
 import { buildProjectPlan, proposeVisualEdit } from "./project-builder.js";
 import {verifyCallback,validJobResult,canTransition} from "./builder-job-rules.js";
 import { operationGuard } from "./operation-guards.js";
@@ -421,6 +422,18 @@ app.get("/api/site-media/:id",route(async(req,res)=>{
   res.set({"Content-Type":media.rows[0].content_type,"Content-Length":String(media.rows[0].byte_size),"Cache-Control":"public, max-age=31536000, immutable","X-Content-Type-Options":"nosniff"}).send(media.rows[0].data);
 }));
 
+// Sector price is calculated using only published administrator-maintained catalog data.
+app.get("/api/sector-price",route(async(req,res)=>{
+  const slug=typeof req.query.slug==="string"?req.query.slug:"";
+  const addons=typeof req.query.addons==="string"&&req.query.addons
+    ? req.query.addons.split(","): [];
+  const result=await pool.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true LIMIT 1");
+  try{
+    const price=priceSectorSelection(result.rows[0]?.content?.items,slug,addons);
+    res.set("Cache-Control","no-store").json(price);
+  }catch{return res.status(400).json({error:"Sector unavailable or pricing not configured"});}
+}));
+
 const orderSchema = z.object({
   packageId:z.string().uuid(),
   optionIds:z.array(z.string().uuid()).max(30).default([]),
@@ -449,13 +462,21 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
     const selected = new Set(o.rows.map(x=>x.id));
     if(required.rows.some(x=>!selected.has(x.id))){await client.query("ROLLBACK");return res.status(400).json({error:"All required package options must be selected"});}
     const pricedOptions=o.rows.map(x=>{const quantity=x.pricing_type==="per_page"?Number(input.optionQuantities[x.id]||1):1;return {...x,quantity,lineTotal:Number(x.price)*quantity};});
-    const subtotal=Number(pkg.price)+pricedOptions.reduce((n,x)=>n+x.lineTotal,0);
+    if(!input.sectorSlug && input.sectorAddonCodes.length){await client.query("ROLLBACK");return res.status(400).json({error:"Sector addons require a sector"});}
+    let sectorPrice=null;
+    if(input.sectorSlug){
+      const catalog=await client.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true FOR SHARE");
+      try{sectorPrice=priceSectorSelection(catalog.rows[0]?.content?.items,input.sectorSlug,input.sectorAddonCodes);}
+      catch{await client.query("ROLLBACK");return res.status(400).json({error:"Selected sector or addon unavailable"});}
+      if(sectorPrice.needsCustomQuote){await client.query("ROLLBACK");return res.status(409).json({error:"تخصيص هذا القطاع يتطلب اعتماد عرض سعر قبل تسجيل طلب شراء.",needsCustomQuote:true});}
+    }
+    const subtotal=Number(pkg.price)+pricedOptions.reduce((n,x)=>n+x.lineTotal,0)+(sectorPrice?.subtotal??0);
     const settings=await client.query("SELECT vat_rate FROM site_settings WHERE id=1");
     const vatRate=settings.rows[0]?.vat_rate==null?null:Number(settings.rows[0].vat_rate);
     const vatAmount=vatRate==null?null:Math.round(subtotal*vatRate)/100;
     const total=vatAmount==null?subtotal:subtotal+vatAmount;
     const reference="ATSH-"+new Date().toISOString().slice(0,10).replaceAll("-","")+"-"+crypto.randomUUID().slice(0,8).toUpperCase();
-    const snapshot={package:pkg,options:pricedOptions,currency:pkg.currency,subtotal,vatRate,vatAmount,total};
+    const snapshot={package:pkg,options:pricedOptions,sector:sectorPrice,currency:pkg.currency,subtotal,vatRate,vatAmount,total};
     const saved=await client.query(`INSERT INTO orders(reference,customer_name,phone,email,notes,package_id,status,currency,subtotal,vat_rate,vat_amount,total,snapshot)
       VALUES($1,$2,$3,$4,$5,$6,'new',$7,$8,$9,$10,$11,$12)
       RETURNING id,reference,status,total,currency,created_at`,
