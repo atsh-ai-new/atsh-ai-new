@@ -130,6 +130,26 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    RETURNING draft,revision,updated_at`,[req.customer.id,JSON.stringify(parsed.data)]);
   res.set('Cache-Control','no-store').json({workspace:result.rows[0]});
  }));
+
+ router.post('/workspace/logo',requireCustomer,safe(async(req,res)=>{
+  const mime=String(req.get('content-type')||'').split(';')[0].trim().toLowerCase();
+  const data=req.body;
+  if(!Buffer.isBuffer(data)||data.length===0||data.length>2097152)return res.status(413).json({error:'Logo must be an image up to 2 MB'});
+  const png=data.length>=8&&data.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+  const jpeg=data.length>=3&&data[0]===0xff&&data[1]===0xd8&&data[2]===0xff;
+  const webp=data.length>=12&&data.toString('ascii',0,4)==='RIFF'&&data.toString('ascii',8,12)==='WEBP';
+  const actual=png?'image/png':jpeg?'image/jpeg':webp?'image/webp':null;
+  if(!actual||actual!==mime)return res.status(415).json({error:'Invalid image type'});
+  await pool.query(`INSERT INTO customer_workspace_logos(customer_id,mime_type,data)
+     VALUES($1,$2,$3) ON CONFLICT(customer_id) DO UPDATE
+     SET mime_type=EXCLUDED.mime_type,data=EXCLUDED.data,updated_at=now()`,[req.customer.id,actual,data]);
+  res.set('Cache-Control','private, no-store').json({saved:true});
+ }));
+ router.get('/workspace/logo',requireCustomer,safe(async(req,res)=>{
+  const result=await pool.query('SELECT mime_type,data FROM customer_workspace_logos WHERE customer_id=$1',[req.customer.id]);
+  if(!result.rowCount)return res.status(404).end();
+  res.set({'Content-Type':result.rows[0].mime_type,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}).send(result.rows[0].data);
+ }));
  router.get('/projects',requireCustomer,safe(async(req,res)=>{const q=await pool.query('SELECT id,customer_name,status,created_at,updated_at FROM customer_journey_projects WHERE customer_account_id=$1 ORDER BY created_at DESC LIMIT 100',[req.customer.id]);res.json({projects:q.rows});}));
  router.post('/logout',(_req,res)=>{res.clearCookie(sessionCookie,cookieOptions);res.json({ok:true});});
  return router;
