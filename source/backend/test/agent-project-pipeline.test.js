@@ -1,0 +1,13 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {generateProjectManifest,prepareGeneratedProject} from '../src/agent-project-pipeline.js';
+import {buildDockerArgs} from '../src/isolated-project-tests.js';
+import {signPreview,verifyPreview,validatePreviewResult} from '../src/preview-dispatch.js';
+const agent={url:new URL('https://api.example.com/v1/chat/completions'),apiKey:'test',model:'test'};
+const spec='Build a minimal original business landing page with navigation.';
+const mock=async()=>({ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({repo:'my-project',files:[{path:'index.html',content:'<h1>Test</h1>'}]})}}]})});
+test('agent output is validated and held for approval',async()=>{const result=await prepareGeneratedProject(agent,null,{repo:'my-project',specification:spec},{fetchImpl:mock});assert.equal(result.status,'awaiting_review');assert.equal(result.files,1);});
+test('agent cannot redirect repository',async()=>{await assert.rejects(generateProjectManifest(agent,{repo:'other-project',specification:spec},{fetchImpl:mock}),/changed repository/);});
+test('docker isolation has no network and no privileges',()=>{const args=buildDockerArgs();assert.ok(args.includes('none'));assert.ok(args.includes('--cap-drop=ALL'));assert.ok(args.includes('--read-only'));});
+test('docker image allowlist',()=>assert.throws(()=>buildDockerArgs({image:'evil:latest'})));
+test('preview signed request verifies',()=>{const secret='x'.repeat(32),body='{"repo":"test"}',sig=signPreview(body,secret);assert.equal(verifyPreview(body,sig,secret),true);assert.equal(verifyPreview(body+'x',sig,secret),false);});
+test('preview URL allowlist rejects unrelated domains',()=>{assert.equal(validatePreviewResult('https://abc.preview.example.com/',{PREVIEW_ALLOWED_HOST_SUFFIX:'preview.example.com'}),'https://abc.preview.example.com/');assert.throws(()=>validatePreviewResult('https://preview.example.com.evil.org/',{PREVIEW_ALLOWED_HOST_SUFFIX:'preview.example.com'}));});

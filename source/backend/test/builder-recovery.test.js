@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {recoveryDecision,retryDelaySeconds} from '../src/builder-recovery-rules.js';
+const now=Date.parse('2026-11-16T20:00:00Z');
+const job=(status,age,attempts=1)=>({status,attempts,updated_at:new Date(now-age).toISOString()});
+test('recovers abandoned dispatcher claim',()=>assert.equal(recoveryDecision(job('dispatching',121000),now),'queued'));
+test('exhausted dispatcher claim fails',()=>assert.equal(recoveryDecision(job('dispatching',121000,5),now),'failed'));
+test('does not duplicate remotely dispatched jobs',()=>assert.equal(recoveryDecision(job('dispatched',121000),now),null));
+test('flags missing callback after timeout',()=>assert.equal(recoveryDecision(job('running',3600001),now),'failed'));
+test('ignores fresh jobs',()=>assert.equal(recoveryDecision(job('dispatching',3000),now),null));
+test('bounded exponential retry',()=>{assert.equal(retryDelaySeconds(2),240);assert.equal(retryDelaySeconds(100),3600)});

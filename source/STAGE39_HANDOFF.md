@@ -1,0 +1,5 @@
+# Stage 39 — Durable human review drafts
+
+Added `backend/src/reviewed-draft-store.js`, `backend/db/reviewed_drafts_stage39.sql`, and five tests. Implements canonical SHA-256 digest over generated file content, persisted immutable draft, one-time atomic approval, and atomic claim for delivery. No customer-facing API route is mounted yet; these are reusable database adapters. The approval API must use the existing authenticated administrator/role checks and must not accept a reviewer identity supplied by the client. The stage writer needs transition enforcement and should be wired to the existing delivery orchestrator using the claimed draft ID. Forgejo, isolated tests, and preview services are not running here.
+
+To integrate: apply SQL migration, inject PostgreSQL pool into the adapters, expose authenticated admin-only review/approve routes, and use `claimApprovedReviewDraft` once per job before publication. Ensure approval records include the authenticated admin ID. Do not put untrusted generated code on the main application server. Verify with real PostgreSQL and Forgejo before production.
