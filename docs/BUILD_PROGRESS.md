@@ -30,3 +30,20 @@ Updated: 2026-11-17 | Working branch: atsh-platform-rebuild | Production deploym
 7. Admin E2E test: create → draft → edit → upload → publish → filter → hide → restore, without destroying historical orders.
 
 Current CI status must be checked in GitHub Actions; never infer success from a pushed commit alone.
+
+## Stage 41 — GPT, sector pricing and shared customer workspace
+- Visitor concierge now attempts GPT using OPENAI_API_KEY and OPENAI_MODEL on the backend. Frontend never gets API credentials; it labels rule-based fallback explicitly when GPT fails.
+- Published package prices, option catalog, published sector descriptions and an editable assistant-knowledge page are injected into each GPT request as facts, not privileged instructions. Admin entry: "معرفة مساعد GPT" to edit service overview/policies/FAQ; publishing is explicit. No production GPT calls were tested without API credentials.
+- Separate sector additions (fixed/monthly/yearly) editable from admin; backend validates sector publication, addon codes and prices, and includes server-priced charges in order snapshot. Unpriced sectors produce "custom quote required" and cannot produce a misleading zero-price purchase.
+- Configurator restores sector selection and addon choices; it shows server-estimated sector fees, while initial recurring charges and taxes require final legal/billing review.
+- Customer workspace database table tied to verified customer account ID. Guest selections follow catalog → configurator → preview, and require *explicit consent* on the account dashboard before importing, to avoid mixing shared-browser visitors. Authenticated order creation links to an account-owned journey project only after session and email verification.
+- Customer preview now supports name, colors and text in workspace and private logo upload per authenticated account, capped at 2MB and restricted to PNG/JPEG/WebP.
+- Stage 41 test suite covers sector price computation, forged addons and custom quotes. GitHub Actions runs frontend typecheck/build and backend tests.
+- No claim that GPT provider, PostgreSQL, payment or domain search is connected in the live site. Main remains untouched.
+
+### Still missing for production
+1. Full per-customer preview version history and approval workflow, quote signature/delivery integration end-to-end.
+2. Real domain registrar lookup/purchase and hosting provisioning.
+3. Production proof of GPT configured credentials, catalog admin edits, signed-in workspace/logo upload and account-owned orders against a test database.
+4. Monthly vs annual invoice schedule and subscription entitlements, and E2E browser/mobile/security tests.
+5. Final launch approval before connecting providers/production domain.
