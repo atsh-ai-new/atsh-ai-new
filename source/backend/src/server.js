@@ -508,8 +508,9 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
       [reference,input.customerName,input.phone,input.email||null,input.notes,pkg.id,pkg.currency,subtotal,vatRate,vatAmount,total,snapshot]);
     if(input.projectDraftId&&!ownedCustomer){await client.query("ROLLBACK");return res.status(401).json({error:"Account required for project draft"});}
     if(input.projectDraftId&&ownedCustomer){
-      const draft=await client.query("SELECT id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 FOR UPDATE",[input.projectDraftId,ownedCustomer.id]);
+      const draft=await client.query("SELECT id,linked_journey_id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 FOR UPDATE",[input.projectDraftId,ownedCustomer.id]);
       if(!draft.rowCount){await client.query("ROLLBACK");return res.status(403).json({error:"Project draft is not owned by this account"});}
+      if(draft.rows[0].linked_journey_id){await client.query("ROLLBACK");return res.status(409).json({error:"This project draft already has an order"});}
     }
     if(ownedCustomer){
       const project=await client.query(`INSERT INTO customer_journey_projects(customer_name,customer_email,template_id,created_by,customer_account_id)
