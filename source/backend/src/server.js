@@ -15,6 +15,7 @@ import { z } from "zod";
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
+import { buildVisitorInstructions } from "./visitor-assistant.js";
 import { buildProjectPlan, proposeVisualEdit } from "./project-builder.js";
 import {verifyCallback,validJobResult,canTransition} from "./builder-job-rules.js";
 import { operationGuard } from "./operation-guards.js";
@@ -320,6 +321,45 @@ app.get("/api/health", route(async (_req,res) => {
   await pool.query("SELECT 1");
   res.json({status:"ok",database:"connected"});
 }));
+
+// Visitor GPT guide. Only public catalog fields enter model context; no customer records or secret configuration.
+const visitorSchema=z.object({
+  messages:z.array(z.object({role:z.enum(["user","assistant"]),content:z.string().trim().min(1).max(1200)}).strict()).min(1).max(8)
+}).strict();
+app.post("/api/visitor/assistant",
+  rateLimit({windowMs:60*1000,limit:6,standardHeaders:"draft-8",legacyHeaders:false}),
+  route(async(req,res)=>{
+    const origin=req.get("origin");
+    if(!origin||!origins.includes(origin))return res.status(403).json({error:"Origin not allowed"});
+    const parsed=visitorSchema.safeParse(req.body);
+    if(!parsed.success||parsed.data.messages.at(-1)?.role!=="user")return res.status(400).json({error:"Invalid messages"});
+    if(!process.env.OPENAI_API_KEY||!process.env.OPENAI_MODEL)return res.status(503).json({error:"GPT assistant not configured"});
+    const [p,o,c] = await Promise.all([
+      pool.query("SELECT id,name,tagline,description,price,currency,is_custom_quote FROM packages WHERE is_published=true ORDER BY sort_order LIMIT 25"),
+      pool.query("SELECT package_id,name,description,price,pricing_type,unit_label FROM package_options WHERE is_active=true ORDER BY sort_order LIMIT 80"),
+      pool.query("SELECT slug,content FROM site_pages WHERE slug IN ('catalog','home') AND locale='ar' AND is_published=true LIMIT 2")
+    ]);
+    const catalog=c.rows.find(row=>row.slug==="catalog")?.content?.items;
+    const sectors=Array.isArray(catalog)
+      ? catalog.filter(x=>x&&x.published!==false&&!x.archived&&typeof x.slug==="string"&&typeof x.name==="string")
+      : [];
+    const site=c.rows.find(row=>row.slug==="home")?.content||{};
+    const instructions=buildVisitorInstructions({packages:p.rows,options:o.rows,sectors,site});
+    const input=parsed.data.messages.map(m=>({role:m.role,content:m.content}));
+    let upstream;
+    try{upstream=await fetch("https://api.openai.com/v1/responses",{
+      method:"POST",
+      headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"Content-Type":"application/json"},
+      body:JSON.stringify({model:process.env.OPENAI_MODEL,store:false,max_output_tokens:500,instructions,input}),
+      signal:AbortSignal.timeout(25000)
+    });}catch{return res.status(502).json({error:"GPT temporarily unavailable"});}
+    if(!upstream.ok){await upstream.body?.cancel().catch(()=>undefined);return res.status(502).json({error:"GPT request was not completed"});}
+    const result=await upstream.json().catch(()=>null);
+    const answer=extractAssistantText(result).slice(0,2500);
+    if(!answer)return res.status(502).json({error:"GPT returned no response"});
+    res.set("Cache-Control","no-store").json({answer,model:"gpt",automatedActions:false});
+  })
+);
 
 app.get("/api/catalog", route(async (_req,res) => {
   const [p,o] = await Promise.all([
