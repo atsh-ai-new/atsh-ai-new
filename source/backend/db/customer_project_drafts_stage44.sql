@@ -9,3 +9,5 @@ CREATE TABLE IF NOT EXISTS customer_project_drafts (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS customer_project_drafts_account_idx ON customer_project_drafts(customer_id,updated_at DESC);
+
+ALTER TABLE customer_project_drafts ADD COLUMN IF NOT EXISTS linked_journey_id uuid UNIQUE REFERENCES customer_journey_projects(id) ON DELETE SET NULL;
