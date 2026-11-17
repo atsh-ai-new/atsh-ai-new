@@ -1076,8 +1076,18 @@ app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requireRole("own
  if(JSON.stringify(items).length>16000)return res.status(400).json({error:"Quote too large"});
  const client=await pool.connect();try{await client.query("BEGIN");const old=await client.query("SELECT * FROM commercial_quotes WHERE id=$1 FOR UPDATE",[req.params.id]);
  if(!old.rowCount||!["draft","issued"].includes(old.rows[0].status)){await client.query("ROLLBACK");return res.status(409).json({error:"Cannot revise quote"})}
- const x=old.rows[0];const newer=await client.query("INSERT INTO commercial_quotes(customer_email,revision,items,total_piasters,valid_until) VALUES($1,$2,$3::jsonb,$4,$5) RETURNING *",[x.customer_email,x.revision+1,JSON.stringify(items),total,validUntil||null]);
- await client.query("UPDATE commercial_quotes SET status='superseded' WHERE id=$1",[x.id]);await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[x.id]);await client.query("COMMIT");res.status(201).json({quote:newer.rows[0],supersedes:x.id});
+ const x=old.rows[0];
+ const associatedContract=await client.query("SELECT 1 FROM customer_contracts WHERE quote_id=$1 AND status<>'void' LIMIT 1",[x.id]);
+ if(associatedContract.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Existing issued contracts cannot be silently rewritten or repriced"});}
+ const newer=await client.query("INSERT INTO commercial_quotes(customer_email,customer_account_id,revision,items,total_piasters,valid_until) VALUES($1,$2,$3,$4::jsonb,$5,$6) RETURNING *",[x.customer_email,x.customer_account_id,x.revision+1,JSON.stringify(items),total,validUntil||null]);
+ const oldLink=await client.query("UPDATE commercial_order_quote_links SET is_current=false WHERE quote_id=$1 AND is_current=true RETURNING order_id,project_id,draft_id",[x.id]);
+ if(oldLink.rowCount){
+   await client.query("INSERT INTO commercial_order_quote_links(order_id,quote_id,project_id,draft_id,is_current) VALUES($1,$2,$3,$4,true)",[oldLink.rows[0].order_id,newer.rows[0].id,oldLink.rows[0].project_id,oldLink.rows[0].draft_id]);
+ }
+ await client.query("UPDATE commercial_quotes SET status='superseded' WHERE id=$1",[x.id]);
+ await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[x.id]);
+ await queueJourneyEvent(client,"quote.revised",`quote.revised:${newer.rows[0].id}`,{quoteId:newer.rows[0].id,supersedes:x.id,orderId:oldLink.rows[0]?.order_id||null});
+ await client.query("COMMIT");res.status(201).json({quote:newer.rows[0],supersedes:x.id});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
 }));
 app.post("/api/admin/commercial/contracts/issue",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
