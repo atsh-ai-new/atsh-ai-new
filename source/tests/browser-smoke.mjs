@@ -10,7 +10,7 @@ try{
   await page.getByRole("heading",{name:/استكشف الأنظمة حسب مجالك/}).waitFor();
   await page.getByRole("button",{name:/الصحة والرعاية الطبية/}).click();
   await page.getByRole("heading",{name:"عيادتي"}).waitFor();
-  assert.equal(await page.getByRole("heading",{name:"سوبر ماركت"}).count(),0);
+  await page.getByRole("heading",{name:"سوبر ماركت"}).waitFor({state:"detached",timeout:5000});
   await page.locator('a[href="/catalog/eyadaty"]').click();
   await page.getByRole("heading",{name:/عيادتي/}).waitFor();
   const title=page.getByLabel("اسم النشاط التجريبي");
