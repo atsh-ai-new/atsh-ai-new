@@ -11,3 +11,13 @@ CREATE TABLE IF NOT EXISTS customer_preview_versions (
   UNIQUE(draft_id,revision)
 );
 CREATE INDEX IF NOT EXISTS customer_preview_versions_draft_idx ON customer_preview_versions(draft_id,created_at DESC);
+
+-- Keep a copy of the logo per approved preview so subsequent branding changes cannot rewrite an old snapshot.
+CREATE TABLE IF NOT EXISTS customer_preview_logo_versions (
+ preview_id uuid PRIMARY KEY REFERENCES customer_preview_versions(id) ON DELETE CASCADE,
+ mime_type varchar(30) NOT NULL CHECK (mime_type IN ('image/png','image/jpeg','image/webp')),
+ data bytea NOT NULL,
+ digest char(64) NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ CONSTRAINT preview_logo_size CHECK (octet_length(data) BETWEEN 1 AND 2097152)
+);
