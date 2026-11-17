@@ -1,7 +1,7 @@
 // Server-owned sector pricing. Never accept numeric prices from browser input.
 const types=new Set(["fixed","monthly","yearly"]);
 function validMoney(value){
-  return typeof value==="number" && Number.isFinite(value) && value>=0 && value<=100_000_000 && Math.round(value*100)===value*100;
+  return typeof value==="number" && Number.isFinite(value) && value>=0 && value<=100_000_000 && Math.abs(Math.round(value*100)-value*100)<1e-6;
 }
 export function priceSectorSelection(catalog,slug,requestedCodes=[]){
   if(!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug))throw new Error("Invalid sector");
