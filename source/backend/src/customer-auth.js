@@ -111,6 +111,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   packageId:z.string().max(100).optional(),
   businessName:z.string().max(120).optional(),
   businessDescription:z.string().max(500).optional(),
+  domainName:z.string().trim().toLowerCase().max(253).optional(),
   brandColor:z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   options:z.array(z.string().max(100)).max(30).optional(),
   deliveryMethod:z.enum(['managed','source-code','undecided']).optional(),
