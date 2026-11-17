@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import {signInternalPaymentEvent} from "../src/payment-webhook.js";
+import {deliverJourneyEvents} from "../src/customer-event-outbox.js";
 const origin="http://127.0.0.1:3017",base="http://127.0.0.1:3017";
 const pool=new pg.Pool({connectionString:process.env.DATABASE_URL});
 const ownerToken=jwt.sign({role:"owner",email:"ci-owner@example.test"},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-admin",expiresIn:"10m"});
@@ -54,6 +55,16 @@ try{
  assert.equal(decision.status,200,JSON.stringify(decision));
  const repeated=await req(`/api/customer/auth/project-drafts/${id}/previews/${preview.result.preview.id}/decision`,{method:"POST",cookie:cookieFor(accountA),body:{decision:"approved",comment:"تكرار"}});
  assert.equal(repeated.status,409);
+ // Project-specific image ownership, even for separate drafts of the same customer.
+ const png=Buffer.from([137,80,78,71,13,10,26,10,0,0,0,0]);
+ const writeLogo=await fetch(base+`/api/customer/auth/project-drafts/${id}/logo`,{method:"POST",headers:{origin,"content-type":"image/png",cookie:cookieFor(accountA)},body:png});
+ assert.equal(writeLogo.status,200,await writeLogo.text());
+ const logoOwner=await fetch(base+`/api/customer/auth/project-drafts/${id}/logo`,{headers:{cookie:cookieFor(accountA)}});
+ assert.equal(logoOwner.status,200);assert.equal(logoOwner.headers.get("content-type"),"image/png");
+ const logoOther=await fetch(base+`/api/customer/auth/project-drafts/${id}/logo`,{headers:{cookie:cookieFor(accountB)}});
+ assert.equal(logoOther.status,404);
+ const logoAnotherProject=await fetch(base+`/api/customer/auth/project-drafts/${two.result.projectDraft.id}/logo`,{headers:{cookie:cookieFor(accountA)}});
+ assert.equal(logoAnotherProject.status,404);
  // Signed settlement bridge: reject unsigned, duplicate and excessive payments.
  const invoice=await pool.query("INSERT INTO commercial_invoices(quote_id,amount_piasters) VALUES($1,10000) RETURNING id",[quote.rows[0].id]);
  const gatewayEvent={invoiceId:Number(invoice.rows[0].id),amountPiasters:4000,providerReference:"integration-"+randomUUID(),paidAt:new Date().toISOString(),status:"settled"};
@@ -80,6 +91,18 @@ try{
  assert.equal(finalPayment.status,201,JSON.stringify(finalPayment));
  const paid=await pool.query("SELECT status,verified_paid_piasters FROM commercial_invoices WHERE id=$1",[invoice.rows[0].id]);
  assert.equal(paid.rows[0].status,"paid");assert.equal(Number(paid.rows[0].verified_paid_piasters),10000);
+ // All customer events were queued in the same committed DB transactions; the test worker is idempotent.
+ const queued=await pool.query("SELECT event_type FROM customer_event_outbox WHERE event_type IN ('preview.approved','payment.verified')");
+ assert.ok(queued.rows.some(row=>row.event_type==="preview.approved"));
+ assert.ok(queued.rows.some(row=>row.event_type==="payment.verified"));
+ let eventsSent=0;
+ const dispatched=await deliverJourneyEvents(pool,{env:{ATSH_N8N_EVENT_URL:"https://n8n.example.test/webhook/atsh",ATSH_N8N_EVENT_TOKEN:"integration-test-n8n-token-do-not-use"},
+  fetchFn:async (_url,options)=>{eventsSent++;assert.ok(options.headers["X-ATSH-Idempotency-Key"]);return {ok:true,status:200};}});
+ assert.equal(dispatched.configured,true);
+ assert.ok(dispatched.delivered>=2);
+ assert.ok(eventsSent>=2);
+ const pending=await pool.query("SELECT count(*)::int AS n FROM customer_event_outbox WHERE status!='delivered'");
+ assert.equal(pending.rows[0].n,0);
  const other=await req(`/api/customer/auth/project-drafts/${two.result.projectDraft.id}`,{cookie:cookieFor(accountA)});
  assert.equal(other.status,200);assert.equal(other.result.projectDraft.draft.sectorSlug,"avocato");
  console.log("PASS: contract revisions, immutable issuance, owner authorization, project isolation, conflict detection, customer preview approval and signed payment settlement");
