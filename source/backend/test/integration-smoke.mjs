@@ -160,6 +160,14 @@ try{
  assert.equal(dispatched.configured,true);
  assert.ok(dispatched.delivered>=2);
  assert.ok(eventsSent>=2);
+ // The outbox intentionally dispatches in bounded batches of five.
+ for(let tick=0;tick<10;tick++){
+  const pending=await pool.query("SELECT count(*)::int AS n FROM customer_event_outbox WHERE status!='delivered'");
+  if(pending.rows[0].n===0)break;
+  const batch=await deliverJourneyEvents(pool,{env:{ATSH_N8N_EVENT_URL:"https://n8n.example.test/webhook/atsh",ATSH_N8N_EVENT_TOKEN:"integration-test-n8n-token-do-not-use"},
+   fetchFn:async (_url,options)=>{eventsSent++;assert.ok(options.headers["X-ATSH-Idempotency-Key"]);return {ok:true,status:200};}});
+  assert.equal(batch.failed,0);
+ }
  const pending=await pool.query("SELECT count(*)::int AS n FROM customer_event_outbox WHERE status!='delivered'");
  assert.equal(pending.rows[0].n,0);
  const other=await req(`/api/customer/auth/project-drafts/${two.result.projectDraft.id}`,{cookie:cookieFor(accountA)});
