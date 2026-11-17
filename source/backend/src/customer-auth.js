@@ -103,6 +103,33 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    await client.query('COMMIT');res.json({claimed:true,projectId:row.id});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
  }));
+ // Shared draft is intentionally a limited preference snapshot, never a priced quote.
+ const draftSchema=z.object({
+  sectorSlug:z.string().regex(/^[a-z0-9-]{1,100}$/).optional(),
+  sectorName:z.string().max(120).optional(),
+  packageId:z.string().max(100).optional(),
+  businessName:z.string().max(120).optional(),
+  businessDescription:z.string().max(500).optional(),
+  brandColor:z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  options:z.array(z.string().max(100)).max(30).optional(),
+  deliveryMethod:z.enum(['managed','source-code','undecided']).optional(),
+  source:z.enum(['catalog','configurator','concierge','preview','account']).optional()
+ }).strict();
+ router.get('/workspace',requireCustomer,safe(async(req,res)=>{
+  const result=await pool.query('SELECT draft,revision,updated_at FROM customer_workspace_drafts WHERE customer_id=$1',[req.customer.id]);
+  res.set('Cache-Control','no-store').json({workspace:result.rows[0]||{draft:{},revision:0}});
+ }));
+ router.patch('/workspace',requireCustomer,safe(async(req,res)=>{
+  const parsed=draftSchema.safeParse(req.body);
+  if(!parsed.success||!Object.keys(parsed.data).length)return res.status(400).json({error:'Invalid draft'});
+  // Atomic top-level merge, so entering through another section does not erase existing choices.
+  const result=await pool.query(`INSERT INTO customer_workspace_drafts(customer_id,draft)
+   VALUES($1,$2::jsonb)
+   ON CONFLICT(customer_id) DO UPDATE SET draft=customer_workspace_drafts.draft||EXCLUDED.draft,
+      revision=customer_workspace_drafts.revision+1,updated_at=now()
+   RETURNING draft,revision,updated_at`,[req.customer.id,JSON.stringify(parsed.data)]);
+  res.set('Cache-Control','no-store').json({workspace:result.rows[0]});
+ }));
  router.get('/projects',requireCustomer,safe(async(req,res)=>{const q=await pool.query('SELECT id,customer_name,status,created_at,updated_at FROM customer_journey_projects WHERE customer_account_id=$1 ORDER BY created_at DESC LIMIT 100',[req.customer.id]);res.json({projects:q.rows});}));
  router.post('/logout',(_req,res)=>{res.clearCookie(sessionCookie,cookieOptions);res.json({ok:true});});
  return router;
