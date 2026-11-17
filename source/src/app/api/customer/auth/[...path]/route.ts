@@ -4,7 +4,7 @@ async function proxy(req:Request,ctx:{params:Promise<{path:string[]}>}){
  const base=process.env.ATSH_API_BASE_URL;if(!base)return NextResponse.json({error:'API unavailable'},{status:503});
  const {path}=await ctx.params;const url=new URL('/api/customer/auth/'+path.map(encodeURIComponent).join('/'),base);
  const headers=new Headers();for(const key of ['content-type','cookie','origin']){const value=req.headers.get(key);if(value)headers.set(key,value);}
- const isLogo=path.join('/')==='workspace/logo';
+ const isLogo=path.join('/')==='workspace/logo'||/^project-drafts\/[0-9a-f-]{36}\/logo$/i.test(path.join('/'));
  const length=Number(req.headers.get('content-length')||0);
  if(isLogo&&req.method==='POST'&&length>2097152)return NextResponse.json({error:'Image too large'},{status:413});
  let body:undefined|string|ArrayBuffer;
