@@ -1,14 +1,18 @@
 "use client";
 import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
 import { sectorTemplates, type SectorTemplate } from "@/lib/sector-catalog";
+import { normalizeCatalogSectors, resolvePlacement, validCatalogId, canRemoveSector, canRemoveSubcategory, type CatalogSector } from "@/lib/catalog-sectors";
 
 type PricedAddon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
-type CatalogItem = SectorTemplate & {published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[]};
+type CatalogItem = SectorTemplate & {published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[];sectorId?:string;subcategoryId?:string};
 const seed = (): CatalogItem[] => sectorTemplates.map((s,i)=>({...s,published:true,archived:false,sortOrder:i*10,imageUrl:"",previewUrl:"",basePrice:null,addons:[],pricedAddons:[]}));
 const empty = (): CatalogItem => ({slug:"",name:"",category:"",icon:"📁",description:"",features:[],modules:["لوحة القيادة"],sampleStats:[],sampleRows:[],note:"معاينة تجريبية",published:false,archived:false,sortOrder:100,imageUrl:"",previewUrl:"",basePrice:null,addons:[],pricedAddons:[]});
 const normalize = (v: unknown): CatalogItem[] => Array.isArray(v) ? v.filter(x=>x && typeof x==="object" && typeof x.slug==="string" && typeof x.name==="string").map(x=>({...empty(),...x,features:Array.isArray(x.features)?x.features:[],modules:Array.isArray(x.modules)?x.modules:[],sampleStats:Array.isArray(x.sampleStats)?x.sampleStats:[],sampleRows:Array.isArray(x.sampleRows)?x.sampleRows:[],addons:Array.isArray(x.addons)?x.addons:[],pricedAddons:Array.isArray(x.pricedAddons)?x.pricedAddons:[]})) : seed();
 export default function CatalogManager() {
   const [items,setItems]=useState<CatalogItem[]>([]);
+  const [sectors,setSectors]=useState<CatalogSector[]>(normalizeCatalogSectors(undefined));
+  const [sectorDraft,setSectorDraft]=useState({id:"",name:"",icon:"📁",description:""});
+  const [subDraft,setSubDraft]=useState({sectorId:"",id:"",name:""});
   const [draft,setDraft]=useState<CatalogItem>(empty());
   const [originalSlug,setOriginalSlug]=useState("");
   const [busy,setBusy]=useState(false);
@@ -27,6 +31,7 @@ export default function CatalogManager() {
       const catalog=(data.pages??[]).find((p:{slug:string;locale:string})=>p.slug==="catalog" && p.locale==="ar");
       const raw=catalog?.content?.items;
       setItems(normalize(raw));
+      setSectors(normalizeCatalogSectors(catalog?.content?.sectors));
       setPageWasPublished(catalog?.is_published!==false);
       setReady(true);
       if(!catalog)setNotice("لا توجد صفحة كتالوج محفوظة بعد. احفظ لنشر النسخة الأولية.");
@@ -49,13 +54,13 @@ export default function CatalogManager() {
     }catch(e){setError(e instanceof Error?e.message:"فشل رفع الصورة.");}
     finally{setUploading(false);event.target.value="";}
   };
-  const saveAll=async(next:CatalogItem[],message:string)=>{
+  const saveAll=async(next:CatalogItem[],message:string,nextSectors:CatalogSector[]=sectors)=>{
     setBusy(true);setError("");setNotice("");
     try{
-      const response=await fetch("/api/admin/pages/catalog",{method:"PATCH",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({locale:"ar",isPublished:pageWasPublished,content:{title:"معرض الأنظمة",items:next}})});
+      const response=await fetch("/api/admin/pages/catalog",{method:"PATCH",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({locale:"ar",isPublished:pageWasPublished,content:{title:"معرض الأنظمة",items:next,sectors:nextSectors}})});
       const data=await response.json().catch(()=>({}));
       if(!response.ok)throw Error(data.message||data.error||"تعذر الحفظ");
-      setItems(next);setNotice(message);setVersion(v=>v+1);
+      setItems(next);setSectors(nextSectors);setNotice(message);setVersion(v=>v+1);
     }catch(e){setError(e instanceof Error?e.message:"فشل الحفظ");}
     finally{setBusy(false);}
   };
@@ -76,16 +81,62 @@ export default function CatalogManager() {
     }
     const updated={...draft,pricedAddons,slug,name:draft.name.trim(),description:draft.description.trim()};
     if(!updated.name){setError("اسم الكتالوج مطلوب.");return;}
+    const placement=resolvePlacement(updated,sectors);
+    if(!placement.sector||!updated.sectorId){setError("اختر قطاعًا رئيسيًا صالحًا.");return;}
+    if(updated.subcategoryId&&!placement.subcategory){setError("اختر تصنيفًا فرعيًا تابعًا لهذا القطاع.");return;}
+    updated.category=placement.subcategory?.name||placement.sector.name;
     const next=originalSlug?items.map(x=>x.slug===originalSlug?updated:x):[...items,updated];
     await saveAll(next,"تم حفظ الكتالوج وتحديث حالته.");
     setDraft(empty());setOriginalSlug("");
   };
-  const edit=(item:CatalogItem)=>{setDraft({...item});setAddonText(item.pricedAddons.map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\n"));setOriginalSlug(item.slug);setError("");setNotice("");};
+  const edit=(item:CatalogItem)=>{const place=resolvePlacement(item,sectors);setDraft({...item,sectorId:place.sector?.id,subcategoryId:place.subcategory?.id});setAddonText(item.pricedAddons.map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\n"));setOriginalSlug(item.slug);setError("");setNotice("");};
   const update=(key:keyof CatalogItem,value:unknown)=>setDraft(d=>({...d,[key]:value}));
   const toggle=async(item:CatalogItem,patch:Partial<CatalogItem>)=>saveAll(items.map(x=>x.slug===item.slug?{...x,...patch}:x),"تم تحديث حالة الكتالوج.");
   const archive=async(item:CatalogItem)=>{
     if(!window.confirm("سيُخفى الكتالوج من المعرض دون حذف بياناته. متابعة؟"))return;
     await toggle(item,{archived:true,published:false});
+  };
+  const saveSector=async(e:FormEvent)=>{
+    e.preventDefault();
+    const id=sectorDraft.id.trim().toLowerCase(),name=sectorDraft.name.trim();
+    if(!validCatalogId(id)||!name){setError("حدد رمز قطاع إنجليزيًا واسمًا صحيحًا.");return;}
+    if(sectors.some(x=>x.id===id)){setError("رمز القطاع موجود بالفعل، استخدم تعديل القطاع الموجود.");return;}
+    await saveAll(items,"تم إضافة القطاع الرئيسي.",[...sectors,{...sectorDraft,id,name,sortOrder:sectors.length*10,isPublished:true,subcategories:[]}]);
+    setSectorDraft({id:"",name:"",icon:"📁",description:""});
+  };
+  const saveSubcategory=async(e:FormEvent)=>{
+    e.preventDefault();
+    const id=subDraft.id.trim().toLowerCase(),name=subDraft.name.trim();
+    if(!validCatalogId(id)||!name||!sectors.some(s=>s.id===subDraft.sectorId)){setError("حدد قطاعًا ورمز تصنيف صحيحين.");return;}
+    if(sectors.find(s=>s.id===subDraft.sectorId)?.subcategories.some(c=>c.id===id)){setError("رمز التصنيف مستخدم داخل القطاع.");return;}
+    await saveAll(items,"تم إضافة التصنيف الفرعي.",sectors.map(s=>s.id===subDraft.sectorId?{...s,subcategories:[...s.subcategories,{id,name,sortOrder:s.subcategories.length*10,isPublished:true}]}:s));
+    setSubDraft({sectorId:"",id:"",name:""});
+  };
+  const renameSector=async(sector:CatalogSector)=>{
+    const value=window.prompt("اسم القطاع الجديد",sector.name)?.trim();
+    if(!value||value===sector.name)return;
+    const next=sectors.map(s=>s.id===sector.id?{...s,name:value}:s);
+    await saveAll(items,"تم تعديل اسم القطاع.",next);
+  };
+  const renameSubcategory=async(sector:CatalogSector,subId:string)=>{
+    const old=sector.subcategories.find(x=>x.id===subId);
+    if(!old)return;
+    const value=window.prompt("اسم التصنيف الفرعي الجديد",old.name)?.trim();
+    if(!value||value===old.name)return;
+    const next=sectors.map(s=>s.id===sector.id?{...s,subcategories:s.subcategories.map(c=>c.id===subId?{...c,name:value}:c)}:s);
+    await saveAll(items,"تم تعديل اسم التصنيف.",next);
+  };
+  const toggleSector=async(sector:CatalogSector)=>saveAll(items,"تم تحديث حالة القطاع.",sectors.map(s=>s.id===sector.id?{...s,isPublished:!s.isPublished}:s));
+  const toggleSubcategory=async(sector:CatalogSector,subId:string)=>saveAll(items,"تم تحديث حالة التصنيف.",sectors.map(s=>s.id===sector.id?{...s,subcategories:s.subcategories.map(c=>c.id===subId?{...c,isPublished:!c.isPublished}:c)}:s));
+  const deleteSector=async(sector:CatalogSector)=>{
+    if(!canRemoveSector(sector.id,items,sectors)){setError("القطاع مرتبط بكتالوجات. انقلها أولًا قبل الحذف.");return;}
+    if(!window.confirm("حذف هذا القطاع وتصنيفاته غير المستخدمة؟"))return;
+    await saveAll(items,"تم حذف القطاع غير المستخدم.",sectors.filter(s=>s.id!==sector.id));
+  };
+  const deleteSubcategory=async(sector:CatalogSector,subId:string)=>{
+    if(!canRemoveSubcategory(sector.id,subId,items,sectors)){setError("التصنيف مرتبط بكتالوجات. انقلها أولًا قبل الحذف.");return;}
+    if(!window.confirm("حذف التصنيف الفرعي غير المستخدم؟"))return;
+    await saveAll(items,"تم حذف التصنيف غير المستخدم.",sectors.map(s=>s.id===sector.id?{...s,subcategories:s.subcategories.filter(c=>c.id!==subId)}:s));
   };
   const field=(label:string,value:string,onChange:(value:string)=>void,area=false)=> <label className="admin-field">{label}{area?<textarea value={value} onChange={e=>onChange(e.target.value)} rows={3}/>:<input value={value} onChange={e=>onChange(e.target.value)} maxLength={2000}/>}</label>;
 
@@ -102,11 +153,53 @@ export default function CatalogManager() {
         </article>)}</div>
       </>}
     </section>
+    {ready&&<section className="admin-content-card">
+      <h2>إدارة القطاعات الرئيسية والتصنيفات الفرعية</h2>
+      <p>الترتيب: قطاع رئيسي ← تصنيف فرعي ← كتالوج تفاعلي. أسماء الأقسام قابلة للتعديل من هنا دون تعديل الكود، والحذف لا يمس أي كتالوج مرتبط.</p>
+      <div className="admin-team-list">
+        {[...sectors].sort((a,b)=>a.sortOrder-b.sortOrder).map(sector=><article key={sector.id} style={{padding:14,marginBottom:12,border:"1px solid #d9e2ec",borderRadius:12}}>
+          <div style={{display:"flex",gap:9,alignItems:"center",flexWrap:"wrap"}}>
+            <strong>{sector.icon} {sector.name}</strong><small>{sector.isPublished?"منشور":"مخفي"} · {sector.id}</small>
+            <button disabled={busy} type="button" className="inline-add" onClick={()=>void renameSector(sector)}>تسمية</button>
+            <button disabled={busy} type="button" className="inline-add" onClick={()=>void toggleSector(sector)}>{sector.isPublished?"إخفاء":"نشر"}</button>
+            <button disabled={busy} type="button" className="inline-add" onClick={()=>void deleteSector(sector)}>حذف آمن</button>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:10}}>
+            {[...sector.subcategories].sort((a,b)=>a.sortOrder-b.sortOrder).map(sub=><div key={sub.id} style={{padding:10,borderRadius:10,background:"#f3f6fa",display:"flex",flexWrap:"wrap",alignItems:"center",gap:7}}>
+              <span>{sub.name} {sub.isPublished?"":"(مخفي)"}</span>
+              <button disabled={busy} type="button" className="inline-add" onClick={()=>void renameSubcategory(sector,sub.id)}>تعديل</button>
+              <button disabled={busy} type="button" className="inline-add" onClick={()=>void toggleSubcategory(sector,sub.id)}>{sub.isPublished?"إخفاء":"نشر"}</button>
+              <button disabled={busy} type="button" className="inline-add" onClick={()=>void deleteSubcategory(sector,sub.id)}>حذف</button>
+            </div>)}
+          </div>
+        </article>)}
+      </div>
+      <form onSubmit={e=>void saveSector(e)} className="admin-form-grid" style={{marginBottom:20}}>
+        <h3 style={{gridColumn:"1/-1"}}>إضافة قطاع رئيسي</h3>
+        <label className="admin-field">الرمز الإنجليزي<input required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={sectorDraft.id} onChange={e=>setSectorDraft(x=>({...x,id:e.target.value.toLowerCase()}))}/></label>
+        <label className="admin-field">اسم القطاع<input required value={sectorDraft.name} onChange={e=>setSectorDraft(x=>({...x,name:e.target.value}))}/></label>
+        <label className="admin-field">أيقونة<input value={sectorDraft.icon} onChange={e=>setSectorDraft(x=>({...x,icon:e.target.value}))}/></label>
+        <label className="admin-field">الشرح<input value={sectorDraft.description} onChange={e=>setSectorDraft(x=>({...x,description:e.target.value}))}/></label>
+        <button className="button" disabled={busy}>إضافة القطاع</button>
+      </form>
+      <form onSubmit={e=>void saveSubcategory(e)} className="admin-form-grid">
+        <h3 style={{gridColumn:"1/-1"}}>إضافة تصنيف فرعي</h3>
+        <label className="admin-field">القطاع الرئيسي<select required value={subDraft.sectorId} onChange={e=>setSubDraft(x=>({...x,sectorId:e.target.value}))}><option value="">اختر القطاع</option>{sectors.map(sector=><option key={sector.id} value={sector.id}>{sector.name}</option>)}</select></label>
+        <label className="admin-field">رمز التصنيف<input required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={subDraft.id} onChange={e=>setSubDraft(x=>({...x,id:e.target.value.toLowerCase()}))}/></label>
+        <label className="admin-field">اسم التصنيف<input required value={subDraft.name} onChange={e=>setSubDraft(x=>({...x,name:e.target.value}))}/></label>
+        <button className="button" disabled={busy}>إضافة التصنيف</button>
+      </form>
+    </section>}
     {ready&&<section className="admin-content-card"><h2>{originalSlug?"تعديل الكتالوج":"إضافة كتالوج"}</h2>
       <form onSubmit={e=>void saveItem(e)} className="admin-form-grid">
         {field("الاسم",draft.name,v=>update("name",v))}
         <label className="admin-field">الرابط (Slug)<input required disabled={Boolean(originalSlug)} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={draft.slug} onChange={e=>update("slug",e.target.value.toLowerCase())}/></label>
-        {field("القطاع",draft.category,v=>update("category",v))}
+        <label className="admin-field">القطاع الرئيسي<select required value={draft.sectorId||""} onChange={e=>setDraft(d=>({...d,sectorId:e.target.value,subcategoryId:""}))}>
+          <option value="">اختر القطاع</option>{sectors.map(sector=><option key={sector.id} value={sector.id}>{sector.name}</option>)}
+        </select></label>
+        <label className="admin-field">التصنيف الفرعي<select value={draft.subcategoryId||""} onChange={e=>update("subcategoryId",e.target.value||undefined)}>
+          <option value="">بدون تصنيف فرعي</option>{sectors.find(sector=>sector.id===draft.sectorId)?.subcategories.map(sub=><option key={sub.id} value={sub.id}>{sub.name}</option>)}
+        </select></label>
         {field("الأيقونة",draft.icon,v=>update("icon",v))}
         {field("الوصف",draft.description,v=>update("description",v),true)}
         {field("المزايا — كل ميزة بسطر",draft.features.join("\n"),v=>update("features",v.split("\n").map(x=>x.trim()).filter(Boolean)),true)}
