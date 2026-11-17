@@ -1,0 +1,57 @@
+name: Extract Stage40 source
+on:
+  push:
+    branches: [atsh-platform-rebuild]
+    paths: ['.github/workflows/extract-stage40.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Extract source safely
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path, PurePosixPath
+          import zipfile, tempfile, shutil, os
+          archive=Path('ATSH_AI_stage40_review_api.zip')
+          assert archive.is_file(), 'Stage40 archive not found'
+          with tempfile.TemporaryDirectory() as d:
+              dest=Path(d)
+              with zipfile.ZipFile(archive) as z:
+                  for item in z.infolist():
+                      p=PurePosixPath(item.filename)
+                      if p.is_absolute() or '..' in p.parts or '\\' in item.filename:
+                          raise ValueError('Unsafe archive path')
+                      if (item.external_attr >> 16) & 0o170000 == 0o120000:
+                          raise ValueError('Symlink in archive')
+                      if item.is_dir(): continue
+                      target=dest.joinpath(*p.parts)
+                      target.parent.mkdir(parents=True,exist_ok=True)
+                      with z.open(item) as src, open(target,'wb') as out: shutil.copyfileobj(src,out)
+              entries=list(dest.iterdir())
+              source=entries[0] if len(entries)==1 and entries[0].is_dir() else dest
+              for f in source.rglob('*'):
+                  if not f.is_file(): continue
+                  rel=f.relative_to(source)
+                  if any(s in {'.git','.github','node_modules','.next'} for s in rel.parts): continue
+                  target=Path('source')/rel
+                  target.parent.mkdir(parents=True,exist_ok=True)
+                  shutil.copy2(f,target)
+          print('Extracted files:',sum(1 for f in Path('source').rglob('*') if f.is_file()))
+          PY
+      - name: Commit extracted source
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add source
+          if ! git diff --cached --quiet; then
+            git commit -m 'Extract Stage40 source into working tree'
+            git push
+          fi
