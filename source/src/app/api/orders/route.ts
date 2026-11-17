@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   try {
     const upstream = await fetch(destination, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json", ...(request.headers.get("cookie") ? { Cookie: request.headers.get("cookie")! } : {}), ...(request.headers.get("origin") ? { Origin: request.headers.get("origin")! } : {}) },
       body: JSON.stringify(body),
       cache: "no-store",
       signal: AbortSignal.timeout(12000)
