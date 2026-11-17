@@ -21,7 +21,7 @@ test("hidden sectors and forged addon codes cannot be ordered",()=>{
  assert.throws(()=>priceSectorSelection(catalog,"clinic",["booking","booking"]),/Invalid sector extras/);
 });
 test("invalid or negative money fails closed",()=>{
- assert.throws(()=>priceSectorSelection([{...catalog[0],basePrice:-10}],"clinic"),/custom/i===null?/unexpected/:undefined);
+ assert.equal(priceSectorSelection([{...catalog[0],basePrice:-10}],"clinic").needsCustomQuote,true);
 });
 test("visitor prompt grounds prices in server data and forbids autonomous execution",()=>{
  const prompt=buildVisitorInstructions({packages:[{name:"موقع",price:1500,currency:"EGP"}],sectors:[{slug:"clinic",name:"عيادتي"}]});
