@@ -17,6 +17,7 @@ import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
 import { buildVisitorInstructions } from "./visitor-assistant.js";
 import { priceSectorSelection } from "./sector-pricing.js";
+import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { buildProjectPlan, proposeVisualEdit } from "./project-builder.js";
 import {verifyCallback,validJobResult,canTransition} from "./builder-job-rules.js";
 import { operationGuard } from "./operation-guards.js";
@@ -1050,8 +1051,22 @@ app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requireRole("own
 }));
 app.post("/api/admin/commercial/contracts/issue",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
  const {quoteId,templateId}=req.body||{};if(!validCommercialId(quoteId)||!validCommercialId(templateId))return res.status(400).json({error:"Invalid identifiers"});
- const q=await pool.query("INSERT INTO customer_contracts(quote_id,template_id,body_snapshot) SELECT q.id,t.id,t.body FROM commercial_quotes q CROSS JOIN contract_templates t WHERE q.id=$1 AND t.id=$2 AND t.is_published=true AND t.is_archived=false AND q.status='issued' AND NOT EXISTS(SELECT 1 FROM customer_contracts c WHERE c.quote_id=q.id AND c.status<>'void') RETURNING id,quote_id,status,created_at",[quoteId,templateId]);
- if(!q.rowCount)return res.status(409).json({error:"Quote not issued or contract already exists"});res.status(201).json({contract:q.rows[0]});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const quote=await client.query("SELECT * FROM commercial_quotes WHERE id=$1 FOR UPDATE",[quoteId]);
+  const template=await client.query("SELECT * FROM contract_templates WHERE id=$1 FOR SHARE",[templateId]);
+  if(!quote.rowCount||quote.rows[0].status!=="issued"||quote.rows[0].valid_until&&new Date(quote.rows[0].valid_until)<=new Date()||!template.rowCount||!template.rows[0].is_published||template.rows[0].is_archived){
+   await client.query("ROLLBACK");return res.status(409).json({error:"Quote not issued or contract template unavailable"});
+  }
+  const existing=await client.query("SELECT 1 FROM customer_contracts WHERE quote_id=$1 AND status<>'void' LIMIT 1",[quoteId]);
+  if(existing.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"A contract is already issued for this quote"});}
+  let snapshot;
+  try{snapshot=renderContractTemplate(template.rows[0].body,makeContractContext(quote.rows[0],template.rows[0]));}
+  catch(error){await client.query("ROLLBACK");return res.status(422).json({error:error.message});}
+  const contract=await client.query("INSERT INTO customer_contracts(quote_id,template_id,body_snapshot,template_revision,template_category) VALUES($1,$2,$3,$4,$5) RETURNING id,quote_id,status,created_at,template_revision,template_category",[quoteId,templateId,snapshot,template.rows[0].revision,template.rows[0].category]);
+  await client.query("COMMIT");res.status(201).json({contract:contract.rows[0]});
+ }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
 app.post("/api/admin/commercial/quotes/:id/review-link",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
  if(!validCommercialId(req.params.id))return res.status(400).json({error:"Invalid quote"});
