@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { loadGuestWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
+import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 import Link from "next/link";
 import type { SectorTemplate } from "@/lib/sector-catalog";
 
@@ -24,14 +24,42 @@ export default function SectorPreview({template}: {template: SectorTemplate}) {
   const [logoData,setLogoData]=useState("");
   const [customDescription,setCustomDescription]=useState("");
   const [logoError,setLogoError]=useState("");
-  const uploadLogo=(file?:File)=>{
+  const [logoNotice,setLogoNotice]=useState("");
+  const uploadLogo=async(file?:File)=>{
     if(!file)return;
     if(!["image/jpeg","image/png","image/webp"].includes(file.type)||file.size>2*1024*1024){setLogoError("الشعار يجب أن يكون PNG أو JPG أو WebP وأقل من 2 ميجابايت.");return;}
     setLogoError("");
     const reader=new FileReader();
     reader.onload=()=>{if(typeof reader.result==="string")setLogoData(reader.result);};
     reader.readAsDataURL(file);
+    try{
+      const response=await fetch("/api/customer/auth/workspace/logo",{method:"POST",credentials:"include",headers:{"Content-Type":file.type},body:file});
+      if(response.ok)setLogoNotice("الشعار محفوظ بشكل خاص داخل حسابك.");
+      else if(response.status===401)setLogoNotice("الشعار ظاهر في هذه المعاينة فقط. سجّل الدخول لحفظه في حسابك.");
+      else throw Error("Unable to upload logo");
+    }catch{setLogoError("تعذر حفظ الشعار في الحساب. المعاينة المحلية ما زالت تعمل.");}
   };
+  useEffect(()=>{
+    let active=true;
+    let url:string|null=null;
+    void loadAccountWorkspace().then(account=>{
+      if(!active||!account)return;
+      const guest=loadGuestWorkspace();
+      if(account.sectorSlug===template.slug&&guest.sectorSlug!==template.slug){
+        if(account.businessName)setCustomTitle(account.businessName);
+        if(account.brandColor)setBrand(account.brandColor);
+        if(account.businessDescription)setCustomDescription(account.businessDescription);
+      }
+      return fetch("/api/customer/auth/workspace/logo",{credentials:"include",cache:"no-store"});
+    }).then(async response=>{
+      if(!active||!response?.ok)return;
+      const blob=await response.blob();
+      if(!active)return;
+      url=URL.createObjectURL(blob);
+      setLogoData(url);
+    }).catch(()=>undefined);
+    return()=>{active=false;if(url)URL.revokeObjectURL(url);};
+  },[template.slug]);
   return <main dir="rtl" style={{maxWidth:1280,margin:"0 auto",padding:"20px",minHeight:"100vh"}}>
     <header style={{display:"flex",gap:12,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",marginBottom:20}}>
       <Link href="/catalog" style={{color:"#4c78ae"}}>← العودة للمعرض</Link>
@@ -51,6 +79,7 @@ export default function SectorPreview({template}: {template: SectorTemplate}) {
         <label style={{display:"grid",gap:5,flex:"1 1 200px"}}>ارفع شعارك (للمعاينة فقط)<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>uploadLogo(e.target.files?.[0])} /></label>
       </div>
       {logoError&&<p role="alert" style={{color:"#b91c1c"}}>{logoError}</p>}
+      {logoNotice&&<p role="status" style={{color:"#166534"}}>{logoNotice}</p>}
     </section>
     <div className="sector-preview-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,230px) minmax(0,1fr)",gap:16}}>
       <nav className="sector-preview-nav" aria-label="أقسام النموذج" style={{background:brand,color:"white",borderRadius:16,padding:14,alignSelf:"start"}}>
