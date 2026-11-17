@@ -61,6 +61,7 @@ await pool.query(await readFile(new URL("../db/contract_templates_stage43.sql", 
 await pool.query(await readFile(new URL("../db/customer_project_drafts_stage44.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_preview_stage45.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_project_logos_stage46.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/customer_preview_logos_stage47.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sql", import.meta.url), "utf8"));
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim()).filter(Boolean);
