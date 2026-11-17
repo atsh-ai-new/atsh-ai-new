@@ -47,7 +47,9 @@ ATSH_API_BASE_URL=http://atsh-website-api:3000
 ```
 Replace `atsh-website-api` **only if the actual API network alias differs**. Place frontend on a Docker network where this alias resolves. The frontend should have **no** PostgreSQL URL, password hashes or JWT signing secret.
 
-Admin uses a **same-origin Next.js proxy** (`/api/admin/...`), forwarding cookies to the existing backend. Keep `COOKIE_SECURE=true` and valid HTTPS on the preview domain. A browser session may require a fresh sign-in when changing domains; that is not a password reset.
+Admin uses a **same-origin Next.js proxy** (`/api/admin/...`), forwarding cookies to the existing backend.
+
+The upgraded API uses a persisted **owner credential revision** to correctly invalidate sessions after a password reset without changing existing passwords. A browser may need to sign in once after upgrading because older JWTs do not carry the new revision; **the original password, owner override and staff records are retained**. Keep `COOKIE_SECURE=true` and valid HTTPS on the preview domain. A browser session may require a fresh sign-in when changing domains; that is not a password reset.
 
 ## 4. Persistence acceptance test (on the connected preview)
 1. Log in at `https://<preview-host>/admin` using the **same existing administrator email/password**. Do not send credentials to ChatGPT.
