@@ -2,6 +2,7 @@ import pg from "pg";
 import jwt from "jsonwebtoken";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
+import {signInternalPaymentEvent} from "../src/payment-webhook.js";
 const origin="http://127.0.0.1:3017",base="http://127.0.0.1:3017";
 const pool=new pg.Pool({connectionString:process.env.DATABASE_URL});
 const ownerToken=jwt.sign({role:"owner",email:"ci-owner@example.test"},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-admin",expiresIn:"10m"});
@@ -53,7 +54,33 @@ try{
  assert.equal(decision.status,200,JSON.stringify(decision));
  const repeated=await req(`/api/customer/auth/project-drafts/${id}/previews/${preview.result.preview.id}/decision`,{method:"POST",cookie:cookieFor(accountA),body:{decision:"approved",comment:"تكرار"}});
  assert.equal(repeated.status,409);
+ // Signed settlement bridge: reject unsigned, duplicate and excessive payments.
+ const invoice=await pool.query("INSERT INTO commercial_invoices(quote_id,amount_piasters) VALUES($1,10000) RETURNING id",[quote.rows[0].id]);
+ const gatewayEvent={invoiceId:Number(invoice.rows[0].id),amountPiasters:4000,providerReference:"integration-"+randomUUID(),paidAt:new Date().toISOString(),status:"settled"};
+ const gatewayRaw=Buffer.from(JSON.stringify(gatewayEvent));
+ const gatewayTimestamp=Math.floor(Date.now()/1000).toString();
+ const gatewayUrl=base+"/api/internal/verified-payments";
+ let response=await fetch(gatewayUrl,{method:"POST",headers:{"content-type":"application/json"},body:gatewayRaw});
+ assert.equal(response.status,401,"Unsigned gateway event must fail");
+ const postGateway=async(raw,eventTime=gatewayTimestamp)=>{
+  const signature=signInternalPaymentEvent({raw,secret:process.env.ATSH_VERIFIED_PAYMENT_SECRET,timestamp:eventTime});
+  const response=await fetch(gatewayUrl,{method:"POST",headers:{"content-type":"application/json","x-atsh-timestamp":eventTime,"x-atsh-signature":signature},body:raw});
+  return {status:response.status,body:await response.json()};
+ };
+ const settled=await postGateway(gatewayRaw);
+ assert.equal(settled.status,201,JSON.stringify(settled));
+ const duplicate=await postGateway(gatewayRaw);
+ assert.equal(duplicate.status,200,JSON.stringify(duplicate));assert.equal(duplicate.body.duplicate,true);
+ const excessive=await postGateway(Buffer.from(JSON.stringify({...gatewayEvent,amountPiasters:7000,providerReference:"integration-"+randomUUID()})));
+ assert.equal(excessive.status,409);
+ const staleTime=Math.floor((Date.now()-700000)/1000).toString();
+ const stalePayment=await postGateway(gatewayRaw,staleTime);
+ assert.equal(stalePayment.status,401);
+ const finalPayment=await postGateway(Buffer.from(JSON.stringify({...gatewayEvent,amountPiasters:6000,providerReference:"integration-"+randomUUID()})));
+ assert.equal(finalPayment.status,201,JSON.stringify(finalPayment));
+ const paid=await pool.query("SELECT status,verified_paid_piasters FROM commercial_invoices WHERE id=$1",[invoice.rows[0].id]);
+ assert.equal(paid.rows[0].status,"paid");assert.equal(Number(paid.rows[0].verified_paid_piasters),10000);
  const other=await req(`/api/customer/auth/project-drafts/${two.result.projectDraft.id}`,{cookie:cookieFor(accountA)});
  assert.equal(other.status,200);assert.equal(other.result.projectDraft.draft.sectorSlug,"avocato");
- console.log("PASS: contract revisions, immutable issuance, owner authorization, project isolation, conflict detection, customer preview approval");
+ console.log("PASS: contract revisions, immutable issuance, owner authorization, project isolation, conflict detection, customer preview approval and signed payment settlement");
 }finally{await pool.end();}
