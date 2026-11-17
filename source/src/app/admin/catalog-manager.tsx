@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
 import { sectorTemplates, type SectorTemplate } from "@/lib/sector-catalog";
 
 type CatalogItem = SectorTemplate & {published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; basePrice:number|null; addons:string[]};
@@ -14,6 +14,7 @@ export default function CatalogManager() {
   const [notice,setNotice]=useState("");
   const [error,setError]=useState("");
   const [ready,setReady]=useState(false);
+  const [uploading,setUploading]=useState(false);
   const [version,setVersion]=useState(0);
   const [pageWasPublished,setPageWasPublished]=useState(true);
 
@@ -31,6 +32,21 @@ export default function CatalogManager() {
     return()=>{active=false;};
   },[version]);
 
+  const uploadImage=async(event:ChangeEvent<HTMLInputElement>)=>{
+    const file=event.target.files?.[0];
+    if(!file)return;
+    if(!["image/png","image/jpeg","image/webp"].includes(file.type)){setError("اختر صورة PNG أو JPEG أو WebP.");event.target.value="";return;}
+    if(file.size>5*1024*1024){setError("حجم الصورة لا يجب أن يزيد عن 5 ميجابايت.");event.target.value="";return;}
+    setUploading(true);setError("");setNotice("");
+    try{
+      const response=await fetch("/api/admin/media",{method:"POST",credentials:"include",headers:{"Content-Type":file.type,"X-File-Name":encodeURIComponent(file.name)},body:file});
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok||typeof payload?.media?.url!=="string")throw Error(payload?.message||"تعذر رفع الصورة.");
+      update("imageUrl",payload.media.url);
+      setNotice("تم رفع الصورة. اضغط حفظ الكتالوج لتثبيت استخدامها.");
+    }catch(e){setError(e instanceof Error?e.message:"فشل رفع الصورة.");}
+    finally{setUploading(false);event.target.value="";}
+  };
   const saveAll=async(next:CatalogItem[],message:string)=>{
     setBusy(true);setError("");setNotice("");
     try{
@@ -84,13 +100,18 @@ export default function CatalogManager() {
         {field("المزايا — كل ميزة بسطر",draft.features.join("\n"),v=>update("features",v.split("\n").map(x=>x.trim()).filter(Boolean)),true)}
         {field("أقسام المعاينة — كل قسم بسطر",draft.modules.join("\n"),v=>update("modules",v.split("\n").map(x=>x.trim()).filter(Boolean)),true)}
         {field("رابط الصورة HTTPS أو ملف مرفوع",draft.imageUrl,v=>update("imageUrl",v))}
+        <label className="admin-field">رفع صورة البطاقة مباشرة (PNG أو JPG أو WebP، 5 ميجابايت)
+          <input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy||uploading} onChange={e=>void uploadImage(e)} />
+          {uploading&&<small>جارٍ رفع الصورة…</small>}
+          {draft.imageUrl&&<img src={draft.imageUrl} alt="معاينة صورة الكتالوج" style={{maxWidth:230,maxHeight:155,objectFit:"contain",borderRadius:12}} />}
+        </label>
         {field("رابط معاينة خارجية HTTPS (اختياري)",draft.previewUrl,v=>update("previewUrl",v))}
         <label className="admin-field">سعر أساسي استرشادي (جنيه) — السعر النهائي من محرك التسعير<input type="number" min="0" step="0.01" value={draft.basePrice??""} onChange={e=>update("basePrice",e.target.value===""?null:Number(e.target.value))}/></label>
         <label className="admin-field">ترتيب الظهور<input type="number" value={draft.sortOrder} onChange={e=>update("sortOrder",Number(e.target.value))}/></label>
         <label className="check-row"><input type="checkbox" checked={draft.published} onChange={e=>update("published",e.target.checked)}/> منشور في المعرض</label>
-        <div className="admin-actions"><button type="submit" className="button" disabled={busy}>{busy?"جارٍ الحفظ…":"حفظ الكتالوج"}</button></div>
+        <div className="admin-actions"><button type="submit" className="button" disabled={busy||uploading}>{busy?"جارٍ الحفظ…":"حفظ الكتالوج"}</button></div>
       </form>
-      <p className="field-hint">لا يتم حذف الكتالوج نهائيًا حتى لا تتأثر روابط العملاء وطلباتهم السابقة. الصور والمقاطع ترتبط بعناوين وسائط معتمدة؛ رفع الملفات المباشر سيُضاف لاحقًا.</p>
+      <p className="field-hint">لا يتم حذف الكتالوج نهائيًا حتى لا تتأثر روابط العملاء وطلباتهم السابقة. الصور تُرفع عبر خدمة الوسائط المحمية في الخادم. الفيديوهات تُدرج كرابط بعد التحقق من صلاحياتها.</p>
     </section>}
   </div>;
 }
