@@ -172,5 +172,19 @@ try{
  assert.equal(pending.rows[0].n,0);
  const other=await req(`/api/customer/auth/project-drafts/${two.result.projectDraft.id}`,{cookie:cookieFor(accountA)});
  assert.equal(other.status,200);assert.equal(other.result.projectDraft.draft.sectorSlug,"avocato");
+ // A second administrator cannot silently overwrite the catalog based on a stale version.
+ const existingPages=await req("/api/admin/pages",{cookie:adminCookie});
+ assert.equal(existingPages.status,200);
+ const oldCatalog=existingPages.result.pages.find(p=>p.slug==="catalog"&&p.locale==="ar");
+ const expectedUpdatedAt=oldCatalog?.updated_at??null;
+ const nextCatalog={title:"كتالوج اختبار التكامل",sectors:[],items:[]};
+ const firstCatalog=await req("/api/admin/pages/catalog",{method:"PATCH",cookie:adminCookie,
+   body:{locale:"ar",expectedUpdatedAt,isPublished:true,content:nextCatalog}});
+ assert.equal(firstCatalog.status,200,JSON.stringify(firstCatalog));
+ const staleCatalog=await req("/api/admin/pages/catalog",{method:"PATCH",cookie:adminCookie,
+   body:{locale:"ar",expectedUpdatedAt,isPublished:true,content:{...nextCatalog,title:"كتالوج نسخة قديمة"}}});
+ assert.equal(staleCatalog.status,409,"Stale admin write must fail without erasing newer data");
+ const savedCatalog=await pool.query("SELECT content->>'title' AS title FROM site_pages WHERE slug='catalog' AND locale='ar'");
+ assert.equal(savedCatalog.rows[0].title,"كتالوج اختبار التكامل");
  console.log("PASS: contract revisions, immutable issuance, owner authorization, project isolation, conflict detection, customer preview approval and signed payment settlement");
 }finally{await pool.end();}
