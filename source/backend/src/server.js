@@ -447,7 +447,21 @@ const orderSchema = z.object({
 app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"draft-8",legacyHeaders:false}), route(async (req,res) => {
   const parsed=orderSchema.safeParse(req.body);
   if(!parsed.success) return res.status(400).json({error:"Invalid order details",details:parsed.error.issues.map(x=>({path:x.path,message:x.message}))});
-  const input=parsed.data, client=await pool.connect();
+  const input=parsed.data;
+  let ownedCustomer=null;
+  const customerCookie=req.cookies?.atsh_customer;
+  if(customerCookie){
+    if(!req.get("origin")||!origins.includes(req.get("origin")))return res.status(403).json({error:"Customer origin not allowed"});
+    let identity;
+    try{identity=jwt.verify(customerCookie,process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-customer"});}catch{return res.status(401).json({error:"Customer session expired"});}
+    if(identity.kind!=="customer")return res.status(401).json({error:"Invalid customer session"});
+    const account=await pool.query("SELECT id,email,name,session_version,is_active,email_verified_at FROM customer_accounts WHERE id=$1",[identity.sub]);
+    const row=account.rows[0];
+    if(!row?.is_active||!row.email_verified_at||row.session_version!==identity.ver)return res.status(401).json({error:"Customer session expired"});
+    if(!input.email||row.email.toLowerCase()!==input.email.trim().toLowerCase())return res.status(403).json({error:"Order email must match signed-in account"});
+    ownedCustomer=row;
+  }
+  const client=await pool.connect();
   try {
     await client.query("BEGIN");
     const p=await client.query("SELECT id,name,description,price,currency FROM packages WHERE id=$1 AND is_published=true FOR SHARE",[input.packageId]);
@@ -482,6 +496,13 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
       VALUES($1,$2,$3,$4,$5,$6,'new',$7,$8,$9,$10,$11,$12)
       RETURNING id,reference,status,total,currency,created_at`,
       [reference,input.customerName,input.phone,input.email||null,input.notes,pkg.id,pkg.currency,subtotal,vatRate,vatAmount,total,snapshot]);
+    if(ownedCustomer){
+      const project=await client.query(`INSERT INTO customer_journey_projects(customer_name,customer_email,template_id,created_by,customer_account_id)
+        VALUES($1,$2,$3,$4,$5) RETURNING id`,
+        [input.customerName,ownedCustomer.email,input.sectorSlug||null,ownedCustomer.email,ownedCustomer.id]);
+      await client.query("INSERT INTO customer_journey_order_links(project_id,order_id,linked_by) VALUES($1,$2,$3)",[project.rows[0].id,saved.rows[0].id,ownedCustomer.email]);
+      saved.rows[0].projectId=project.rows[0].id;
+    }
     await client.query("COMMIT");
     res.status(201).json({order:saved.rows[0]});
   } catch(e){await client.query("ROLLBACK");throw e;} finally{client.release();}
