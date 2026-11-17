@@ -52,6 +52,7 @@ await pool.query(await readFile(new URL("../db/builder_execution_stage30.sql", i
 await pool.query(await readFile(new URL("../db/builder_execution_stage31.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/reviewed_drafts_stage39.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_workspace_stage41.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/contract_templates_stage43.sql", import.meta.url), "utf8"));
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim()).filter(Boolean);
 const cookie = "atsh_admin";
 const cookieOptions = { httpOnly: true, secure: process.env.COOKIE_SECURE !== "false", sameSite: "strict", path: "/", maxAge: 8 * 60 * 60 * 1000 };
@@ -1043,7 +1044,7 @@ app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requireRole("own
 }));
 app.post("/api/admin/commercial/contracts/issue",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
  const {quoteId,templateId}=req.body||{};if(!validCommercialId(quoteId)||!validCommercialId(templateId))return res.status(400).json({error:"Invalid identifiers"});
- const q=await pool.query("INSERT INTO customer_contracts(quote_id,template_id,body_snapshot) SELECT q.id,t.id,t.body FROM commercial_quotes q CROSS JOIN contract_templates t WHERE q.id=$1 AND t.id=$2 AND q.status='issued' AND NOT EXISTS(SELECT 1 FROM customer_contracts c WHERE c.quote_id=q.id AND c.status<>'void') RETURNING id,quote_id,status,created_at",[quoteId,templateId]);
+ const q=await pool.query("INSERT INTO customer_contracts(quote_id,template_id,body_snapshot) SELECT q.id,t.id,t.body FROM commercial_quotes q CROSS JOIN contract_templates t WHERE q.id=$1 AND t.id=$2 AND t.is_published=true AND t.is_archived=false AND q.status='issued' AND NOT EXISTS(SELECT 1 FROM customer_contracts c WHERE c.quote_id=q.id AND c.status<>'void') RETURNING id,quote_id,status,created_at",[quoteId,templateId]);
  if(!q.rowCount)return res.status(409).json({error:"Quote not issued or contract already exists"});res.status(201).json({contract:q.rows[0]});
 }));
 app.post("/api/admin/commercial/quotes/:id/review-link",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
@@ -1159,12 +1160,47 @@ app.post("/api/admin/commercial/quotes",requireAdmin,requireRole("owner","admin"
 app.get("/api/admin/commercial/quotes",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
  const q=await pool.query("SELECT * FROM commercial_quotes ORDER BY created_at DESC LIMIT 100");res.json({quotes:q.rows});
 }));
+// Contract template CMS: edits are append-only revisions; issued document snapshots remain unchanged.
+const contractCategory=z.enum(["general","managed_monthly","managed_yearly","source_code","independent_hosting"]);
+const contractTemplateInput=z.object({title:z.string().trim().min(2).max(200),body:z.string().trim().min(20).max(30000),category:contractCategory.default("general"),isPublished:z.boolean().default(false)}).strict();
 app.post("/api/admin/commercial/contracts/templates",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
- const {title,body}=req.body||{};if(typeof title!=="string"||!title.trim()||title.length>200||typeof body!=="string"||!body.trim()||body.length>30000)return res.status(400).json({error:"Invalid contract template"});
- const q=await pool.query("INSERT INTO contract_templates(title,body) VALUES($1,$2) RETURNING id,title,revision,created_at",[title,body]);res.status(201).json({template:q.rows[0]});
+ const parsed=contractTemplateInput.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:"Invalid contract template"});
+ const {title,body,category,isPublished}=parsed.data;
+ const client=await pool.connect();try{
+  await client.query("BEGIN");
+  const q=await client.query("INSERT INTO contract_templates(title,body,category,is_published,updated_by) VALUES($1,$2,$3,$4,$5) RETURNING *",[title,body,category,isPublished,req.admin.email]);
+  await client.query("INSERT INTO contract_template_versions(template_id,revision,title,body,category,is_published,is_archived,edited_by) VALUES($1,1,$2,$3,$4,$5,false,$6)",[q.rows[0].id,title,body,category,isPublished,req.admin.email]);
+  await auditChange(client,req.admin.email,"contract_template.created","contract_template",q.rows[0].id,null,q.rows[0]);
+  await client.query("COMMIT");res.status(201).json({template:q.rows[0]});
+ }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
 app.get("/api/admin/commercial/contracts/templates",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
- const q=await pool.query("SELECT * FROM contract_templates ORDER BY created_at DESC LIMIT 100");res.json({templates:q.rows});
+ const q=await pool.query("SELECT * FROM contract_templates ORDER BY updated_at DESC,id DESC LIMIT 100");res.set("Cache-Control","no-store").json({templates:q.rows});
+}));
+app.get("/api/admin/commercial/contracts/templates/:id/versions",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
+ if(!validCommercialId(req.params.id))return res.status(400).json({error:"Invalid template"});
+ const q=await pool.query("SELECT template_id,revision,title,body,category,is_published,is_archived,edited_by,created_at FROM contract_template_versions WHERE template_id=$1 ORDER BY revision DESC LIMIT 100",[req.params.id]);
+ res.set("Cache-Control","no-store").json({versions:q.rows});
+}));
+app.patch("/api/admin/commercial/contracts/templates/:id",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+ if(!validCommercialId(req.params.id))return res.status(400).json({error:"Invalid template"});
+ const parsed=contractTemplateInput.extend({expectedRevision:z.number().int().positive(),isArchived:z.boolean().default(false)}).safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid template update"});
+ const {title,body,category,isPublished,isArchived,expectedRevision}=parsed.data;
+ if(isArchived&&isPublished)return res.status(400).json({error:"Archived templates cannot be published"});
+ const client=await pool.connect();try{
+  await client.query("BEGIN");
+  const before=await client.query("SELECT * FROM contract_templates WHERE id=$1 FOR UPDATE",[req.params.id]);
+  if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Template not found"});}
+  if(before.rows[0].revision!==expectedRevision){await client.query("ROLLBACK");return res.status(409).json({error:"Template has changed. Reload before editing"});}
+  const result=await client.query(`UPDATE contract_templates
+   SET title=$2,body=$3,category=$4,is_published=$5,is_archived=$6,revision=revision+1,updated_by=$7,updated_at=now()
+   WHERE id=$1 RETURNING *`,[req.params.id,title,body,category,isPublished,isArchived,req.admin.email]);
+  const updated=result.rows[0];
+  await client.query("INSERT INTO contract_template_versions(template_id,revision,title,body,category,is_published,is_archived,edited_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[updated.id,updated.revision,updated.title,updated.body,updated.category,updated.is_published,updated.is_archived,req.admin.email]);
+  await auditChange(client,req.admin.email,"contract_template.revised","contract_template",updated.id,before.rows[0],updated);
+  await client.query("COMMIT");res.json({template:updated});
+ }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
 app.post("/api/admin/commercial/tickets",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
  const {customerEmail,subject,description}=req.body||{};
