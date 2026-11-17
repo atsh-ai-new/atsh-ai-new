@@ -45,10 +45,10 @@ export default function SectorPreview({template}: {template: SectorTemplate}) {
     void loadAccountWorkspace().then(account=>{
       if(!active||!account)return;
       const guest=loadGuestWorkspace();
-      if(account.sectorSlug===template.slug&&guest.sectorSlug!==template.slug){
-        if(account.businessName)setCustomTitle(account.businessName);
-        if(account.brandColor)setBrand(account.brandColor);
-        if(account.businessDescription)setCustomDescription(account.businessDescription);
+      if(account.sectorSlug===template.slug){
+        if(account.businessName&&!guest.businessName)setCustomTitle(account.businessName);
+        if(account.brandColor&&!guest.brandColor)setBrand(account.brandColor);
+        if(account.businessDescription&&!guest.businessDescription)setCustomDescription(account.businessDescription);
       }
       return fetch("/api/customer/auth/workspace/logo",{credentials:"include",cache:"no-store"});
     }).then(async response=>{
