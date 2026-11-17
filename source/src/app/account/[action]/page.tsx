@@ -11,6 +11,7 @@ type Payment={id:number;amount_piasters:number;paid_at:string;provider:string};
 type Deliverable={id:string;title:string;kind:string;asset_url:string|null;has_private_file?:boolean;customer_decision:string;customer_feedback:string};
 type Project={id:string;customer_name:string;status:string;created_at:string};
 type ProjectDraft={id:string;title:string;revision:number;draft:CustomerWorkspace;updated_at:string};
+type PreviewVersion={id:string;revision:number;approval_status:string;created_at:string;snapshot:CustomerWorkspace&{projectTitle?:string};customer_comment?:string};
 type GoogleCredential={credential:string};
 type GoogleApi={accounts:{id:{initialize:(config:{client_id:string;callback:(data:GoogleCredential)=>void})=>void;renderButton:(element:HTMLElement,options:Record<string,string>)=>void}}};
 declare global {interface Window {google?:GoogleApi}}
@@ -21,6 +22,8 @@ export default function CustomerAccount(){
  const [projectDrafts,setProjectDrafts]=useState<ProjectDraft[]>([]);
  const [draftTitle,setDraftTitle]=useState("");
  const [selectedProjectDraft,setSelectedProjectDraft]=useState("");
+ const [previewVersions,setPreviewVersions]=useState<PreviewVersion[]>([]);
+ const [previewFeedback,setPreviewFeedback]=useState("");
  const [guestPending,setGuestPending]=useState(false);
  const [merging,setMerging]=useState(false);
  useEffect(()=>{
@@ -41,6 +44,29 @@ export default function CustomerAccount(){
    setProjectDrafts(body.drafts||[]);
   }catch{setMessage("تعذر تحميل مسودات مشروعاتك");}
  },[]);
+ const loadPreviews=async(id:string)=>{
+  if(!id){setPreviewVersions([]);return;}
+  try{
+   const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(id)}/previews`,{credentials:"include",cache:"no-store"});
+   if(!response.ok)throw Error();
+   const body=await response.json();setPreviewVersions(body.previews||[]);
+  }catch{setPreviewVersions([]);setMessage("تعذر تحميل إصدارات المعاينة");}
+ };
+ const savePreviewVersion=async()=>{
+  if(!selectedProjectDraft)return;
+  try{
+   const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(selectedProjectDraft)}/previews`,{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:"{}"});
+   const body=await response.json();if(!response.ok)throw Error(body.error||"تعذر إنشاء معاينة");
+   await loadPreviews(selectedProjectDraft);setMessage("تم حفظ إصدار معاينة جديد من مسودة مشروعك");
+  }catch(e){setMessage(e instanceof Error?e.message:"تعذر الحفظ");}
+ };
+ const decidePreview=async(previewId:string,decision:"approved"|"changes_requested")=>{
+  try{
+   const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(selectedProjectDraft)}/previews/${encodeURIComponent(previewId)}/decision`,{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({decision,comment:previewFeedback})});
+   const body=await response.json();if(!response.ok)throw Error(body.error||"تعذر حفظ القرار");
+   setPreviewFeedback("");await loadPreviews(selectedProjectDraft);setMessage("تم تسجيل قرارك على إصدار المعاينة");
+  }catch(e){setMessage(e instanceof Error?e.message:"تعذر حفظ القرار");}
+ };
  const createProjectDraft=async()=>{
   try{
    const response=await fetch("/api/customer/auth/project-drafts",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({title:draftTitle.trim()||"مشروع جديد",draft:{}})});
@@ -108,10 +134,19 @@ export default function CustomerAccount(){
   <p>كل مشروع له اختيارات منفصلة. اختر المسودة التي تريد استكمالها أو نقل اختيارات المتصفح إليها.</p>
   <label>اسم المشروع الجديد<input maxLength={120} value={draftTitle} onChange={e=>setDraftTitle(e.target.value)} placeholder="اسم مشروعك"/></label>
   <button type="button" onClick={()=>void createProjectDraft()}>إنشاء مسودة مشروع</button>
-  <label>اختر المسودة<select value={selectedProjectDraft} onChange={e=>setSelectedProjectDraft(e.target.value)}>
+  <label>اختر المسودة<select value={selectedProjectDraft} onChange={e=>{setSelectedProjectDraft(e.target.value);void loadPreviews(e.target.value);}}>
    <option value="">اختر مشروعًا</option>{projectDrafts.map(d=><option key={d.id} value={d.id}>{d.title} — إصدار {d.revision}</option>)}
   </select></label>
-  {selectedProjectDraft&&<p>الاختيارات المحفوظة: {JSON.stringify(projectDrafts.find(d=>d.id===selectedProjectDraft)?.draft??{})}</p>}
+  {selectedProjectDraft&&<><h3>بيانات المشروع المحدد</h3><p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(projectDrafts.find(d=>d.id===selectedProjectDraft)?.draft??{},null,2)}</p>
+   <button type="button" onClick={()=>void savePreviewVersion()}>حفظ إصدار معاينة جديد</button>
+   <p>المعاينة هنا توثيق لنسخة بيانات التخصيص فقط؛ ليست رابط نشر لنظام تجاري.</p>
+   <label>ملاحظات على المعاينة<input maxLength={2000} value={previewFeedback} onChange={e=>setPreviewFeedback(e.target.value)}/></label>
+   <ul>{previewVersions.map((preview,index)=><li key={preview.id} style={{padding:12,border:"1px solid #cbd5e1",marginBottom:10}}>
+    إصدار {preview.revision} — {preview.approval_status} — {new Date(preview.created_at).toLocaleString("ar-EG")}
+    <details><summary>عرض بيانات الإصدار</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(preview.snapshot,null,2)}</pre></details>
+    {index===0&&preview.approval_status==="pending"&&<div><button type="button" onClick={()=>void decidePreview(preview.id,"approved")}>اعتماد هذا الإصدار</button><button type="button" onClick={()=>void decidePreview(preview.id,"changes_requested")}>طلب تعديلات</button></div>}
+   </li>)}</ul>
+  </>}
   {guestPending&&<button disabled={!selectedProjectDraft||merging} type="button" onClick={()=>void importGuestToProjectDraft()}>{merging?"جارٍ النقل…":"نقل اختيارات المتصفح إلى المشروع المحدد"}</button>}
  </section>
  <h2>مشروعاتي</h2><ul>{projects.map(p=><li key={p.id}>{p.customer_name} — {p.status} — {p.id}</li>)}</ul><h2>طلباتي المرتبطة بمشروعاتي</h2><ul>{orders.map(o=><li key={o.id}>{o.reference} — {o.status} — {o.total} {o.currency}</li>)}</ul>
