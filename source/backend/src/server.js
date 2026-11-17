@@ -339,14 +339,15 @@ app.post("/api/visitor/assistant",
     const [p,o,c] = await Promise.all([
       pool.query("SELECT id,name,tagline,description,price,currency,is_custom_quote FROM packages WHERE is_published=true ORDER BY sort_order LIMIT 25"),
       pool.query("SELECT package_id,name,description,price,pricing_type,unit_label FROM package_options WHERE is_active=true ORDER BY sort_order LIMIT 80"),
-      pool.query("SELECT slug,content FROM site_pages WHERE slug IN ('catalog','home') AND locale='ar' AND is_published=true LIMIT 2")
+      pool.query("SELECT slug,content FROM site_pages WHERE slug IN ('catalog','home','assistant-knowledge') AND locale='ar' AND is_published=true LIMIT 3")
     ]);
     const catalog=c.rows.find(row=>row.slug==="catalog")?.content?.items;
     const sectors=Array.isArray(catalog)
       ? catalog.filter(x=>x&&x.published!==false&&!x.archived&&typeof x.slug==="string"&&typeof x.name==="string")
       : [];
     const site=c.rows.find(row=>row.slug==="home")?.content||{};
-    const instructions=buildVisitorInstructions({packages:p.rows,options:o.rows,sectors,site});
+    const knowledge=c.rows.find(row=>row.slug==="assistant-knowledge")?.content||{};
+    const instructions=buildVisitorInstructions({packages:p.rows,options:o.rows,sectors,site,knowledge});
     const input=parsed.data.messages.map(m=>({role:m.role,content:m.content}));
     let upstream;
     try{upstream=await fetch("https://api.openai.com/v1/responses",{
