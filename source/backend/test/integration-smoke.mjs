@@ -111,6 +111,19 @@ try{
  assert.equal(logoOther.status,404);
  const logoAnotherProject=await fetch(base+`/api/customer/auth/project-drafts/${two.result.projectDraft.id}/logo`,{headers:{cookie:cookieFor(accountA)}});
  assert.equal(logoAnotherProject.status,404);
+ const revisionWithLogo=await req(`/api/customer/auth/project-drafts/${id}/previews`,{method:"POST",cookie:cookieFor(accountA),body:{}});
+ assert.equal(revisionWithLogo.status,201,JSON.stringify(revisionWithLogo));
+ const snapUrl=base+`/api/customer/auth/project-drafts/${id}/previews/${revisionWithLogo.result.preview.id}/logo`;
+ const logoFromSnapshot=await fetch(snapUrl,{headers:{cookie:cookieFor(accountA)}});
+ assert.equal(logoFromSnapshot.status,200);
+ assert.deepEqual(Buffer.from(await logoFromSnapshot.arrayBuffer()),png);
+ const logoFromOtherAccount=await fetch(snapUrl,{headers:{cookie:cookieFor(accountB)}});
+ assert.equal(logoFromOtherAccount.status,404);
+ const changedPng=Buffer.from([...png,1,2,3]);
+ const rewrittenLogo=await fetch(base+`/api/customer/auth/project-drafts/${id}/logo`,{method:"POST",headers:{origin,"content-type":"image/png",cookie:cookieFor(accountA)},body:changedPng});
+ assert.equal(rewrittenLogo.status,200);
+ const oldSnapshot=await fetch(snapUrl,{headers:{cookie:cookieFor(accountA)}});
+ assert.deepEqual(Buffer.from(await oldSnapshot.arrayBuffer()),png,"Old customer preview logo must remain immutable");
  // Signed settlement bridge: reject unsigned, duplicate and excessive payments.
  const invoice=await pool.query("INSERT INTO commercial_invoices(quote_id,amount_piasters) VALUES($1,10000) RETURNING id",[quote.rows[0].id]);
  const gatewayEvent={invoiceId:Number(invoice.rows[0].id),amountPiasters:4000,providerReference:"integration-"+randomUUID(),paidAt:new Date().toISOString(),status:"settled"};
