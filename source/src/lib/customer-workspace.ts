@@ -41,3 +41,11 @@ export async function syncCustomerWorkspace():Promise<CustomerWorkspace|null> {
   try{window.localStorage.removeItem(WORKSPACE_KEY);}catch{}
   return result;
 }
+
+export async function loadAccountWorkspace():Promise<CustomerWorkspace|null>{
+  const response=await fetch("/api/customer/auth/workspace",{credentials:"include",cache:"no-store"});
+  if(response.status===401)return null;
+  if(!response.ok)throw Error("Unable to load account workspace");
+  const result=await response.json();
+  return (result?.workspace?.draft??{}) as CustomerWorkspace;
+}
