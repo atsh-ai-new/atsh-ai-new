@@ -30,4 +30,6 @@ test("mobile filters and previews remain accessible without horizontal overflow"
  await page.getByRole("textbox",{name:"اسم السجل"}).fill("عنصر تجريبي");
  await page.getByRole("button",{name:"حفظ تجريبي"}).click();
  await expect(page.getByRole("cell",{name:"عنصر تجريبي"})).toBeVisible();
+ const viewportOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2);
+ expect(viewportOverflow).toBe(false);
 });
