@@ -384,7 +384,7 @@ app.post("/api/visitor/assistant",
 
 // Public availability lookup through configured registrar. A positive result is NOT a reservation.
 app.get("/api/domains/check",rateLimit({windowMs:60*1000,limit:8,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
- const domain=validateDomainName(req.query.name);
+ const domain=validateDomainName(req.query.domain ?? req.query.name);
  if(!domain)return res.status(400).json({error:"اكتب اسم نطاق كاملًا وصحيحًا."});
  if(!namecheapConfig())return res.status(503).json({error:"التحقق المباشر من الدومينات غير مفعّل بعد."});
  try{
