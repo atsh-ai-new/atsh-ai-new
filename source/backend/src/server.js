@@ -21,6 +21,7 @@ import { renderContractTemplate, makeContractContext } from "./contract-template
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
 import {queueJourneyEvent,deliverJourneyEvents,eventDestination} from "./customer-event-outbox.js";
 import {checkDomainWithNamecheap} from "./domain-availability.js";
+import {deriveQuoteFromOrder} from "./order-quote.js";
 import { buildProjectPlan, proposeVisualEdit } from "./project-builder.js";
 import {verifyCallback,validJobResult,canTransition} from "./builder-job-rules.js";
 import { operationGuard } from "./operation-guards.js";
@@ -1240,6 +1241,36 @@ app.post("/api/admin/commercial/leads",requireAdmin,requireRole("owner","admin",
 }));
 app.get("/api/admin/commercial/leads",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
  const q=await pool.query("SELECT * FROM crm_leads ORDER BY created_at DESC LIMIT 100");res.json({leads:q.rows});
+}));
+// Strict order → latest approved preview → draft commercial quote bridge.
+app.post("/api/admin/commercial/orders/:orderId/quote",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.orderId).success)return res.status(400).json({error:"Invalid order ID"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const order=await client.query(`SELECT o.id,o.reference,o.email,o.total,o.currency,o.snapshot,
+   p.id AS project_id,p.customer_account_id,p.customer_email
+   FROM orders o JOIN customer_journey_order_links l ON l.order_id=o.id
+   JOIN customer_journey_projects p ON p.id=l.project_id
+   WHERE o.id=$1 FOR UPDATE OF o,p`,[req.params.orderId]);
+  if(!order.rowCount||!order.rows[0].customer_account_id){await client.query("ROLLBACK");return res.status(409).json({error:"Order must belong to a verified customer project"});}
+  const selected=order.rows[0];
+  const draft=await client.query("SELECT id FROM customer_project_drafts WHERE linked_journey_id=$1 AND customer_id=$2",[selected.project_id,selected.customer_account_id]);
+  if(!draft.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Linked project draft required"});}
+  const approved=await client.query("SELECT approval_status FROM customer_preview_versions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 1",[draft.rows[0].id]);
+  if(!approved.rowCount||approved.rows[0].approval_status!=="approved"){await client.query("ROLLBACK");return res.status(409).json({error:"Customer must approve latest project preview"});}
+  const active=await client.query("SELECT 1 FROM commercial_order_quote_links WHERE order_id=$1 AND is_current=true FOR UPDATE",[selected.id]);
+  if(active.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Order already has a current quote"});}
+  let priced;
+  try{priced=deriveQuoteFromOrder(selected);}catch(e){await client.query("ROLLBACK");return res.status(422).json({error:e.message});}
+  const quote=await client.query(`INSERT INTO commercial_quotes(customer_email,customer_account_id,items,total_piasters,currency,valid_until)
+    VALUES($1,$2,$3::jsonb,$4,$5,now()+interval '14 days') RETURNING id,revision,status,total_piasters,valid_until`,
+    [selected.customer_email,selected.customer_account_id,JSON.stringify(priced.items),priced.totalPiasters,priced.currency]);
+  await client.query("INSERT INTO commercial_order_quote_links(order_id,quote_id,project_id,draft_id) VALUES($1,$2,$3,$4)",[selected.id,quote.rows[0].id,selected.project_id,draft.rows[0].id]);
+  await queueJourneyEvent(client,"quote.created",`quote.created:${quote.rows[0].id}`,{quoteId:quote.rows[0].id,orderId:selected.id,projectId:selected.project_id,totalPiasters:priced.totalPiasters});
+  await client.query("COMMIT");
+  res.status(201).json({quote:quote.rows[0],orderId:selected.id,requiresAdminIssue:true});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.post("/api/admin/commercial/quotes",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
  const {customerEmail,items,validUntil}=req.body||{};
