@@ -6,6 +6,7 @@ import { siteCopyDefaults } from "@/lib/site-copy";
 import { findSector } from "@/lib/sector-catalog";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 import Concierge from "@/components/concierge";
+import DomainLookup from "@/components/domain-lookup";
 import { combinedQuoteSummary } from "@/lib/quote-breakdown";
 
 type Customer = { name: string; company: string; email: string; phone: string; details: string; compliance: string };
@@ -37,6 +38,7 @@ export default function HomePage() {
   const [selectedExtraOptionIds, setSelectedExtraOptionIds] = useState<string[]>([]);
   const [hosting, setHosting] = useState(true);
   const [domain, setDomain] = useState<DomainId>("com");
+  const [requestedDomainName,setRequestedDomainName]=useState("");
   const [maintenance, setMaintenance] = useState(false);
   const [startWindow, setStartWindow] = useState("month");
   const [contactWindow, setContactWindow] = useState("anytime");
@@ -165,6 +167,7 @@ export default function HomePage() {
         setSelectedProjectDraftId(draftId);
         if(draft.sectorSlug&&draft.sectorName)setSelectedSector({slug:draft.sectorSlug,name:draft.sectorName});
         if(draft.packageId)setPackageId(draft.packageId);
+        if(draft.domainName)setRequestedDomainName(draft.domainName);
         if(draft.businessName)setCustomer(old=>({...old,company:draft.businessName}));
       }).catch(()=>setRequestMessage("تعذر فتح مسودة المشروع المطلوبة. تحقق من ملكيتها وتسجيل الدخول."));
     return()=>{active=false};
@@ -289,6 +292,7 @@ export default function HomePage() {
         `الميزات: ${addons.map((id) => addonOptions.find((item) => item.id === id)?.name).filter(Boolean).join("، ") || "لا توجد"}`,
         `الاستضافة: ${hosting ? "مُدارة" : "بواسطة العميل"}`,
         `النطاق: ${domain === "none" ? "لدى العميل" : `.${domain}`}`,
+        requestedDomainName ? `دومين مطلوب للفحص عند الشراء: ${requestedDomainName} — غير محجوز` : "",
         `الصيانة السنوية: ${maintenance ? "مطلوبة" : "غير مطلوبة"}`,
         `${copy("startDateLabel")}: ${startWindowLabel}`,
         `${copy("contactTimeLabel")}: ${contactWindowLabel}`,
@@ -401,6 +405,10 @@ export default function HomePage() {
       </section>
 
       <section className="configurator-section" id="configurator">
+        <details style={{margin:"12px 0",padding:"12px 14px",border:"1px solid #e2e8f0",borderRadius:12,background:"#fff"}}>
+          <summary style={{cursor:"pointer",fontWeight:700}}>فحص توافر الدومين الحقيقي قبل الشراء</summary>
+          <DomainLookup onDomainChange={setRequestedDomainName}/>
+        </details>
         {selectedSector && sectorPricedAddons.length>0 && <section style={{border:"1px solid #d5e1ef",background:"#fff",padding:16,borderRadius:12,marginBottom:14}}>
           <h3>إضافات خاصة بنظام {selectedSector.name}</h3>
           {sectorPricedAddons.map(option=><label key={option.code} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"9px 0"}}>
