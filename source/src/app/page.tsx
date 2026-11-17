@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type CS
 import { addonOptions, calculateQuote, formatEgp, identityOptions, packages, type AddonId, type ContentId, type DomainId, type IdentityId, type PackageId } from "@/lib/catalog";
 import { siteCopyDefaults } from "@/lib/site-copy";
 import { findSector } from "@/lib/sector-catalog";
+import { loadGuestWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 import Concierge from "@/components/concierge";
 
 type Customer = { name: string; company: string; email: string; phone: string; details: string; compliance: string };
@@ -92,6 +93,18 @@ export default function HomePage() {
       }).catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    const guest = loadGuestWorkspace();
+    const slug = new URLSearchParams(window.location.search).get("sector");
+    if (!slug && guest.sectorSlug && guest.sectorName) setSelectedSector({slug:guest.sectorSlug,name:guest.sectorName});
+    if (guest.packageId) setPackageId(guest.packageId);
+  }, []);
+  useEffect(() => {
+    if (selectedSector) saveGuestWorkspace({sectorSlug:selectedSector.slug,sectorName:selectedSector.name,source:"configurator"});
+  }, [selectedSector]);
+  useEffect(() => {
+    if (packageId) saveGuestWorkspace({packageId,source:"configurator"});
+  }, [packageId]);
   const localPackageFor = (backendId: string) => packages.find((item) => backendPackageIds[item.id] === backendId);
   const apiOverrides = apiCatalog.packages.map((backend) => {
     const local = localPackageFor(backend.id);
