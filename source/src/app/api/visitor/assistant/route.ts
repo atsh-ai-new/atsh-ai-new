@@ -1,0 +1,28 @@
+import { NextResponse } from "next/server";
+export const runtime = "nodejs";
+const MAX_BYTES=12*1024;
+export async function POST(request:Request) {
+  const originHeader=request.headers.get("origin");
+  // Same-origin browser requests only; API handles independent Origin allowlist too.
+  if(!originHeader||new URL(originHeader).origin!==new URL(request.url).origin)return NextResponse.json({error:"Origin not allowed"},{status:403});
+  const raw=await request.text();
+  if(Buffer.byteLength(raw,"utf8")>MAX_BYTES)return NextResponse.json({error:"Request too large"},{status:413});
+  let base:URL;
+  try{
+    base=new URL(process.env.ATSH_API_BASE_URL??"");
+    const internal=base.protocol==="http:"&&["atsh-website-api","atsh-website-api-internal"].includes(base.hostname);
+    if(base.protocol!=="https:"&&!(process.env.NODE_ENV==="production"&&internal)&&process.env.NODE_ENV==="production")throw Error("Invalid origin");
+    if(!["http:","https:"].includes(base.protocol))throw Error("Invalid scheme");
+  }catch{return NextResponse.json({error:"API unavailable"},{status:503});}
+  try{
+    const upstream=await fetch(new URL("/api/visitor/assistant",base),{
+      method:"POST",headers:{"Content-Type":"application/json","Origin":originHeader},body:raw,
+      cache:"no-store",redirect:"manual",signal:AbortSignal.timeout(30000)
+    });
+    const contentType=upstream.headers.get("content-type");
+    return new Response(await upstream.arrayBuffer(),{
+      status:upstream.status,
+      headers:{"content-type":contentType?.includes("application/json")?"application/json":"application/json","cache-control":"no-store"}
+    });
+  }catch{return NextResponse.json({error:"GPT connection unavailable"},{status:502});}
+}
