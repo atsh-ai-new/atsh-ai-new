@@ -1,6 +1,6 @@
 import {NextResponse} from "next/server";
 export const runtime = "nodejs";
-type Context = {params:Promise<{path:string[]}>};
+type Context = {params:Promise<{path?:string[]}>};
 const MAX_BODY = 64 * 1024;
 async function proxy(request:Request, context:Context){
  const base=process.env.ATSH_API_BASE_URL?.trim();
