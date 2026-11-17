@@ -18,6 +18,7 @@ import { buildJourneyInstructions, extractAssistantText } from "./journey-engine
 import { buildVisitorInstructions } from "./visitor-assistant.js";
 import { priceSectorSelection } from "./sector-pricing.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
+import { verifyInternalPaymentSignature } from "./payment-webhook.js";
 import { buildProjectPlan, proposeVisualEdit } from "./project-builder.js";
 import {verifyCallback,validJobResult,canTransition} from "./builder-job-rules.js";
 import { operationGuard } from "./operation-guards.js";
@@ -83,6 +84,7 @@ app.use("/api/admin/content-studio", (req,res,next) => {
 });
 // File uploads are streamed by the delivery router, never buffered in Express.
 app.use("/api/customer/auth/workspace/logo",express.raw({type:["image/png","image/jpeg","image/webp"],limit:"2mb"}));
+app.use("/api/internal/verified-payments",express.raw({type:"application/json",limit:"16kb"}));
 // Allow a wider structured sector catalog while keeping other JSON endpoints tightly bounded.
 app.use("/api/admin/pages/catalog",express.json({limit:"1mb"}));
 app.use(express.json({ limit: "32kb" }));
@@ -1171,6 +1173,44 @@ app.get('/api/admin/commercial/finance/summary',requireAdmin,requireRole('owner'
  WHERE i.status NOT IN ('void','paid') AND i.verified_paid_piasters<i.amount_piasters
  ORDER BY i.due_at ASC NULLS LAST,i.id ASC LIMIT 50`);
  res.json({totals:totals.rows[0],nextDue:upcoming.rows});
+}));
+// Internal bridge: n8n/provider adapter must verify gateway settlement BEFORE signing this event.
+// Payment status is never accepted from a browser or an unsigned upstream callback.
+app.post("/api/internal/verified-payments",rateLimit({windowMs:60*1000,limit:40,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
+ const secret=process.env.ATSH_VERIFIED_PAYMENT_SECRET;
+ if(!secret)return res.status(503).json({error:"Verified payment adapter is not configured"});
+ const valid=verifyInternalPaymentSignature({raw:req.body,secret,timestamp:req.get("x-atsh-timestamp"),signature:req.get("x-atsh-signature")});
+ if(!valid)return res.status(401).json({error:"Invalid payment event signature"});
+ let event;
+ try{event=JSON.parse(req.body.toString("utf8"));}catch{return res.status(400).json({error:"Invalid event JSON"});}
+ const schema=z.object({
+  invoiceId:z.number().int().positive(),amountPiasters:z.number().int().positive(),
+  providerReference:z.string().trim().min(8).max(180),paidAt:z.string().datetime({offset:true}),
+  status:z.literal("settled")
+ }).strict();
+ const parsed=schema.safeParse(event);
+ if(!parsed.success)return res.status(400).json({error:"Invalid settled payment event"});
+ const {invoiceId,amountPiasters,providerReference,paidAt}=parsed.data;
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const invoice=await client.query("SELECT id,amount_piasters,verified_paid_piasters,status FROM commercial_invoices WHERE id=$1 FOR UPDATE",[invoiceId]);
+  if(!invoice.rowCount||invoice.rows[0].status==="void"){await client.query("ROLLBACK");return res.status(404).json({error:"Invoice not available"});}
+  const existing=await client.query("SELECT id,invoice_id,amount_piasters FROM commercial_invoice_payments WHERE provider='gateway_verified' AND provider_reference=$1 FOR UPDATE",[providerReference]);
+  if(existing.rowCount){
+   await client.query("ROLLBACK");
+   if(Number(existing.rows[0].invoice_id)!==invoiceId||Number(existing.rows[0].amount_piasters)!==amountPiasters)return res.status(409).json({error:"Payment reference conflict"});
+   return res.json({accepted:true,duplicate:true,paymentId:existing.rows[0].id});
+  }
+  const remaining=Number(invoice.rows[0].amount_piasters)-Number(invoice.rows[0].verified_paid_piasters);
+  if(amountPiasters>remaining){await client.query("ROLLBACK");return res.status(409).json({error:"Payment exceeds invoice balance"});}
+  const payment=await client.query("INSERT INTO commercial_invoice_payments(invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by) VALUES($1,$2,$3,'gateway_verified',$4,'trusted_gateway_adapter') RETURNING id",[invoiceId,amountPiasters,paidAt,providerReference]);
+  const totalPaid=Number(invoice.rows[0].verified_paid_piasters)+amountPiasters;
+  const status=totalPaid===Number(invoice.rows[0].amount_piasters)?"paid":"part_paid";
+  await client.query("UPDATE commercial_invoices SET verified_paid_piasters=$1,status=$2 WHERE id=$3",[totalPaid,status,invoiceId]);
+  await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES('verified_gateway_adapter','invoice.payment.gateway_verified','commercial_invoice',gen_random_uuid(),$1::jsonb)",[JSON.stringify({invoiceId,paymentId:payment.rows[0].id,providerReference,amountPiasters})]);
+  await client.query("COMMIT");res.status(201).json({accepted:true,paymentId:payment.rows[0].id,invoiceStatus:status,remainingPiasters:remaining-amountPiasters});
+ }catch(error){await client.query("ROLLBACK");if(error.code==="23505")return res.status(409).json({error:"Duplicate payment reference"});throw error;}finally{client.release();}
 }));
 // Stage 12: admin-only commercial management. Customer signing/payment verification deliberately NOT exposed.
 app.post("/api/admin/commercial/leads",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
