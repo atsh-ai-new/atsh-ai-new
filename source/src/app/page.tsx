@@ -43,6 +43,7 @@ export default function HomePage() {
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [customer, setCustomer] = useState<Customer>({ name: "", company: "", email: "", phone: "", details: "", compliance: "" });
   const [customerSignedIn,setCustomerSignedIn]=useState(false);
+  const [selectedProjectDraftId,setSelectedProjectDraftId]=useState<string|null>(null);
   const [requestState, setRequestState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [requestMessage, setRequestMessage] = useState("");
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -149,6 +150,23 @@ export default function HomePage() {
         setCustomerSignedIn(true);
         setCustomer(existing=>({...existing,name:existing.name||result.customer.name,email:result.customer.email}));
       }).catch(()=>undefined);
+    return()=>{active=false};
+  },[]);
+  useEffect(()=>{
+    const draftId=new URLSearchParams(window.location.search).get("draftId");
+    if(!draftId||!/^[0-9a-f-]{36}$/i.test(draftId))return;
+    let active=true;
+    fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(draftId)}`,{credentials:"include",cache:"no-store"})
+      .then(async response=>{if(!response.ok)throw Error("Draft unavailable");return response.json();})
+      .then(result=>{
+        if(!active)return;
+        const draft=result.projectDraft?.draft;
+        if(!draft)return;
+        setSelectedProjectDraftId(draftId);
+        if(draft.sectorSlug&&draft.sectorName)setSelectedSector({slug:draft.sectorSlug,name:draft.sectorName});
+        if(draft.packageId)setPackageId(draft.packageId);
+        if(draft.businessName)setCustomer(old=>({...old,company:draft.businessName}));
+      }).catch(()=>setRequestMessage("تعذر فتح مسودة المشروع المطلوبة. تحقق من ملكيتها وتسجيل الدخول."));
     return()=>{active=false};
   },[]);
   const localPackageFor = (backendId: string) => packages.find((item) => backendPackageIds[item.id] === backendId);
@@ -289,6 +307,7 @@ export default function HomePage() {
           optionIds: resolvedOptions.map((option) => option.id),
           optionQuantities,
           ...(selectedSector ? {sectorSlug:selectedSector.slug,sectorAddonCodes} : {}),
+          ...(selectedProjectDraftId ? {projectDraftId:selectedProjectDraftId} : {}),
           customerName: customer.name,
           email: customer.email,
           phone: customer.phone,
@@ -389,6 +408,7 @@ export default function HomePage() {
             <b>{formatEgp(option.price)} {option.pricingType==="monthly"?"/ شهري":option.pricingType==="yearly"?"/ سنوي":""}</b>
           </label>)}
         </section>}
+        {selectedProjectDraftId&&<p role="status" style={{background:"#eaf8ee",color:"#166534",padding:12,borderRadius:10}}>أنت تستكمل مسودة مشروع محفوظة في حسابك. سيتم ربط الطلب النهائي بهذه المسودة فقط.</p>}
         {selectedSector && <div role="status" style={{border:"1px solid #d5e1ef",borderRadius:12,padding:"12px 16px",margin:"18px 0",background:"#eef5fc",color:"#203958"}}>
           النموذج الذي اخترته: <strong>{selectedSector.name}</strong>. تُحسب أسعار القطاع والإضافات المنشورة من الخادم. {sectorNeedsQuote ? "تكلفة هذا النظام تحتاج اعتماد عرض مخصص قبل الشراء." : `تكلفة قطاعك وإضافاته: ${formatEgp(sectorSubtotal)}.`}
         </div>}
