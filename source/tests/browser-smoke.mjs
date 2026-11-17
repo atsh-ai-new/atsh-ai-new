@@ -23,7 +23,7 @@ try{
   await title.fill("عيادة اختبار ATSH");
   assert.match(await page.getByRole("heading",{level:1}).innerText(),/عيادة اختبار ATSH/);
   await page.getByRole("button",{name:"المرضى"}).click();
-  await page.getByRole("heading",{name:"المرضى"}).waitFor();
+  await page.getByRole("heading",{name:"المرضى",level:2}).waitFor();
   const overflow=await page.evaluate(()=>({document:document.documentElement.scrollWidth,viewport:innerWidth}));
   assert.ok(overflow.document<=overflow.viewport+2,`Horizontal overflow on ${width}px: ${JSON.stringify(overflow)}`);
   checked++;
