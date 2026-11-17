@@ -1,0 +1,70 @@
+name: ATSH PostgreSQL API Integration
+on:
+  push:
+    branches: [atsh-platform-rebuild]
+    paths:
+      - 'source/backend/**'
+      - '.github/workflows/postgres-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: atsh_test
+          POSTGRES_PASSWORD: atsh_test_password
+          POSTGRES_DB: atsh_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atsh_test -d atsh_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    defaults:
+      run:
+        working-directory: source/backend
+    env:
+      DATABASE_URL: postgresql://atsh_test:atsh_test_password@localhost:5432/atsh_test
+      DATABASE_SSL: 'false'
+      ADMIN_EMAIL: ci-owner@example.test
+      ADMIN_PASSWORD_HASH: '$2b$12$CwTycUXWue0Thq9StjUM0uJ8vdPuOuFqnP4bdzKyU9RTxDqB38zNO'
+      JWT_SECRET: local-ci-jwt-secret-not-valid-for-any-production-123456789
+      ALLOWED_ORIGINS: http://127.0.0.1:3017
+      COOKIE_SECURE: 'false'
+      PORT: '3017'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - name: Start API, verify health and migrated schema
+        run: |
+          set -euo pipefail
+          node src/server.js > /tmp/atsh-api-integration.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true; cat /tmp/atsh-api-integration.log' EXIT
+          ready=0
+          for i in $(seq 1 50); do
+            if curl -fsS http://127.0.0.1:3017/api/health >/dev/null 2>&1; then ready=1; break; fi
+            if ! kill -0 "$api_pid" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          import assert from 'node:assert/strict';
+          const db=new pg.Pool({connectionString:process.env.DATABASE_URL});
+          for(const name of ['contract_templates','contract_template_versions','customer_project_drafts','customer_workspace_drafts','customer_workspace_logos']){
+            const r=await db.query('SELECT to_regclass($1) AS name',[name]);
+            assert.ok(r.rows[0].name, `Missing ${name}`);
+          }
+          const bad=await db.query("SELECT count(*)::int AS n FROM contract_template_versions WHERE revision<1");
+          assert.equal(bad.rows[0].n,0);
+          await db.end();
+          NODE
