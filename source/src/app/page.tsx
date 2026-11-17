@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
 import { addonOptions, calculateQuote, formatEgp, identityOptions, packages, type AddonId, type ContentId, type DomainId, type IdentityId, type PackageId } from "@/lib/catalog";
 import { siteCopyDefaults } from "@/lib/site-copy";
+import { findSector } from "@/lib/sector-catalog";
 
 type Customer = { name: string; company: string; email: string; phone: string; details: string; compliance: string };
 type BackendPackage = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean };
@@ -45,6 +46,7 @@ export default function HomePage() {
   const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [siteConfig, setSiteConfig] = useState<SiteConfig>({});
   const [pageLinks, setPageLinks] = useState<PageLink[]>([]);
+  const [selectedSector, setSelectedSector] = useState<{ slug: string; name: string } | null>(null);
   const copy = (key: string) => { const value = siteConfig.page?.content?.[key]; return (typeof value === "string" ? value.trim() : "") || siteCopyDefaults[key] || ""; };
   const steps = Array.from({ length: 8 }, (_, index) => copy(`stepper${index}`));
   const startWindowLabel = ({ soon: copy("startSoon"), month: copy("startInMonth"), twoMonths: copy("startInTwoMonths"), exploring: copy("startExploring") } as Record<string, string>)[startWindow] ?? copy("startInMonth");
@@ -72,6 +74,21 @@ export default function HomePage() {
     fetch("/api/site-pages", { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { pages?: PageLink[] } : null)
       .then((result) => { if (active) setPageLinks((result?.pages ?? []).filter((item) => item.slug !== "home")); }).catch(() => undefined);
     return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    const slug = new URLSearchParams(window.location.search).get("sector");
+    if (!slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return;
+    const builtin = findSector(slug);
+    if (builtin) setSelectedSector({ slug, name: builtin.name });
+    fetch("/api/site-content/catalog", { cache: "no-store" })
+      .then(async response => response.ok ? await response.json() : null)
+      .then(data => {
+        const items = data?.page?.content?.items;
+        if (!Array.isArray(items)) return;
+        const item = items.find((candidate: {slug?:string;name?:string;published?:boolean;archived?:boolean}) => candidate.slug === slug && candidate.published !== false && !candidate.archived);
+        if (item && typeof item.name === "string") setSelectedSector({ slug, name: item.name });
+      }).catch(() => undefined);
   }, []);
 
   const localPackageFor = (backendId: string) => packages.find((item) => backendPackageIds[item.id] === backendId);
@@ -293,6 +310,9 @@ export default function HomePage() {
       </section>
 
       <section className="configurator-section" id="configurator">
+        {selectedSector && <div role="status" style={{border:"1px solid #d5e1ef",borderRadius:12,padding:"12px 16px",margin:"18px 0",background:"#eef5fc",color:"#203958"}}>
+          النموذج الذي اخترته: <strong>{selectedSector.name}</strong>. تُحسب الباقة والإضافات الحالية هنا، أما تكلفة تخصيص نظام القطاع فتحتاج عرضًا معتمدًا من الإدارة قبل الشراء.
+        </div>}
         <div className="section-heading configurator-title"><div><span className="section-kicker">{copy("configuratorKicker")}</span><h2>{copy("configuratorTitle")}</h2></div><p>{copy("configuratorDescription")}</p></div>
         <div className="builder-layout">
           <div className="builder-main">
