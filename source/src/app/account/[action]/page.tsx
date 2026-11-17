@@ -1,6 +1,7 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from "react";
 import {useParams,useSearchParams} from "next/navigation";
+import { syncCustomerWorkspace, type CustomerWorkspace } from "@/lib/customer-workspace";
 
 type Order={id:string;reference:string;status:string;total:number;currency:string;project_id:string};
 type Quote={id:number;status:string;total_piasters:number;currency:string};
@@ -15,6 +16,13 @@ declare global {interface Window {google?:GoogleApi}}
 
 export default function CustomerAccount(){
  const {action}=useParams<{action:string}>();const search=useSearchParams();const [email,setEmail]=useState("");const [name,setName]=useState("");const [password,setPassword]=useState("");const [message,setMessage]=useState("");const [deliverables,setDeliverables]=useState<Deliverable[]>([]);const [feedback,setFeedback]=useState<Record<string,string>>({});const [projects,setProjects]=useState<Project[]>([]);const [orders,setOrders]=useState<Order[]>([]);const [quotes,setQuotes]=useState<Quote[]>([]);const [contracts,setContracts]=useState<Contract[]>([]);const [invoices,setInvoices]=useState<Invoice[]>([]);const [invoicePayments,setInvoicePayments]=useState<Record<number,Payment[]>>({}),[openInvoice,setOpenInvoice]=useState<number|null>(null);const [projectId,setProjectId]=useState("");const [accessToken,setAccessToken]=useState("");const googleContainer=useRef<HTMLDivElement>(null);
+ const [workspace,setWorkspace]=useState<CustomerWorkspace|null>(null);
+ useEffect(()=>{
+   if(action!=="dashboard")return;
+   let active=true;
+   void syncCustomerWorkspace().then(draft=>{if(active)setWorkspace(draft);}).catch(()=>{if(active)setMessage("تعذر دمج اختياراتك السابقة مع حسابك؛ ما زالت محفوظة على هذا المتصفح.");});
+   return()=>{active=false;};
+ },[action]);
  const loadProjects=useCallback(async()=>{try{const r=await fetch("/api/customer/auth/projects",{credentials:"include",cache:"no-store"});if(!r.ok)throw Error();const d=await r.json();setProjects(d.projects);}catch{setMessage("سجّل الدخول لعرض مشروعاتك");}},[]);
  const request=useCallback(async(path:string,data:Record<string,string>={})=>{setMessage("جارٍ التنفيذ...");try{const response=await fetch(`/api/customer/auth/${path}`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});const body=await response.json();setMessage(response.ok?body.message||"تم بنجاح":body.error||"تعذر إتمام الطلب");if(response.ok&&(path==="login"||path==="google"))location.href="/account/dashboard";if(response.ok&&path==="logout")location.href="/account/login";if(response.ok&&path==="projects/claim"){setAccessToken("");await loadProjects();}}catch{setMessage("تعذر الاتصال بالخدمة");}},[loadProjects]);
  useEffect(()=>{if(action!=="dashboard")return;let cancelled=false;
@@ -41,7 +49,16 @@ export default function CustomerAccount(){
  {action!=="forgot"&&<label>كلمة المرور<input type="password" minLength={action==="login"?1:12} required value={password} onChange={e=>setPassword(e.target.value)}/></label>}
  <button type="submit">متابعة</button></form>}
  {(action==="login"||action==="register")&&<><p><a href="/account/forgot">نسيت كلمة المرور؟</a> · <a href="/account/register">إنشاء حساب</a></p><div ref={googleContainer} aria-label="تسجيل الدخول باستخدام Google"/></>}
- {action==="dashboard"&&<><h2>مشروعاتي</h2><ul>{projects.map(p=><li key={p.id}>{p.customer_name} — {p.status} — {p.id}</li>)}</ul><h2>طلباتي المرتبطة بمشروعاتي</h2><ul>{orders.map(o=><li key={o.id}>{o.reference} — {o.status} — {o.total} {o.currency}</li>)}</ul>
+ {action==="dashboard"&&<>
+ <section style={{border:"1px solid #d4e2ef",borderRadius:12,padding:16,background:"#f5faff",marginBottom:18}}>
+   <h2>اختياراتي المحفوظة من جميع مسارات المنصة</h2>
+   {workspace?<><p>القطاع: {workspace.sectorName||workspace.sectorSlug||"لم يُحدد"} · النشاط: {workspace.businessName||"لم يُحدد"}</p>
+    <p>الباقة: {workspace.packageId||"لم تُحدد"} · طريقة التسليم: {workspace.deliveryMethod||"لم تُحدد"}</p>
+    {workspace.sectorSlug&&<a href={`/catalog/${encodeURIComponent(workspace.sectorSlug)}`}>فتح النموذج المختار</a>}
+    <p style={{fontSize:12,color:"#64748b"}}>هذا ملخص تفضيلات وليس عرض سعر أو عقدًا أو إثبات شراء.</p>
+   </>:<p>لم تتوفر مسودة محفوظة بعد.</p>}
+ </section>
+ <h2>مشروعاتي</h2><ul>{projects.map(p=><li key={p.id}>{p.customer_name} — {p.status} — {p.id}</li>)}</ul><h2>طلباتي المرتبطة بمشروعاتي</h2><ul>{orders.map(o=><li key={o.id}>{o.reference} — {o.status} — {o.total} {o.currency}</li>)}</ul>
  <h2>عروض الأسعار</h2><ul>{quotes.map(q=><li key={q.id}>عرض #{q.id} — {q.status} — {(q.total_piasters/100).toFixed(2)} {q.currency}</li>)}</ul>
  <h2>عقودي</h2><ul>{contracts.map(c=><li key={c.id}>عقد #{c.id} — {c.status} <button type="button" onClick={()=>{const w=window.open("","_blank","noopener,noreferrer");if(!w)return;const text=document.createElement("pre");text.textContent=c.body_snapshot;w.document.body.appendChild(text);w.print();}}>طباعة</button></li>)}</ul>
  <h2>الفواتير وسجل المدفوعات</h2><ul>{invoices.map(i=><li key={i.id}>فاتورة #{i.id} — {i.status} — الإجمالي {(Number(i.amount_piasters)/100).toFixed(2)} جنيه — المدفوع {(Number(i.verified_paid_piasters)/100).toFixed(2)} جنيه — المتبقي {((Number(i.amount_piasters)-Number(i.verified_paid_piasters))/100).toFixed(2)} جنيه <button type="button" onClick={async()=>{if(openInvoice===i.id){setOpenInvoice(null);return}try{const r=await fetch(`/api/customer/commercial/invoices/${i.id}/payments`,{credentials:'include',cache:'no-store'});if(!r.ok)throw Error();const data=await r.json();setInvoicePayments(x=>({...x,[i.id]:data.payments||[]}));setOpenInvoice(i.id)}catch{setMessage('تعذر تحميل سجل الدفعات')}}}>عرض الدفعات</button>{openInvoice===i.id&&<ul>{(invoicePayments[i.id]||[]).length?(invoicePayments[i.id]||[]).map(p=><li key={p.id}>{(Number(p.amount_piasters)/100).toFixed(2)} جنيه — {new Date(p.paid_at).toLocaleDateString('ar-EG')} — {p.provider}</li>):<li>لا توجد دفعات مؤكدة</li>}</ul>}</li>)}</ul>
