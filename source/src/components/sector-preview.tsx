@@ -25,7 +25,7 @@ export default function SectorPreview({template}: {template: SectorTemplate}) {
     <header style={{display:"flex",gap:12,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",marginBottom:20}}>
       <Link href="/catalog" style={{color:"#4c78ae"}}>← العودة للمعرض</Link>
       <span style={{background:"#fff2d2",color:"#815800",borderRadius:12,padding:"8px 12px",fontSize:12}}>معاينة تجريبية — بلا خادم أو دفع حقيقي</span>
-      <Link href="/#configurator" style={{background:brand,color:"white",padding:"10px 16px",borderRadius:10}}>تخصيص الباقة والسعر</Link>
+      <Link href={`/?sector=${encodeURIComponent(template.slug)}#configurator` } style={{background:brand,color:"white",padding:"10px 16px",borderRadius:10}}>تخصيص الباقة والسعر</Link>
     </header>
     <style>{`@media(max-width:700px){.sector-preview-grid{grid-template-columns:1fr!important}.sector-preview-nav{display:flex;overflow-x:auto;gap:5px}.sector-preview-nav button{min-width:max-content}}`}</style>
     <section style={{background:"white",borderRadius:18,border:"1px solid #e2e8f0",padding:20,marginBottom:18}}>
