@@ -118,6 +118,29 @@ export default function CatalogManager() {
     const next=sectors.map(s=>s.id===sector.id?{...s,name:value}:s);
     await saveAll(items,"تم تعديل اسم القطاع.",next);
   };
+  const editSectorDetails=async(sector:CatalogSector)=>{
+    const icon=window.prompt("أيقونة القطاع",sector.icon);
+    if(icon===null)return;
+    const description=window.prompt("وصف القطاع",sector.description);
+    if(description===null)return;
+    const next=sectors.map(row=>row.id===sector.id?{...row,icon:icon.slice(0,12),description:description.slice(0,500)}:row);
+    await saveAll(items,"تم تحديث تفاصيل القطاع.",next);
+  };
+  const moveSector=async(id:string,direction:-1|1)=>{
+    const sorted=[...sectors].sort((a,b)=>a.sortOrder-b.sortOrder);
+    const index=sorted.findIndex(x=>x.id===id),other=index+direction;
+    if(index<0||other<0||other>=sorted.length)return;
+    [sorted[index],sorted[other]]=[sorted[other],sorted[index]];
+    await saveAll(items,"تم تعديل ترتيب القطاعات.",sorted.map((x,i)=>({...x,sortOrder:i*10})));
+  };
+  const moveSubcategory=async(sector:CatalogSector,id:string,direction:-1|1)=>{
+    const sorted=[...sector.subcategories].sort((a,b)=>a.sortOrder-b.sortOrder);
+    const index=sorted.findIndex(x=>x.id===id),other=index+direction;
+    if(index<0||other<0||other>=sorted.length)return;
+    [sorted[index],sorted[other]]=[sorted[other],sorted[index]];
+    const next=sectors.map(x=>x.id===sector.id?{...x,subcategories:sorted.map((c,i)=>({...c,sortOrder:i*10}))}:x);
+    await saveAll(items,"تم تعديل ترتيب التصنيفات.",next);
+  };
   const renameSubcategory=async(sector:CatalogSector,subId:string)=>{
     const old=sector.subcategories.find(x=>x.id===subId);
     if(!old)return;
@@ -161,6 +184,9 @@ export default function CatalogManager() {
           <div style={{display:"flex",gap:9,alignItems:"center",flexWrap:"wrap"}}>
             <strong>{sector.icon} {sector.name}</strong><small>{sector.isPublished?"منشور":"مخفي"} · {sector.id}</small>
             <button disabled={busy} type="button" className="inline-add" onClick={()=>void renameSector(sector)}>تسمية</button>
+            <button disabled={busy} type="button" className="inline-add" onClick={()=>void editSectorDetails(sector)}>الأيقونة والوصف</button>
+            <button disabled={busy} type="button" className="inline-add" aria-label={`رفع ترتيب ${sector.name}`} onClick={()=>void moveSector(sector.id,-1)}>↑</button>
+            <button disabled={busy} type="button" className="inline-add" aria-label={`خفض ترتيب ${sector.name}`} onClick={()=>void moveSector(sector.id,1)}>↓</button>
             <button disabled={busy} type="button" className="inline-add" onClick={()=>void toggleSector(sector)}>{sector.isPublished?"إخفاء":"نشر"}</button>
             <button disabled={busy} type="button" className="inline-add" onClick={()=>void deleteSector(sector)}>حذف آمن</button>
           </div>
@@ -168,6 +194,8 @@ export default function CatalogManager() {
             {[...sector.subcategories].sort((a,b)=>a.sortOrder-b.sortOrder).map(sub=><div key={sub.id} style={{padding:10,borderRadius:10,background:"#f3f6fa",display:"flex",flexWrap:"wrap",alignItems:"center",gap:7}}>
               <span>{sub.name} {sub.isPublished?"":"(مخفي)"}</span>
               <button disabled={busy} type="button" className="inline-add" onClick={()=>void renameSubcategory(sector,sub.id)}>تعديل</button>
+              <button disabled={busy} type="button" className="inline-add" aria-label={`رفع ترتيب ${sub.name}`} onClick={()=>void moveSubcategory(sector,sub.id,-1)}>↑</button>
+              <button disabled={busy} type="button" className="inline-add" aria-label={`خفض ترتيب ${sub.name}`} onClick={()=>void moveSubcategory(sector,sub.id,1)}>↓</button>
               <button disabled={busy} type="button" className="inline-add" onClick={()=>void toggleSubcategory(sector,sub.id)}>{sub.isPublished?"إخفاء":"نشر"}</button>
               <button disabled={busy} type="button" className="inline-add" onClick={()=>void deleteSubcategory(sector,sub.id)}>حذف</button>
             </div>)}
