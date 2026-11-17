@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormE
 import { formatEgp } from "@/lib/catalog";
 import { siteCopyDefaults, siteCopyFields } from "@/lib/site-copy";
 import ContentManager from "./content-manager";
+import CatalogManager from "./catalog-manager";
 import ContentStudio from "./content-studio";
 import JourneyManager from "./journey-manager";
 import CommercialManager from "./commercial-manager";
 
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
-type View = "overview" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "packages" | "options" | "theme" | "inbox" | "team" | "audit";
+type View = "overview" | "catalogs" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "packages" | "options" | "theme" | "inbox" | "team" | "audit";
 type Package = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number };
 type Option = { id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number };
 type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
@@ -24,7 +25,7 @@ type PackageDraft = { name: string; tagline: string; description: string; price:
 type OptionDraft = { packageId: string; code: string; name: string; description: string; price: string; pricingType: Option["pricing_type"]; unitLabel: string; isRequired: boolean; isActive: boolean };
 
 const nav: Array<{ id: View; label: string; icon: string }> = [
-  { id: "overview", label: "نظرة عامة", icon: "◫" }, { id: "content", label: "نصوص الرئيسية", icon: "▤" },
+  { id: "overview", label: "نظرة عامة", icon: "◫" }, { id: "catalogs", label: "إدارة الكتالوجات", icon: "▦" }, { id: "content", label: "نصوص الرئيسية", icon: "▤" },
   { id: "pages", label: "تحرير الصفحات والبطاقات", icon: "▧" }, { id: "works", label: "سجل الأعمال السابقة", icon: "▣" },
   { id: "content-studio", label: "منشئ المحتوى", icon: "✦" },
   { id: "journey", label: "توجيه العملاء", icon: "◎" },
@@ -100,7 +101,7 @@ export default function AdminPage() {
   const canEditContent = canEditCatalog || user?.role === "editor";
   const canEditOrders = canEditCatalog || user?.role === "sales";
   const canManageTeam = user?.role === "owner";
-  const visibleNav = nav.filter((item) => (item.id !== "team" || canManageTeam) && (item.id !== "options" && item.id !== "packages" && item.id !== "theme" ? true : canEditCatalog) && (item.id !== "content" && item.id !== "pages" && item.id !== "works" && item.id !== "content-studio" || canEditContent));
+  const visibleNav = nav.filter((item) => (item.id !== "catalogs" || canEditCatalog) && (item.id !== "team" || canManageTeam) && (item.id !== "options" && item.id !== "packages" && item.id !== "theme" ? true : canEditCatalog) && (item.id !== "content" && item.id !== "pages" && item.id !== "works" && item.id !== "content-studio" || canEditContent));
   const newOrders = useMemo(() => orders.filter((order) => order.status === "new").length, [orders]);
   const title = nav.find((item) => item.id === view)?.label ?? "إدارة المنصة";
 
@@ -204,6 +205,7 @@ export default function AdminPage() {
 
         {view === "content" && <section className="admin-content-card"><div className="admin-content-title"><div><h2>نصوص الصفحة الرئيسية</h2><p>كل العناوين والأوصاف والأزرار والشارات الظاهرة في الواجهة الحالية قابلة للتحرير.</p></div></div><div className="admin-form-grid">{siteCopyFields.map(([key, label, multiline]) => <label className="admin-field" key={key} style={multiline ? { gridColumn: "1 / -1" } : undefined}>{label}{multiline ? <textarea rows={3} value={page[key] ?? ""} onChange={(event) => setPage({ ...page, [key]: event.target.value })} /> : <input value={page[key] ?? ""} onChange={(event) => setPage({ ...page, [key]: event.target.value })} />}</label>)}</div><div className="admin-actions"><button className="button" disabled={busy} onClick={savePage}>حفظ ونشر النصوص ✓</button><button className="button button-outline" onClick={() => setView("pages")}>تحرير البطاقات والأقسام ←</button></div></section>}
 
+        {view === "catalogs" && canEditCatalog && <CatalogManager />}
         {view === "pages" && <ContentManager onSaved={loadData} />}
         {view === "works" && <ContentManager initialSlug="works" onSaved={loadData} />}
         {view === "content-studio" && canEditContent && <ContentStudio />}
