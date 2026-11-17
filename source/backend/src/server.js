@@ -106,8 +106,10 @@ async function requireAdmin(req,res,next) {
     if (!token) return res.status(401).json({error:"Authentication required"});
     const session = jwt.verify(token, process.env.JWT_SECRET, {issuer:"atsh-ai-api", audience:"atsh-admin"});
     if (session.role === "owner") {
-      const reset = await pool.query("SELECT 1 FROM owner_password_overrides WHERE id=1 AND updated_at > to_timestamp($1)",[session.iat]);
-      if (reset.rowCount) throw new Error("Owner session predates password reset");
+      const ownerRevision=await pool.query("SELECT session_version FROM owner_password_overrides WHERE id=1");
+      const currentVersion=Number(ownerRevision.rows[0]?.session_version??0);
+      if ((Number.isSafeInteger(session.ownerVersion)?session.ownerVersion:0)!==currentVersion)
+        throw new Error("Owner session predates password reset");
     }
     if (session.userId) {
       const active = await pool.query("SELECT is_active FROM team_members WHERE id=$1",[session.userId]);
@@ -605,7 +607,7 @@ app.post("/api/admin/password-reset/complete",rateLimit({windowMs:15*60*1000,lim
     await client.query("BEGIN");
     const reset=await client.query("SELECT id FROM owner_password_reset_tokens WHERE id=1 AND token_hash=$1 AND expires_at>now() AND used_at IS NULL FOR UPDATE",[tokenHash]);
     if(!reset.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"رمز الاستعادة غير صالح أو منتهي الصلاحية."});}
-    await client.query("INSERT INTO owner_password_overrides(id,password_hash,updated_at) VALUES(1,$1,now()) ON CONFLICT(id) DO UPDATE SET password_hash=EXCLUDED.password_hash,updated_at=now()",[passwordHash]);
+    await client.query("INSERT INTO owner_password_overrides(id,password_hash,updated_at,session_version) VALUES(1,$1,now(),1) ON CONFLICT(id) DO UPDATE SET password_hash=EXCLUDED.password_hash,updated_at=now(),session_version=owner_password_overrides.session_version+1",[passwordHash]);
     await client.query("UPDATE owner_password_reset_tokens SET used_at=now() WHERE id=1");
     await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id) VALUES($1,'owner.password.reset','owner',gen_random_uuid())",[process.env.ADMIN_EMAIL]);
     await client.query("COMMIT");
@@ -618,9 +620,9 @@ app.post("/api/admin/login",rateLimit({windowMs:15*60*1000,limit:5,standardHeade
   const email=parsed.data.email.trim().toLowerCase();
   let session=null;
   if(email===process.env.ADMIN_EMAIL.trim().toLowerCase()){
-    const override=await pool.query("SELECT password_hash FROM owner_password_overrides WHERE id=1");
+    const override=await pool.query("SELECT password_hash,session_version FROM owner_password_overrides WHERE id=1");
     const ownerHash=override.rows[0]?.password_hash||process.env.ADMIN_PASSWORD_HASH;
-    if(await bcrypt.compare(parsed.data.password,ownerHash))session={email:process.env.ADMIN_EMAIL.trim(),role:"owner"};
+    if(await bcrypt.compare(parsed.data.password,ownerHash))session={email:process.env.ADMIN_EMAIL.trim(),role:"owner",ownerVersion:Number(override.rows[0]?.session_version??0)};
   }
   else {
     const member=await pool.query("SELECT id,email,role,password_hash FROM team_members WHERE lower(email)=lower($1) AND is_active=true",[email]);
