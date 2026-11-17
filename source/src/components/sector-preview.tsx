@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { loadGuestWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 import Link from "next/link";
 import type { SectorTemplate } from "@/lib/sector-catalog";
 
@@ -10,6 +11,16 @@ export default function SectorPreview({template}: {template: SectorTemplate}) {
   const [brand,setBrand]=useState("#203958");
   const [customTitle,setCustomTitle]=useState("");
   const [showForm,setShowForm]=useState(false);
+  useEffect(()=>{
+    const guest=loadGuestWorkspace();
+    if(guest.sectorSlug===template.slug){
+      if(guest.businessName)setCustomTitle(guest.businessName);
+      if(guest.businessDescription)setCustomDescription(guest.businessDescription);
+      if(guest.brandColor)setBrand(guest.brandColor);
+    }
+    saveGuestWorkspace({sectorSlug:template.slug,sectorName:template.name,source:"preview"});
+  },[template.slug,template.name]);
+
   const [logoData,setLogoData]=useState("");
   const [customDescription,setCustomDescription]=useState("");
   const [logoError,setLogoError]=useState("");
@@ -32,11 +43,11 @@ export default function SectorPreview({template}: {template: SectorTemplate}) {
       <h1 style={{margin:"0 0 8px",color:brand,display:"flex",alignItems:"center",gap:10}}>{logoData?<img src={logoData} alt="شعار النشاط التجريبي" style={{width:48,height:48,objectFit:"contain"}}/>:template.icon} {customTitle || template.name}</h1>
       <p style={{color:"#64748b",lineHeight:1.8}}>{customDescription||template.description}</p>
       <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"end"}}>
-        <label style={{display:"grid",gap:5}}>اسم النشاط التجريبي<input value={customTitle} onChange={e=>setCustomTitle(e.target.value)} placeholder={template.name} maxLength={50} style={{padding:10,border:"1px solid #cbd5e1",borderRadius:8}}/></label>
-        <label style={{display:"grid",gap:5}}>لون الهوية<input aria-label="لون الهوية" type="color" value={brand} onChange={e=>setBrand(e.target.value)} style={{height:43,width:74,border:0}}/></label>
+        <label style={{display:"grid",gap:5}}>اسم النشاط التجريبي<input value={customTitle} onChange={e=>{setCustomTitle(e.target.value);saveGuestWorkspace({businessName:e.target.value,sectorSlug:template.slug,sectorName:template.name,source:"preview"});}} placeholder={template.name} maxLength={50} style={{padding:10,border:"1px solid #cbd5e1",borderRadius:8}}/></label>
+        <label style={{display:"grid",gap:5}}>لون الهوية<input aria-label="لون الهوية" type="color" value={brand} onChange={e=>{setBrand(e.target.value);saveGuestWorkspace({brandColor:e.target.value,sectorSlug:template.slug,sectorName:template.name,source:"preview"});}} style={{height:43,width:74,border:0}}/></label>
       </div>
       <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"end",marginTop:14}}>
-        <label style={{display:"grid",gap:5,flex:"1 1 260px"}}>وصف النشاط التجريبي<input value={customDescription} onChange={e=>setCustomDescription(e.target.value)} maxLength={200} placeholder="اكتب النص الذي تريده في نموذجك" style={{padding:10,border:"1px solid #cbd5e1",borderRadius:8}}/></label>
+        <label style={{display:"grid",gap:5,flex:"1 1 260px"}}>وصف النشاط التجريبي<input value={customDescription} onChange={e=>{setCustomDescription(e.target.value);saveGuestWorkspace({businessDescription:e.target.value,sectorSlug:template.slug,sectorName:template.name,source:"preview"});}} maxLength={200} placeholder="اكتب النص الذي تريده في نموذجك" style={{padding:10,border:"1px solid #cbd5e1",borderRadius:8}}/></label>
         <label style={{display:"grid",gap:5,flex:"1 1 200px"}}>ارفع شعارك (للمعاينة فقط)<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>uploadLogo(e.target.files?.[0])} /></label>
       </div>
       {logoError&&<p role="alert" style={{color:"#b91c1c"}}>{logoError}</p>}
