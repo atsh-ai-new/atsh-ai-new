@@ -1,0 +1,4 @@
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
+import { CreateRequestDto } from './requests.dto';
+describe('CreateRequestDto',()=>{ const valid={name:'Client',email:'customer@example.com',phone:'01000000000',details:'Website with multiple pages',services:['موقع إلكتروني']}; it('accepts valid public request',async()=>{expect(await validate(plainToInstance(CreateRequestDto,valid))).toHaveLength(0)}); it('rejects unknown services',async()=>{const errors=await validate(plainToInstance(CreateRequestDto,{...valid,services:['not-approved']}));expect(errors.length).toBeGreaterThan(0)}); it('rejects invalid email',async()=>{const errors=await validate(plainToInstance(CreateRequestDto,{...valid,email:'bad'}));expect(errors.length).toBeGreaterThan(0)}); });
