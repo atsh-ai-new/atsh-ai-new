@@ -61,7 +61,7 @@ jobs:
           import pg from 'pg';
           import assert from 'node:assert/strict';
           const db=new pg.Pool({connectionString:process.env.DATABASE_URL});
-          for(const name of ['contract_templates','contract_template_versions','customer_project_drafts','customer_workspace_drafts','customer_workspace_logos','customer_preview_versions']){
+          for(const name of ['contract_templates','contract_template_versions','customer_project_drafts','customer_workspace_drafts','customer_workspace_logos','customer_preview_versions','customer_project_logos','customer_preview_logo_versions','visitor_ai_daily_usage']){
             const r=await db.query('SELECT to_regclass($1) AS name',[name]);
             assert.ok(r.rows[0].name, `Missing ${name}`);
           }
