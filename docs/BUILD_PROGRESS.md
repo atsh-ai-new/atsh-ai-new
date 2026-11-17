@@ -47,3 +47,10 @@ Current CI status must be checked in GitHub Actions; never infer success from a 
 3. Production proof of GPT configured credentials, catalog admin edits, signed-in workspace/logo upload and account-owned orders against a test database.
 4. Monthly vs annual invoice schedule and subscription entitlements, and E2E browser/mobile/security tests.
 5. Final launch approval before connecting providers/production domain.
+
+## Stage 42 — Hierarchical catalog interface (2026-11-17)
+- Replaced flat public gallery filter with a mobile-friendly hierarchy: top-level sector tabs → optional subcategory filter → live catalog cards, grouped by major sector.
+- The administrative catalog editor now supports creating, renaming, showing/hiding, safely removing, and reordering **major sectors** and **subcategories**. Sector icons/descriptions can also be edited. Deletion is refused when catalog entries reference the group, including archived entries.
+- Each catalog can be assigned a specific sector and optional subcategory. Changes are saved to the existing authenticated CMS `catalog` page as `sectors` plus `items`, so both front-end and admin share one published source.
+- Legacy four sample catalogs retain their initial placements via a migration-friendly fallback. A category that has been unpublished does not render its dependent catalogs publicly.
+- Build checks run on branch push. Integration and browser visual checks against real deployed database remain outstanding. No changes to main.
