@@ -14,6 +14,7 @@ export default function CommercialManager(){
  const [quotes,setQuotes]=useState<Quote[]>([]),[templates,setTemplates]=useState<Template[]>([]),[tickets,setTickets]=useState<Ticket[]>([]);
  const [email,setEmail]=useState(""),[description,setDescription]=useState(""),[amount,setAmount]=useState(""),[title,setTitle]=useState(""),[body,setBody]=useState(""),[message,setMessage]=useState("");
  const [selectedTemplate,setSelectedTemplate]=useState<number|null>(null);
+ const [orderIdToQuote,setOrderIdToQuote]=useState("");
  const [contractCategory,setContractCategory]=useState("general");
  const [contractPublished,setContractPublished]=useState(false);
  const [contractArchived,setContractArchived]=useState(false);
@@ -49,6 +50,12 @@ export default function CommercialManager(){
  <form onSubmit={e=>{e.preventDefault();void run(()=>request("quotes","POST",{customerEmail:email,items:[{label:description,quantity:1,unitPricePiasters:Math.round(Number(amount)*100)}]}))}} style={{display:"grid",gap:8,maxWidth:540}}>
  <h3>عرض سعر جديد</h3><input aria-label="بريد العميل" type="email" required placeholder="بريد العميل" value={email} onChange={e=>setEmail(e.target.value)}/><input aria-label="وصف الخدمة" required placeholder="وصف الخدمة" value={description} onChange={e=>setDescription(e.target.value)}/><input aria-label="السعر بالجنيه" required type="number" min="0" step="0.01" placeholder="السعر بالجنيه المصري" value={amount} onChange={e=>setAmount(e.target.value)}/><button type="submit">إنشاء عرض مسودة</button>
  </form>
+ <form onSubmit={event=>{event.preventDefault();void run(async()=>{await request(`orders/${encodeURIComponent(orderIdToQuote.trim())}/quote`,"POST",{});setOrderIdToQuote("");});}} style={{display:"grid",gap:8,maxWidth:560,padding:14,border:"1px solid #d3dfec",borderRadius:12}}>
+   <h3>إنشاء عرض سعر من طلب عميل ومعاينة معتمدة</h3>
+   <p>يستخرج المحرك البنود والأسعار من الطلب الأصلي على الخادم، ويشترط حسابًا موثقًا واعتماد أحدث معاينة للمشروع. لا يُقبل إدخال مبلغ يدوي في هذا المسار.</p>
+   <label>رقم الطلب UUID<input aria-label="رقم الطلب لإنشاء عرض السعر" required pattern="[a-fA-F0-9-]{36}" value={orderIdToQuote} onChange={e=>setOrderIdToQuote(e.target.value)} placeholder="رقم الطلب من لوحة الطلبات"/></label>
+   <button type="submit">توليد عرض سعر مرتبط بالطلب</button>
+  </form>
  <div><h3>عروض الأسعار</h3>{quotes.map(q=><div key={q.id} style={{border:"1px solid #bbb",padding:12,marginBottom:8}}><b>#{q.id}</b> — {q.customer_email} — {(Number(q.total_piasters)/100).toLocaleString("ar-EG")} ج.م — {q.status} — إصدار {q.revision}<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{q.status==="draft"&&<button onClick={()=>void run(()=>request(`quotes/${q.id}/issue`,"POST",{}))}>إصدار العرض</button>}{q.status==="issued"&&<><button onClick={()=>{const id=prompt("رقم قالب العقد");if(id)void run(()=>request("contracts/issue","POST",{quoteId:q.id,templateId:Number(id)}))}}>إصدار عقد من قالب</button><button onClick={()=>void run(async()=>{const result=await request(`quotes/${q.id}/review-link`,"POST",{});const url=`${location.origin}/commercial/review?token=${encodeURIComponent(result.reviewToken)}`;setMessage(`رابط مراجعة خاص — أرسله للعميل بشكل آمن: ${url}`)})}>رابط مراجعة العقد</button></>}</div></div>)}</div>
  <section style={{display:"grid",gap:14,border:"1px solid #d7e1ec",borderRadius:14,padding:18}}>
  <h3>العقود — إدارة الصياغة والإصدارات</h3>
