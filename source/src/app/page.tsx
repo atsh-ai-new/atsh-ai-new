@@ -49,6 +49,9 @@ export default function HomePage() {
   const [siteConfig, setSiteConfig] = useState<SiteConfig>({});
   const [pageLinks, setPageLinks] = useState<PageLink[]>([]);
   const [selectedSector, setSelectedSector] = useState<{ slug: string; name: string } | null>(null);
+  const [sectorPricedAddons,setSectorPricedAddons]=useState<Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>>([]);
+  const [sectorAddonCodes,setSectorAddonCodes]=useState<string[]>([]);
+  const [sectorPrice,setSectorPrice]=useState<{subtotal:number;monthly:number;yearly:number;needsCustomQuote:boolean;items:Array<{code:string;name:string;price:number;pricingType:string}>}|null>(null);
   const copy = (key: string) => { const value = siteConfig.page?.content?.[key]; return (typeof value === "string" ? value.trim() : "") || siteCopyDefaults[key] || ""; };
   const steps = Array.from({ length: 8 }, (_, index) => copy(`stepper${index}`));
   const startWindowLabel = ({ soon: copy("startSoon"), month: copy("startInMonth"), twoMonths: copy("startInTwoMonths"), exploring: copy("startExploring") } as Record<string, string>)[startWindow] ?? copy("startInMonth");
@@ -89,7 +92,10 @@ export default function HomePage() {
         const items = data?.page?.content?.items;
         if (!Array.isArray(items)) return;
         const item = items.find((candidate: {slug?:string;name?:string;published?:boolean;archived?:boolean}) => candidate.slug === slug && candidate.published !== false && !candidate.archived);
-        if (item && typeof item.name === "string") setSelectedSector({ slug, name: item.name });
+        if (item && typeof item.name === "string") {
+          setSelectedSector({ slug, name: item.name });
+          setSectorPricedAddons(Array.isArray(item.pricedAddons)?item.pricedAddons:[]);
+        }
       }).catch(() => undefined);
   }, []);
 
@@ -105,6 +111,17 @@ export default function HomePage() {
   useEffect(() => {
     if (packageId) saveGuestWorkspace({packageId,source:"configurator"});
   }, [packageId]);
+  useEffect(() => {
+    if (!selectedSector){setSectorPrice(null);setSectorPricedAddons([]);return;}
+    let active=true;
+    const params=new URLSearchParams({slug:selectedSector.slug});
+    if(sectorAddonCodes.length)params.set("addons",sectorAddonCodes.join(","));
+    fetch(`/api/sector-price?${params}`,{cache:"no-store"})
+      .then(async r=>{if(!r.ok)throw Error("Sector pricing unavailable");return r.json();})
+      .then(data=>{if(active)setSectorPrice(data);})
+      .catch(()=>{if(active)setSectorPrice({subtotal:0,monthly:0,yearly:0,needsCustomQuote:true,items:[]});});
+    return()=>{active=false;};
+  },[selectedSector,sectorAddonCodes]);
   const localPackageFor = (backendId: string) => packages.find((item) => backendPackageIds[item.id] === backendId);
   const apiOverrides = apiCatalog.packages.map((backend) => {
     const local = localPackageFor(backend.id);
@@ -144,6 +161,12 @@ export default function HomePage() {
   const apiConfigured = catalogStatus === "ready" && Boolean(selectedServerPackage) && selectedConfiguredOptions.every(Boolean);
   const selectedPackageOptions = serverOptions.map((option) => ({ code: option.code, name: option.name, price: Number(option.price), pricingType: option.pricing_type }));
   const quote = useMemo(() => calculateQuote({ packageId, identity, content, addons, pages, bilingual, hosting, maintenance, domain }, apiOverrides, selectedPackageOptions, vatRate, extraQuoteOptions), [packageId, identity, content, addons, pages, bilingual, hosting, maintenance, domain, apiOverrides, selectedPackageOptions, vatRate, extraQuoteOptions]);
+  const sectorSubtotal=selectedSector&&sectorPrice&&!sectorPrice.needsCustomQuote?sectorPrice.subtotal:0;
+  const quoteSubtotal=quote.subtotal+sectorSubtotal;
+  const quoteTax=quoteSubtotal*vatRate/100;
+  const quoteTotal=quoteSubtotal+quoteTax;
+  const quoteRecurring=quote.recurring+(sectorPrice?.yearly??0);
+  const sectorNeedsQuote=Boolean(selectedSector&&(!sectorPrice||sectorPrice.needsCustomQuote));
   const selectedPackage = visiblePackages.find((item) => item.id === packageId);
   const includedPages = selectedPackage?.includedPages ?? 0;
 
@@ -172,10 +195,11 @@ export default function HomePage() {
       `الهوية: ${identityOptions.find((item) => item.id === identity)?.name ?? "شعار العميل"}`,
       `المحتوى: ${content === "writing" ? "كتابة محتوى" : "محتوى مقدم من العميل"}`,
       ...quote.items.map((item) => `${item.label}: ${formatEgp(item.amount)}${item.period ? ` / ${item.period}` : ""}`),
-      `المجموع قبل الضريبة: ${formatEgp(quote.subtotal)}`,
-      `ضريبة القيمة المضافة (${vatRate}%): ${formatEgp(quote.tax)}`,
-      `إجمالي البنود المسعّرة: ${formatEgp(quote.total)}`,
-      `مبلغ سنوي متكرر: ${formatEgp(quote.recurring)}`,
+      ...(sectorPrice&&!sectorPrice.needsCustomQuote?sectorPrice.items.map(item=>`${item.name}: ${formatEgp(item.price)} / ${item.pricingType}`):[]),
+      `المجموع قبل الضريبة: ${formatEgp(quoteSubtotal)}`,
+      `ضريبة القيمة المضافة (${vatRate}%): ${formatEgp(quoteTax)}`,
+      `إجمالي البنود المسعّرة: ${formatEgp(quoteTotal)}`,
+      `مبلغ سنوي متكرر: ${formatEgp(quoteRecurring)}`,
       quote.needsCustomQuote ? "يتطلب الطلب مراجعة بنود مخصصة قبل اعتماد السعر النهائي." : "",
       `${copy("startDateLabel")}: ${startWindowLabel}`,
       customer.name ? `الاسم: ${customer.name}` : "",
@@ -232,6 +256,7 @@ export default function HomePage() {
           packageId: selectedServerPackage.id,
           optionIds: resolvedOptions.map((option) => option.id),
           optionQuantities,
+          ...(selectedSector ? {sectorSlug:selectedSector.slug,sectorAddonCodes} : {}),
           customerName: customer.name,
           email: customer.email,
           phone: customer.phone,
@@ -325,8 +350,15 @@ export default function HomePage() {
       </section>
 
       <section className="configurator-section" id="configurator">
+        {selectedSector && sectorPricedAddons.length>0 && <section style={{border:"1px solid #d5e1ef",background:"#fff",padding:16,borderRadius:12,marginBottom:14}}>
+          <h3>إضافات خاصة بنظام {selectedSector.name}</h3>
+          {sectorPricedAddons.map(option=><label key={option.code} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"9px 0"}}>
+            <span><input type="checkbox" checked={sectorAddonCodes.includes(option.code)} onChange={event=>setSectorAddonCodes(current=>event.target.checked?[...current,option.code]:current.filter(x=>x!==option.code))}/> {option.name}</span>
+            <b>{formatEgp(option.price)} {option.pricingType==="monthly"?"/ شهري":option.pricingType==="yearly"?"/ سنوي":""}</b>
+          </label>)}
+        </section>}
         {selectedSector && <div role="status" style={{border:"1px solid #d5e1ef",borderRadius:12,padding:"12px 16px",margin:"18px 0",background:"#eef5fc",color:"#203958"}}>
-          النموذج الذي اخترته: <strong>{selectedSector.name}</strong>. تُحسب الباقة والإضافات الحالية هنا، أما تكلفة تخصيص نظام القطاع فتحتاج عرضًا معتمدًا من الإدارة قبل الشراء.
+          النموذج الذي اخترته: <strong>{selectedSector.name}</strong>. تُحسب أسعار القطاع والإضافات المنشورة من الخادم. {sectorNeedsQuote ? "تكلفة هذا النظام تحتاج اعتماد عرض مخصص قبل الشراء." : `تكلفة قطاعك وإضافاته: ${formatEgp(sectorSubtotal)}.`}
         </div>}
         <div className="section-heading configurator-title"><div><span className="section-kicker">{copy("configuratorKicker")}</span><h2>{copy("configuratorTitle")}</h2></div><p>{copy("configuratorDescription")}</p></div>
         <div className="builder-layout">
@@ -391,9 +423,10 @@ export default function HomePage() {
               {step === 7 && <div className="review-screen">
                 <div className="review-callout"><strong>{quote.needsCustomQuote ? copy("reviewNeedsCustomTitle") : copy("reviewReadyTitle")}</strong><p>{quote.needsCustomQuote ? copy("reviewCustomDescription") : copy("reviewStandardDescription")}</p></div>
                 <div className="review-section"><h4>{copy("reviewInfoTitle")}</h4><div className="review-detail"><span>{copy("reviewPackageLabel")}</span><b>{selectedPackage?.name ?? copy("customQuoteLabel")}</b></div><div className="review-detail"><span>{copy("reviewPagesLabel")}</span><b>{pages} {copy(pages === 1 ? "pageSingular" : "pagePlural")}</b></div><div className="review-detail"><span>{copy("reviewLanguageLabel")}</span><b>{bilingual ? copy("languageBilingual") : copy("languageArabic")}</b></div><div className="review-detail"><span>{copy("reviewIdentityLabel")}</span><b>{identityOptions.find((item) => item.id === identity)?.name}</b></div><div className="review-detail"><span>{copy("reviewStartLabel")}</span><b>{startWindowLabel}</b></div></div>
-                <div className="review-section"><h4>{copy("reviewPriceTitle")}</h4>{quote.items.map((item) => <div key={item.id} className="review-detail"><span>{item.label}{item.period ? ` · ${item.period}` : ""}</span><b>{formatEgp(item.amount)}</b></div>)}<div className="review-detail review-subtotal"><span>{copy("reviewSubtotal")}</span><b>{formatEgp(quote.subtotal)}</b></div><div className="review-detail"><span>{copy("reviewTax")} {vatRate}%</span><b>{formatEgp(quote.tax)}</b></div><div className="review-total"><span>{copy("reviewTotal")}</span><strong>{formatEgp(quote.total)}</strong></div><div className="review-detail recurring-row"><span>{copy("recurringFees")}</span><b>{formatEgp(quote.recurring)}</b></div></div>
+                {sectorNeedsQuote&&<p className="api-notice">تكلفة القطاع غير معتمدة، لا يمكن تسجيل شراء بهذه القيمة الجزئية.</p>}
+                <div className="review-section"><h4>{copy("reviewPriceTitle")}</h4>{sectorPrice&&!sectorPrice.needsCustomQuote&&sectorPrice.items.map(item=><div key={item.code} className="review-detail"><span>{item.name} · {item.pricingType==="yearly"?"سنوي":item.pricingType==="monthly"?"شهري":"مرة واحدة"}</span><b>{formatEgp(item.price)}</b></div>)}{quote.items.map((item) => <div key={item.id} className="review-detail"><span>{item.label}{item.period ? ` · ${item.period}` : ""}</span><b>{formatEgp(item.amount)}</b></div>)}<div className="review-detail review-subtotal"><span>{copy("reviewSubtotal")}</span><b>{formatEgp(quote.subtotal)}</b></div><div className="review-detail"><span>{copy("reviewTax")} {vatRate}%</span><b>{formatEgp(quote.tax)}</b></div><div className="review-total"><span>{copy("reviewTotal")}</span><strong>{formatEgp(quoteTotal)}</strong></div><div className="review-detail recurring-row"><span>{copy("recurringFees")}</span><b>{formatEgp(quoteRecurring)}</b></div></div>
                 <div className="review-section"><h4>{copy("reviewContactTitle")}</h4><div className="review-detail"><span>{copy("fullNameLabel")}</span><b>{customer.name || "—"}</b></div><div className="review-detail"><span>{copy("customerEmailLabel")}</span><b>{customer.email || "—"}</b></div><div className="review-detail"><span>{copy("customerPhoneLabel")}</span><b>{customer.phone || "—"}</b></div></div>
-                <div className="review-actions"><button type="button" className="button button-outline" onClick={downloadSummary}>{copy("downloadSummaryButton")}</button><button className="button" type="submit" disabled={!apiConfigured || requestState === "sending" || !customer.name || !customer.email || !customer.phone || !privacyAccepted}>{requestState === "sending" ? copy("sendingRequest") : copy("submitRequestButton")}<span>←</span></button></div>
+                <div className="review-actions"><button type="button" className="button button-outline" onClick={downloadSummary}>{copy("downloadSummaryButton")}</button><button className="button" type="submit" disabled={!apiConfigured || sectorNeedsQuote || requestState === "sending" || !customer.name || !customer.email || !customer.phone || !privacyAccepted}>{requestState === "sending" ? copy("sendingRequest") : copy("submitRequestButton")}<span>←</span></button></div>
                 {!apiConfigured && <p className="api-notice">{catalogStatus === "loading" ? copy("loadingCatalogMessage") : catalogStatus === "unavailable" ? copy("unavailableCatalogMessage") : copy("catalogMismatchMessage")}</p>}
                 {requestMessage && <p className={requestState === "sent" ? "success-message" : "error-message"} role="status">{requestMessage}</p>}
               </div>}
@@ -406,10 +439,10 @@ export default function HomePage() {
               <div className="summary-heading"><div><span className="section-kicker">{copy("quoteSummaryKicker")}</span><h3>{copy("quoteSummaryTitle")}</h3></div><span className="summary-status">{packageId ? copy("quoteConfiguring") : copy("quoteStartSelecting")}</span></div>
               <div className="included-banner">✦ 3 تصاميم و5 اتجاهات لونية مشمولة</div>
               {!packageId ? <p className="empty-summary">{copy("quoteEmpty")}</p> : <>
-                <div className="summary-lines">{quote.items.map((item) => <div className="summary-line" key={item.id}><span>{item.label}{item.period ? <small>{item.period}</small> : null}</span><b>{formatEgp(item.amount)}</b></div>)}</div>
+                <div className="summary-lines">{sectorPrice&&!sectorPrice.needsCustomQuote&&sectorPrice.items.map(item=><div className="summary-line" key={item.code}><span>{item.name}<small>{item.pricingType==="yearly"?"سنوي":item.pricingType==="monthly"?"شهري":"مرة واحدة"}</small></span><b>{formatEgp(item.price)}</b></div>)}{quote.items.map((item) => <div className="summary-line" key={item.id}><span>{item.label}{item.period ? <small>{item.period}</small> : null}</span><b>{formatEgp(item.amount)}</b></div>)}</div>
                 <div className="summary-math"><div><span>{copy("reviewSubtotal")}</span><b>{formatEgp(quote.subtotal)}</b></div><div><span>{copy("reviewTax")} ({vatRate}%)</span><b>{formatEgp(quote.tax)}</b></div><div className="summary-grand"><span>{copy("reviewTotal")}</span><strong>{formatEgp(quote.total)}</strong></div></div>
                 <div className="summary-annual"><span>{copy("quoteRecurring")}</span><b>{formatEgp(quote.recurring)}</b></div>
-                {quote.needsCustomQuote && <p className="custom-quote-note">{copy("quoteCustomNote")}</p>}
+                {(quote.needsCustomQuote||sectorNeedsQuote) && <p className="custom-quote-note">{copy("quoteCustomNote")}</p>}
               </>}
               <p className="summary-footnote">{copy("quoteFootnote")}</p>
             </div>
