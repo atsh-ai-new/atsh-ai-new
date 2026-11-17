@@ -20,6 +20,7 @@ import { priceSectorSelection } from "./sector-pricing.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
 import {queueJourneyEvent,deliverJourneyEvents,eventDestination} from "./customer-event-outbox.js";
+import {checkDomainWithNamecheap} from "./domain-availability.js";
 import { buildProjectPlan, proposeVisualEdit } from "./project-builder.js";
 import {verifyCallback,validJobResult,canTransition} from "./builder-job-rules.js";
 import { operationGuard } from "./operation-guards.js";
@@ -435,6 +436,19 @@ app.get("/api/site-media/:id",route(async(req,res)=>{
 }));
 
 // Sector price is calculated using only published administrator-maintained catalog data.
+// Real registrar lookup when Namecheap credentials are configured; no reservation or purchase.
+app.get("/api/domains/check",rateLimit({windowMs:60*1000,limit:10,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
+ const domain=req.query.domain;
+ if(typeof domain!=="string")return res.status(400).json({error:"Invalid domain"});
+ try{
+  const result=await checkDomainWithNamecheap(domain);
+  if(!result.configured)return res.status(503).json({error:"Domain registrar is not configured"});
+  res.set("Cache-Control","no-store").json(result);
+ }catch(e){
+  const invalid=e?.message==="Invalid domain";
+  return res.status(invalid?400:502).json({error:invalid?"Invalid domain":"Domain availability could not be verified"});
+ }
+}));
 app.get("/api/sector-price",route(async(req,res)=>{
   const slug=typeof req.query.slug==="string"?req.query.slug:"";
   const addons=typeof req.query.addons==="string"&&req.query.addons
