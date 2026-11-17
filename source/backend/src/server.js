@@ -446,6 +446,9 @@ const orderSchema = z.object({
   packageId:z.string().uuid(),
   optionIds:z.array(z.string().uuid()).max(30).default([]),
   optionQuantities:z.record(z.string().uuid(),z.number().int().min(1).max(50)).default({}),
+  sectorSlug:z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100).optional(),
+  sectorAddonCodes:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).max(30).default([]),
+  projectDraftId:z.string().uuid().optional(),
   customerName:z.string().trim().min(2).max(120),
   phone:z.string().trim().min(7).max(30),
   email:z.union([z.string().email().max(254),z.literal("")]).optional(),
@@ -503,12 +506,18 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
       VALUES($1,$2,$3,$4,$5,$6,'new',$7,$8,$9,$10,$11,$12)
       RETURNING id,reference,status,total,currency,created_at`,
       [reference,input.customerName,input.phone,input.email||null,input.notes,pkg.id,pkg.currency,subtotal,vatRate,vatAmount,total,snapshot]);
+    if(input.projectDraftId&&!ownedCustomer){await client.query("ROLLBACK");return res.status(401).json({error:"Account required for project draft"});}
+    if(input.projectDraftId&&ownedCustomer){
+      const draft=await client.query("SELECT id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 FOR UPDATE",[input.projectDraftId,ownedCustomer.id]);
+      if(!draft.rowCount){await client.query("ROLLBACK");return res.status(403).json({error:"Project draft is not owned by this account"});}
+    }
     if(ownedCustomer){
       const project=await client.query(`INSERT INTO customer_journey_projects(customer_name,customer_email,template_id,created_by,customer_account_id)
         VALUES($1,$2,$3,$4,$5) RETURNING id`,
         [input.customerName,ownedCustomer.email,input.sectorSlug||null,ownedCustomer.email,ownedCustomer.id]);
       await client.query("INSERT INTO customer_journey_order_links(project_id,order_id,linked_by) VALUES($1,$2,$3)",[project.rows[0].id,saved.rows[0].id,ownedCustomer.email]);
       saved.rows[0].projectId=project.rows[0].id;
+      if(input.projectDraftId){await client.query("UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2 AND customer_id=$3",[project.rows[0].id,input.projectDraftId,ownedCustomer.id]);}
     }
     await client.query("COMMIT");
     res.status(201).json({order:saved.rows[0]});
