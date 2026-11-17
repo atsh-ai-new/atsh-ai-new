@@ -54,3 +54,7 @@ Current CI status must be checked in GitHub Actions; never infer success from a 
 - Each catalog can be assigned a specific sector and optional subcategory. Changes are saved to the existing authenticated CMS `catalog` page as `sectors` plus `items`, so both front-end and admin share one published source.
 - Legacy four sample catalogs retain their initial placements via a migration-friendly fallback. A category that has been unpublished does not render its dependent catalogs publicly.
 - Build checks run on branch push. Integration and browser visual checks against real deployed database remain outstanding. No changes to main.
+
+## Master remaining-work checklist
+- Prioritized open tasks, definitions of done, and newly required **admin contract wording/template editor**: [`docs/REMAINING_BUILD_TASKS_MASTER.md`](REMAINING_BUILD_TASKS_MASTER.md).
+- The existing contract UI supports creation of templates but **not editing and versioning of existing templates**. This is explicitly tracked as `ATSH-004` (P0) and is not yet implemented.
