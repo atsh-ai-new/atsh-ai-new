@@ -72,6 +72,7 @@ export default function CommercialManager(){
  <label>نوع العقد<select value={contractCategory} onChange={e=>setContractCategory(e.target.value)}>
  <option value="general">عام</option><option value="managed_monthly">اشتراك شهري مُدار</option><option value="managed_yearly">اشتراك سنوي مُدار</option><option value="source_code">شراء كود/ترخيص</option><option value="independent_hosting">استضافة مستقلة</option>
  </select></label>
+ <p style={{fontSize:12,lineHeight:1.8}}>الحقول المدعومة عند إصدار العقد: <code>{"{{customer_email}}"}</code>، <code>{"{{quote_id}}"}</code>، <code>{"{{quote_revision}}"}</code>، <code>{"{{quote_total}}"}</code>، <code>{"{{quote_currency}}"}</code>، <code>{"{{quote_items}}"}</code>، <code>{"{{template_revision}}"}</code>، <code>{"{{contract_category}}"}</code>. تتم تعبئتها من البيانات الرسمية لحظة إصدار العقد وليس من المتصفح.</p>
  <label>صيغة العقد وبنوده<textarea required minLength={20} maxLength={30000} rows={14} value={body} onChange={e=>setBody(e.target.value)} placeholder="اكتب نص العقد الكامل وسياسات الملكية والدعم والتجديد والتسليم."/></label>
  <label><input type="checkbox" checked={contractPublished} disabled={contractArchived} onChange={e=>setContractPublished(e.target.checked)}/> منشور ويصلح لإصدار عقود جديدة</label>
  {selectedTemplate!==null&&<label><input type="checkbox" checked={contractArchived} onChange={e=>{setContractArchived(e.target.checked);if(e.target.checked)setContractPublished(false);}}/> أرشفة القالب ومنع استخدامه مستقبلًا</label>}
