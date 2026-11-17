@@ -7,6 +7,10 @@ const fallback:Item[]=sectorTemplates.map((item,index)=>({...item,published:true
 export default function CatalogPage() {
   const [items,setItems]=useState<Item[]>(fallback);
   const [warning,setWarning]=useState("");
+  const [query,setQuery]=useState("");
+  const [category,setCategory]=useState("all");
+  const categories=[...new Set(items.map(item=>item.category).filter(Boolean))];
+  const visible=items.filter(item=>(category==="all"||item.category===category)&&[item.name,item.category,item.description,...(item.features??[])].join(" ").toLocaleLowerCase("ar").includes(query.toLocaleLowerCase("ar")));
   useEffect(()=>{
     let active=true;
     fetch("/api/site-content/catalog",{cache:"no-store"}).then(async response=>{
@@ -31,8 +35,17 @@ export default function CatalogPage() {
       <p style={{lineHeight:2,maxWidth:730,color:"#64748b"}}>نماذج تفاعلية توضيحية قابلة للتخصيص، وليست أنظمة متصلة ببيانات حقيقية. يمكنك اختيار الإضافات وحساب السعر من محرك التسعير.</p>
       {warning&&<p role="status" style={{fontSize:12,color:"#9a6700"}}>{warning}</p>}
     </section>
+    <section aria-label="البحث والتصنيف" style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:24}}>
+      <input aria-label="ابحث في المعرض" type="search" value={query} onChange={event=>setQuery(event.target.value)} placeholder="ابحث عن نظام أو مجال أو ميزة..." style={{flex:"2 1 240px",minWidth:0,padding:"13px 16px",border:"1px solid #d7dce3",borderRadius:12,background:"white"}}/>
+      <select aria-label="التصنيف" value={category} onChange={event=>setCategory(event.target.value)} style={{flex:"1 1 160px",padding:"13px",border:"1px solid #d7dce3",borderRadius:12,background:"white"}}>
+        <option value="all">كل المجالات</option>
+        {categories.map(value=><option key={value} value={value}>{value}</option>)}
+      </select>
+      <small style={{alignSelf:"center",color:"#64748b"}}>{visible.length} نموذج</small>
+    </section>
+    {visible.length===0&&<p role="status">لا توجد نماذج مطابقة للبحث. جرّب مجالًا آخر.</p>}
     <section aria-label="القطاعات المتاحة" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,255px),1fr))",gap:18}}>
-      {items.map(item=><article key={item.slug} style={{background:"#fff",border:"1px solid #e3e1d9",borderRadius:18,padding:23,boxShadow:"0 9px 25px #20395809",display:"flex",flexDirection:"column",gap:12}}>
+      {visible.map(item=><article key={item.slug} style={{background:"#fff",border:"1px solid #e3e1d9",borderRadius:18,padding:23,boxShadow:"0 9px 25px #20395809",display:"flex",flexDirection:"column",gap:12}}>
         {item.imageUrl?.startsWith("https://")?<img src={item.imageUrl} alt={item.name} style={{width:"100%",height:155,objectFit:"cover",borderRadius:12}}/>:<span aria-hidden style={{fontSize:34}}>{item.icon||"📁"}</span>}
         <small style={{color:"#4c78ae"}}>{item.category}</small><h2 style={{margin:0,color:"#203958"}}>{item.name}</h2>
         <p style={{lineHeight:1.9,color:"#64748b",flex:1}}>{item.description}</p>
