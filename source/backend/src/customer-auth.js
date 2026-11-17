@@ -146,6 +146,43 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   if(!result.rowCount)return res.status(409).json({error:'Draft missing or changed on another device; reload before saving'});
   res.set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
  }));
+ // Immutable preview revision generated from an account-owned project draft.
+ router.post('/project-drafts/:id/previews',requireCustomer,safe(async(req,res)=>{
+  const id=req.params.id;
+  if(!z.string().uuid().safeParse(id).success)return res.status(404).json({error:'Project not found'});
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   const owned=await client.query('SELECT id,title,draft,revision FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 FOR UPDATE',[id,req.customer.id]);
+   if(!owned.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Project not found'});}
+   const row=owned.rows[0];
+   const latest=await client.query('SELECT max(revision)::bigint AS revision FROM customer_preview_versions WHERE draft_id=$1',[id]);
+   const next=Number(latest.rows[0].revision||0)+1;
+   const snapshot={...row.draft,projectTitle:row.title,sourceRevision:row.revision,mode:'customer_customization_demo'};
+   const inserted=await client.query('INSERT INTO customer_preview_versions(draft_id,revision,snapshot) VALUES($1,$2,$3::jsonb) RETURNING id,revision,approval_status,created_at',[id,next,JSON.stringify(snapshot)]);
+   await client.query('COMMIT');
+   res.status(201).set('Cache-Control','private, no-store').json({preview:inserted.rows[0]});
+  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+ }));
+ router.get('/project-drafts/:id/previews',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Not found'});
+  const owned=await pool.query('SELECT id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2',[req.params.id,req.customer.id]);
+  if(!owned.rowCount)return res.status(404).json({error:'Not found'});
+  const result=await pool.query('SELECT id,revision,snapshot,approval_status,customer_comment,decided_at,created_at FROM customer_preview_versions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 100',[req.params.id]);
+  res.set('Cache-Control','private, no-store').json({previews:result.rows});
+ }));
+ router.post('/project-drafts/:id/previews/:previewId/decision',requireCustomer,safe(async(req,res)=>{
+  const p=z.object({decision:z.enum(['approved','changes_requested']),comment:z.string().max(2000).default('')}).strict().safeParse(req.body);
+  if(!p.success||!z.string().uuid().safeParse(req.params.id).success||!z.string().uuid().safeParse(req.params.previewId).success)return res.status(400).json({error:'Invalid approval request'});
+  const owned=await pool.query('SELECT id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2',[req.params.id,req.customer.id]);
+  if(!owned.rowCount)return res.status(404).json({error:'Not found'});
+  const result=await pool.query(`UPDATE customer_preview_versions SET approval_status=$3,customer_comment=$4,decided_at=now()
+     WHERE id=$1 AND draft_id=$2 AND approval_status='pending' AND revision=(SELECT max(revision) FROM customer_preview_versions WHERE draft_id=$2)
+     RETURNING id,revision,approval_status,decided_at`,
+     [req.params.previewId,req.params.id,p.data.decision,p.data.comment]);
+  if(!result.rowCount)return res.status(409).json({error:'Preview already reviewed or superseded'});
+  res.set('Cache-Control','private, no-store').json({preview:result.rows[0]});
+ }));
  router.get('/workspace',requireCustomer,safe(async(req,res)=>{
   const result=await pool.query('SELECT draft,revision,updated_at FROM customer_workspace_drafts WHERE customer_id=$1',[req.customer.id]);
   res.set('Cache-Control','no-store').json({workspace:result.rows[0]||{draft:{},revision:0}});
