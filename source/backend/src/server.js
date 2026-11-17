@@ -87,6 +87,7 @@ app.use("/api/admin/content-studio", (req,res,next) => {
 });
 // File uploads are streamed by the delivery router, never buffered in Express.
 app.use("/api/customer/auth/workspace/logo",express.raw({type:["image/png","image/jpeg","image/webp"],limit:"2mb"}));
+app.use("/api/customer/auth/project-drafts",express.raw({type:["image/png","image/jpeg","image/webp"],limit:"2mb"}));
 app.use("/api/internal/verified-payments",express.raw({type:"application/json",limit:"16kb"}));
 // Allow a wider structured sector catalog while keeping other JSON endpoints tightly bounded.
 app.use("/api/admin/pages/catalog",express.json({limit:"1mb"}));
