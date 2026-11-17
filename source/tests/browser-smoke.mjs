@@ -8,7 +8,13 @@ try{
   const page=await browser.newPage({viewport:{width,height},locale:"ar-EG"});
   await page.goto(origin+"/catalog",{waitUntil:"domcontentloaded"});
   await page.getByRole("heading",{name:/استكشف الأنظمة حسب مجالك/}).waitFor();
-  await page.getByRole("button",{name:/الصحة والرعاية الطبية/}).click();
+  const health=page.getByRole("button",{name:/الصحة والرعاية الطبية/});
+  for(let tries=0;tries<12;tries++){
+   await health.click();
+   if(await health.getAttribute("aria-pressed")==="true")break;
+   await page.waitForTimeout(150);
+  }
+  assert.equal(await health.getAttribute("aria-pressed"),"true","Sector filter must react after hydration");
   await page.getByRole("heading",{name:"عيادتي"}).waitFor();
   await page.getByRole("heading",{name:"سوبر ماركت"}).waitFor({state:"detached",timeout:5000});
   await page.locator('a[href="/catalog/eyadaty"]').click();
