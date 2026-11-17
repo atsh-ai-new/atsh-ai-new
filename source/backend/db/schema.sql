@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS content_studio_drafts (id uuid PRIMARY KEY DEFAULT ge
 CREATE INDEX IF NOT EXISTS content_studio_drafts_updated_idx ON content_studio_drafts(updated_at DESC);
 CREATE TABLE IF NOT EXISTS team_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), email varchar(254) NOT NULL UNIQUE, display_name varchar(120) NOT NULL, role varchar(20) NOT NULL CHECK(role IN ('admin','editor','sales','viewer')), password_hash text NOT NULL, is_active boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS owner_password_overrides (id integer PRIMARY KEY DEFAULT 1 CHECK (id=1), password_hash text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
+-- Monotonic credential revision makes owner sessions resilient to JWT second-level timestamp rounding.
+ALTER TABLE owner_password_overrides ADD COLUMN IF NOT EXISTS session_version bigint NOT NULL DEFAULT 1;
 CREATE TABLE IF NOT EXISTS owner_password_reset_tokens (id integer PRIMARY KEY DEFAULT 1 CHECK (id=1), token_hash char(64) NOT NULL, expires_at timestamptz NOT NULL, used_at timestamptz, created_at timestamptz NOT NULL DEFAULT now());
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS assigned_to uuid REFERENCES team_members(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS orders_assigned_to_idx ON orders(assigned_to);
