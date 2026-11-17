@@ -498,6 +498,10 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
     const p=await client.query("SELECT id,name,description,price,currency FROM packages WHERE id=$1 AND is_published=true FOR SHARE",[input.packageId]);
     if(!p.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"Package unavailable"});}
     const pkg=p.rows[0];
+    // Never interpret SQL NULL custom-price packages as free (Number(null) === 0).
+    if(pkg.price===null||pkg.price===undefined||!Number.isFinite(Number(pkg.price))||Number(pkg.price)<0){
+      await client.query("ROLLBACK");return res.status(409).json({error:"هذه الباقة تحتاج عرض سعر معتمد قبل تسجيل شراء.",needsCustomQuote:true});
+    }
     const [o, required] = await Promise.all([
       input.optionIds.length
         ? client.query("SELECT id,code,name,description,price,pricing_type,unit_label FROM package_options WHERE package_id=$1 AND id=ANY($2::uuid[]) AND is_active=true FOR SHARE",[pkg.id,input.optionIds])
@@ -522,7 +526,17 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
     const vatAmount=vatRate==null?null:Math.round(subtotal*vatRate)/100;
     const total=vatAmount==null?subtotal:subtotal+vatAmount;
     const reference="ATSH-"+new Date().toISOString().slice(0,10).replaceAll("-","")+"-"+crypto.randomUUID().slice(0,8).toUpperCase();
-    const snapshot={package:pkg,options:pricedOptions,sector:sectorPrice,currency:pkg.currency,subtotal,vatRate,vatAmount,total};
+    const breakdownItems=[
+      {code:"package",name:pkg.name,amount:Number(pkg.price),period:"fixed"},
+      ...pricedOptions.map(x=>({code:x.code,name:x.name,amount:x.lineTotal,period:x.pricing_type==="monthly"?"monthly":x.pricing_type==="yearly"?"yearly":"fixed"})),
+      ...(sectorPrice?.items??[]).map(x=>({code:x.code,name:x.name,amount:x.price,period:x.pricingType}))
+    ];
+    const totals={
+      fixed:Math.round(breakdownItems.filter(x=>x.period==="fixed").reduce((sum,x)=>sum+x.amount,0)*100)/100,
+      monthly:Math.round(breakdownItems.filter(x=>x.period==="monthly").reduce((sum,x)=>sum+x.amount,0)*100)/100,
+      yearly:Math.round(breakdownItems.filter(x=>x.period==="yearly").reduce((sum,x)=>sum+x.amount,0)*100)/100
+    };
+    const snapshot={package:pkg,options:pricedOptions,sector:sectorPrice,currency:pkg.currency,subtotal,vatRate,vatAmount,total,billing:{lines:breakdownItems,...totals,description:"Initial invoice period: fixed + first month + first year; recurring charges billed according to contract."}};
     const saved=await client.query(`INSERT INTO orders(reference,customer_name,phone,email,notes,package_id,status,currency,subtotal,vat_rate,vat_amount,total,snapshot)
       VALUES($1,$2,$3,$4,$5,$6,'new',$7,$8,$9,$10,$11,$12)
       RETURNING id,reference,status,total,currency,created_at`,
