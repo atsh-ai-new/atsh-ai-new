@@ -55,6 +55,29 @@ try{
  assert.equal(decision.status,200,JSON.stringify(decision));
  const repeated=await req(`/api/customer/auth/project-drafts/${id}/previews/${preview.result.preview.id}/decision`,{method:"POST",cookie:cookieFor(accountA),body:{decision:"approved",comment:"تكرار"}});
  assert.equal(repeated.status,409);
+ // Exact order → customer project → approved preview → commercial quote → versioned contract.
+ const journey=await pool.query(`INSERT INTO customer_journey_projects(customer_name,customer_email,created_by,customer_account_id)
+   VALUES('Client A',$1,'integration-test',$2) RETURNING id`,[`first-${suffix}@example.test`,accountA]);
+ await pool.query("UPDATE customer_project_drafts SET linked_journey_id=$1 WHERE id=$2",[journey.rows[0].id,id]);
+ const packageId="11111111-1111-4111-8111-111111111111";
+ const originalSnapshot={package:{name:"موقع صفحة واحدة",price:1000},options:[],sector:null,
+  subtotal:1000,vatRate:14,vatAmount:140,total:1140,currency:"EGP"};
+ const ownedOrder=await pool.query(`INSERT INTO orders(reference,customer_name,phone,email,notes,package_id,currency,subtotal,vat_rate,vat_amount,total,snapshot)
+   VALUES($1,'Client A','01000000000',$2,'test',$3,'EGP',1000,14,140,1140,$4::jsonb) RETURNING id`,
+   [`CI-${randomUUID().slice(0,12)}`,`first-${suffix}@example.test`,packageId,JSON.stringify(originalSnapshot)]);
+ await pool.query("INSERT INTO customer_journey_order_links(project_id,order_id,linked_by) VALUES($1,$2,'integration-test')",[journey.rows[0].id,ownedOrder.rows[0].id]);
+ const derived=await req(`/api/admin/commercial/orders/${ownedOrder.rows[0].id}/quote`,{method:"POST",cookie:adminCookie,body:{}});
+ assert.equal(derived.status,201,JSON.stringify(derived));
+ assert.equal(Number(derived.result.quote.total_piasters),114000);
+ const duplicatedQuote=await req(`/api/admin/commercial/orders/${ownedOrder.rows[0].id}/quote`,{method:"POST",cookie:adminCookie,body:{}});
+ assert.equal(duplicatedQuote.status,409);
+ const approvedToIssue=await req(`/api/admin/commercial/quotes/${derived.result.quote.id}/issue`,{method:"POST",cookie:adminCookie,body:{}});
+ assert.equal(approvedToIssue.status,200,JSON.stringify(approvedToIssue));
+ const issueNew=await req("/api/admin/commercial/contracts/issue",{method:"POST",cookie:adminCookie,body:{quoteId:Number(derived.result.quote.id),templateId}});
+ assert.equal(issueNew.status,201,JSON.stringify(issueNew));
+ const newlyIssued=await pool.query("SELECT template_revision,body_snapshot FROM customer_contracts WHERE id=$1",[issueNew.result.contract.id]);
+ assert.equal(newlyIssued.rows[0].template_revision,2);
+ assert.match(newlyIssued.rows[0].body_snapshot,/عقد محدث/);
  // Project-specific image ownership, even for separate drafts of the same customer.
  const png=Buffer.from([137,80,78,71,13,10,26,10,0,0,0,0]);
  const writeLogo=await fetch(base+`/api/customer/auth/project-drafts/${id}/logo`,{method:"POST",headers:{origin,"content-type":"image/png",cookie:cookieFor(accountA)},body:png});
