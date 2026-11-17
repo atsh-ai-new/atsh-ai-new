@@ -60,7 +60,7 @@ jobs:
           import pg from 'pg';
           import assert from 'node:assert/strict';
           const db=new pg.Pool({connectionString:process.env.DATABASE_URL});
-          for(const name of ['contract_templates','contract_template_versions','customer_project_drafts','customer_workspace_drafts','customer_workspace_logos']){
+          for(const name of ['contract_templates','contract_template_versions','customer_project_drafts','customer_workspace_drafts','customer_workspace_logos','customer_preview_versions']){
             const r=await db.query('SELECT to_regclass($1) AS name',[name]);
             assert.ok(r.rows[0].name, `Missing ${name}`);
           }
@@ -68,3 +68,5 @@ jobs:
           assert.equal(bad.rows[0].n,0);
           await db.end();
           NODE
+
+          node test/integration-smoke.mjs
