@@ -20,3 +20,7 @@ CREATE TABLE IF NOT EXISTS contract_template_versions (
 INSERT INTO contract_template_versions(template_id,revision,title,body,category,is_published,is_archived,edited_by)
 SELECT id,revision,title,body,category,is_published,is_archived,updated_by FROM contract_templates
 ON CONFLICT(template_id,revision) DO NOTHING;
+
+-- Contract snapshots carry the exact template revision/category used at issue time.
+ALTER TABLE customer_contracts ADD COLUMN IF NOT EXISTS template_revision integer;
+ALTER TABLE customer_contracts ADD COLUMN IF NOT EXISTS template_category varchar(40);
