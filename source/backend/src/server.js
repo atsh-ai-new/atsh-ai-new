@@ -1439,12 +1439,19 @@ app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requireRo
     projectId=created.rows[0].id;
     await client.query("UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2 AND customer_id=$3",[projectId,d.id,d.account_id]);
   }
+  const config=await client.query("SELECT vat_rate FROM site_settings WHERE id=1");
+  const vatRate=config.rows[0]?.vat_rate===null?0:Number(config.rows[0]?.vat_rate??0);
+  if(!Number.isFinite(vatRate)||vatRate<0||vatRate>100)throw Error("Invalid VAT configuration");
+  const tax=Math.round(total*vatRate/100);
+  const pricedItems=[...parsed.data.items,...(tax>0?[{label:`ضريبة القيمة المضافة (${vatRate}%)`,quantity:1,unitPricePiasters:tax,period:"fixed"}]:[])];
+  const grossTotal=total+tax;
+  if(!Number.isSafeInteger(grossTotal))throw Error("Quote amount overflow");
   const q=await client.query(`INSERT INTO commercial_quotes(customer_email,customer_account_id,items,total_piasters,currency,valid_until)
    VALUES($1,$2,$3::jsonb,$4,'EGP',$5) RETURNING id,revision,status,total_piasters,valid_until`,
-   [d.email,d.account_id,JSON.stringify(parsed.data.items),total,parsed.data.validUntil||new Date(Date.now()+14*86400000).toISOString()]);
+   [d.email,d.account_id,JSON.stringify(pricedItems),grossTotal,parsed.data.validUntil||new Date(Date.now()+14*86400000).toISOString()]);
   await client.query("INSERT INTO commercial_custom_quote_links(quote_id,draft_id,project_id,customer_account_id) VALUES($1,$2,$3,$4)",[q.rows[0].id,d.id,projectId,d.account_id]);
   await client.query("UPDATE customer_journey_projects SET status='quoted',updated_at=now() WHERE id=$1 AND status IN ('draft','configured')",[projectId]);
-  await queueJourneyEvent(client,"quote.created",`quote.created:${q.rows[0].id}`,{quoteId:q.rows[0].id,projectId,custom:true,totalPiasters:total});
+  await queueJourneyEvent(client,"quote.created",`quote.created:${q.rows[0].id}`,{quoteId:q.rows[0].id,projectId,custom:true,totalPiasters:grossTotal});
   await client.query("COMMIT");res.status(201).json({quote:q.rows[0],projectId,requiresAdminIssue:true});
  }catch(error){await client.query("ROLLBACK");if(error.code==="23505")return res.status(409).json({error:"Concurrent custom quote already exists"});throw error;}finally{client.release();}
 }));
