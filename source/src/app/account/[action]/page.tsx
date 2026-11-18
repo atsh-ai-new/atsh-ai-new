@@ -11,7 +11,7 @@ type Invoice={id:number;quote_id:number;status:string;amount_piasters:number;ver
 type Payment={id:number;amount_piasters:number;paid_at:string;provider:string};
 type Deliverable={id:string;title:string;kind:string;asset_url:string|null;has_private_file?:boolean;customer_decision:string;customer_feedback:string};
 type Project={id:string;customer_name:string;status:string;created_at:string};
-type ProjectDraft={id:string;title:string;revision:number;draft:CustomerWorkspace;updated_at:string};
+type ProjectDraft={id:string;title:string;revision:number;linked_journey_id?:string|null;draft:CustomerWorkspace;updated_at:string};
 type PreviewVersion={id:string;revision:number;approval_status:string;created_at:string;snapshot:CustomerWorkspace&{projectTitle?:string};customer_comment?:string};
 const labels:Record<string,string>={new:"جديد",configured:"تم تحديد المواصفات",quoted:"عرض سعر جاهز",pending:"بانتظار المراجعة",approved:"مُعتمد",changes_requested:"تعديلات مطلوبة",revision_requested:"تعديل مطلوب",signed:"موقّع",paid:"مدفوع مؤكد",payment_pending:"بانتظار الدفع",building:"جارٍ التنفيذ",preview_ready:"المعاينة جاهزة",delivered:"تم التسليم",support:"المتابعة والدعم"};
 const humanStatus=(status:string)=>labels[status]??status;
@@ -163,7 +163,8 @@ export default function CustomerAccount(){
  {action==="dashboard"&&accountStatus==="authenticated"&&<>
  <CustomerJourneyHub active={hubTab} onTab={setHubTab} draftCount={projectDrafts.length} projectCount={projects.length} orderCount={orders.length} quoteCount={quotes.length} contractCount={contracts.length} invoiceCount={invoices.length} deliveryCount={deliverables.length}
   currentProject={selectedProjectDraft?(()=>{const project=projectDrafts.find(d=>d.id===selectedProjectDraft);return project?{title:project.title,sectorName:project.draft?.sectorName,id:project.id,revision:project.revision}:undefined})():undefined}
-  currentPreviewStatus={selectedProjectDraft&&previewVersions.length?previewVersions[0].approval_status:undefined}/>
+  currentPreviewStatus={selectedProjectDraft&&previewVersions.length?previewVersions[0].approval_status:undefined}
+  currentJourneyStatus={projects.find(project=>project.id===projectDrafts.find(draft=>draft.id===selectedProjectDraft)?.linked_journey_id)?.status}/>
  {message&&<p role="status" aria-live="polite" style={{padding:12,borderRadius:10,background:"#eaf2ff",color:"#1f4166"}}>{message}</p>}
  {hubTab==="settings"&&<section style={{border:"1px solid #d4e2ef",borderRadius:12,padding:16,background:"#f5faff",marginBottom:18}}>
    <h2>اختياراتي المحفوظة من جميع مسارات المنصة</h2>
