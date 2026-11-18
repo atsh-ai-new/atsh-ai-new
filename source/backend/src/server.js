@@ -147,7 +147,7 @@ async function sendTransactionalEmail({to,toName,subject,textContent}) {
   return true;
 }
 
-app.use("/api/customer/auth",rateLimit({windowMs:15*60*1000,limit:20,standardHeaders:"draft-8",legacyHeaders:false}),customerAuthRouter({pool,sendEmail:sendTransactionalEmail,allowedOrigins:origins}));
+app.use("/api/customer/auth",rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?600:20,standardHeaders:"draft-8",legacyHeaders:false}),customerAuthRouter({pool,sendEmail:sendTransactionalEmail,allowedOrigins:origins}));
 app.use("/api/customer/deliverables",deliveryCustomerRouter({pool,allowedOrigins:origins}));
 app.use("/api/admin/deliverables",requireAdmin,requireRole("owner","admin","editor"),deliveryAdminRouter({pool}));
 app.use("/api/admin/operations",requireAdmin,requireRole("owner","admin"),deliveryAdminRouter({pool,operationsOnly:true}));
