@@ -130,6 +130,36 @@ try{
  assert.equal(settledBridge.status,201,JSON.stringify(settledBridge));
  const after=await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id]);
  assert.equal(after.rows[0].status,"paid");
+ // Checkout: authenticated ownership, customer change request and staff resolution.
+ const ownedQuote=await pool.query(`INSERT INTO commercial_quotes(customer_email,customer_account_id,status,items,total_piasters,currency,valid_until)
+   VALUES($1,$2,'issued',$3::jsonb,22500,'EGP',now()+interval '12 days') RETURNING id`,
+   [`first-${suffix}@example.test`,accountA,JSON.stringify([{label:"نظام إدارة أعمال مخصص",quantity:1,unitPricePiasters:22500}])]);
+ const ownedQuoteId=Number(ownedQuote.rows[0].id);
+ const ownedContract=await req("/api/admin/commercial/contracts/issue",{method:"POST",cookie:adminCookie,body:{quoteId:ownedQuoteId,templateId}});
+ assert.equal(ownedContract.status,201,JSON.stringify(ownedContract));
+ const otherAccountCheckout=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/checkout`,{cookie:cookieFor(accountB)});
+ assert.equal(otherAccountCheckout.status,404,"Cross-customer quote access must be denied");
+ const ownedCheckout=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/checkout`,{cookie:cookieFor(accountA)});
+ assert.equal(ownedCheckout.status,200,JSON.stringify(ownedCheckout));
+ assert.equal(ownedCheckout.result.payment.canPayOnline,false);
+ const change=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/request-changes`,{
+   method:"POST",cookie:cookieFor(accountA),body:{details:"أحتاج توضيحًا حول رسوم الصيانة السنوية وشروط الخدمة."}});
+ assert.equal(change.status,201,JSON.stringify(change));
+ const acceptPayload={signerName:"Client A Verified",consent:true,quoteRevision:1,contractId:Number(ownedContract.result.contract.id)};
+ const blocked=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/accept`,{method:"POST",cookie:cookieFor(accountA),body:acceptPayload});
+ assert.equal(blocked.status,409,"Pending changes block acceptance");
+ const resolved=await req(`/api/admin/commercial/change-requests/${change.result.changeRequest.id}/resolve`,{
+   method:"POST",cookie:adminCookie,body:{resolutionNote:"تم توضيح نطاق الصيانة في العقد الحالي؛ لا تغيير في البنود."}});
+ assert.equal(resolved.status,200,JSON.stringify(resolved));
+ const acceptedOwned=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/accept`,{method:"POST",cookie:cookieFor(accountA),body:acceptPayload});
+ assert.equal(acceptedOwned.status,200,JSON.stringify(acceptedOwned));
+ assert.equal(acceptedOwned.result.paymentStatus,"pending_gateway");
+ const afterAcceptance=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/checkout`,{cookie:cookieFor(accountA)});
+ assert.equal(afterAcceptance.result.invoices.length,1,"Acceptance must make exactly one invoice");
+ assert.equal(afterAcceptance.result.invoices[0].status,"unpaid","Acceptance is not payment");
+ assert.equal(Number(afterAcceptance.result.invoices[0].verified_paid_piasters),0);
+ const replay=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/accept`,{method:"POST",cookie:cookieFor(accountA),body:acceptPayload});
+ assert.equal(replay.status,409,"Repeated acceptance must not duplicate invoices");
  // Project-specific image ownership, even for separate drafts of the same customer.
  const png=Buffer.from([137,80,78,71,13,10,26,10,0,0,0,0]);
  const writeLogo=await fetch(base+`/api/customer/auth/project-drafts/${id}/logo`,{method:"POST",headers:{origin,"content-type":"image/png",cookie:cookieFor(accountA)},body:png});
