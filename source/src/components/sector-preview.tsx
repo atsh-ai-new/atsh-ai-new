@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 import Link from "next/link";
 import type { SectorTemplate } from "@/lib/sector-catalog";
+import SectorInteractiveDemo,{isInteractiveSector} from "@/components/sector-interactive-demo";
 
 export default function SectorPreview({template}: {template: SectorTemplate}) {
   const [active,setActive]=useState(template.modules[0]);
@@ -86,6 +87,7 @@ export default function SectorPreview({template}: {template: SectorTemplate}) {
         {template.modules.map(module=><button key={module} onClick={()=>setActive(module)} aria-current={active===module?"page":undefined} style={{display:"block",width:"100%",textAlign:"right",marginBottom:5,padding:12,borderRadius:9,border:0,cursor:"pointer",background:active===module?"#ffffff30":"transparent",color:"white",fontWeight:active===module?700:400}}>{module}</button>)}
       </nav>
       <section style={{minWidth:0}}>
+        {isInteractiveSector(template.slug)?<SectorInteractiveDemo slug={template.slug} active={active} brand={brand} onNavigate={setActive}/>:<>
         <h2 style={{color:brand,marginTop:4}}>{active}</h2>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:20}}>
           {template.sampleStats.map(stat=><div key={stat.label} style={{background:"white",border:"1px solid #e2e8f0",borderRadius:14,padding:18}}><small style={{color:"#64748b"}}>{stat.label}</small><strong style={{display:"block",fontSize:23,color:brand,marginTop:10}}>{stat.value}</strong></div>)}
@@ -102,6 +104,7 @@ export default function SectorPreview({template}: {template: SectorTemplate}) {
           <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",textAlign:"right"}}><thead><tr>{["الاسم","التفاصيل","الحالة","إجراء"].map(h=><th key={h} style={{padding:12,borderBottom:"1px solid #e2e8f0"}}>{h}</th>)}</tr></thead><tbody>{rows.map((row,index)=><tr key={index}><td style={{padding:12}}>{row.name}</td><td style={{padding:12}}>{row.detail}</td><td style={{padding:12}}>{row.status}</td><td><button onClick={()=>setRows(r=>r.filter((_,i)=>i!==index))} style={{padding:8,border:0,color:"#b91c1c",background:"transparent",cursor:"pointer"}}>حذف تجريبي</button></td></tr>)}</tbody></table></div>
           <p style={{fontSize:12,color:"#64748b",lineHeight:1.9}}>{template.note} التغييرات مؤقتة داخل المتصفح الحالي ولا تمثل مواصفات النظام النهائي.</p>
         </section>
+        </>}
       </section>
     </div>
   </main>;
