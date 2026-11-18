@@ -99,7 +99,11 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
    pool.query("SELECT id,quote_id,body_snapshot,status,signer_name,signed_at,template_revision,template_category FROM customer_contracts WHERE quote_id=$1 AND status<>'void' AND EXISTS(SELECT 1 FROM commercial_quotes WHERE id=$1 AND customer_account_id=$2) ORDER BY id DESC LIMIT 1",[id,req.customer.id]),
    pool.query("SELECT id,amount_piasters,verified_paid_piasters,due_at,status FROM commercial_invoices WHERE quote_id=$1 AND EXISTS(SELECT 1 FROM commercial_quotes WHERE id=$1 AND customer_account_id=$2) ORDER BY id",[id,req.customer.id]),
    pool.query("SELECT id,details,status,created_at,resolution_note FROM commercial_quote_change_requests WHERE quote_id=$1 AND customer_account_id=$2 ORDER BY created_at DESC LIMIT 30",[id,req.customer.id]),
-   pool.query('SELECT p.id,p.status,p.template_id,l.draft_id FROM commercial_order_quote_links l JOIN customer_journey_projects p ON p.id=l.project_id WHERE l.quote_id=$1 AND p.customer_account_id=$2 ORDER BY l.id DESC LIMIT 1',[id,req.customer.id])
+   pool.query(`SELECT p.id,p.status,p.template_id,l.draft_id
+   FROM (SELECT project_id,quote_id,draft_id FROM commercial_order_quote_links
+         UNION ALL SELECT project_id,quote_id,draft_id FROM commercial_custom_quote_links) l
+   JOIN customer_journey_projects p ON p.id=l.project_id
+   WHERE l.quote_id=$1 AND p.customer_account_id=$2 LIMIT 1`,[id,req.customer.id])
   ]);
   if(!quoteResult.rowCount)return res.status(404).json({error:'Not found'});
   res.set('Cache-Control','private, no-store').json({quote:quoteResult.rows[0],contract:contractResult.rows[0]||null,invoices:invoiceResult.rows,changeRequests:feedbackResult.rows,project:projectResult.rows[0]||null,payment:{gatewayConnected:false,canPayOnline:false,note:'الدفع الإلكتروني غير مفعل بعد؛ لا تُدخل بيانات بطاقتك ولا تعتبر الفاتورة مدفوعة.'}});
