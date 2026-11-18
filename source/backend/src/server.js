@@ -23,6 +23,7 @@ import {queueJourneyEvent,deliverJourneyEvents,eventDestination} from "./custome
 import {checkDomainWithNamecheap} from "./domain-availability.js";
 import {seedCatalogIfAbsent} from "./catalog-starter.js";
 import {deriveQuoteFromOrder} from "./order-quote.js";
+import {ensureInvoiceScheduleOnAcceptance} from "./customer-checkout.js";
 import { buildProjectPlan, proposeVisualEdit } from "./project-builder.js";
 import {verifyCallback,validJobResult,canTransition} from "./builder-job-rules.js";
 import { operationGuard } from "./operation-guards.js";
@@ -65,6 +66,7 @@ await pool.query(await readFile(new URL("../db/customer_project_logos_stage46.sq
 await pool.query(await readFile(new URL("../db/visitor_ai_usage_stage51.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/commercial_checkout_stage52.sql", import.meta.url), "utf8"));
 await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim()).filter(Boolean);
 const cookie = "atsh_admin";
@@ -147,7 +149,7 @@ app.use("/api/customer/auth",rateLimit({windowMs:15*60*1000,limit:20,standardHea
 app.use("/api/customer/deliverables",deliveryCustomerRouter({pool,allowedOrigins:origins}));
 app.use("/api/admin/deliverables",requireAdmin,requireRole("owner","admin","editor"),deliveryAdminRouter({pool}));
 app.use("/api/admin/operations",requireAdmin,requireRole("owner","admin"),deliveryAdminRouter({pool,operationsOnly:true}));
-app.use("/api/customer/commercial",rateLimit({windowMs:15*60*1000,limit:60,standardHeaders:"draft-8",legacyHeaders:false}),customerCommercialRouter({pool}));
+app.use("/api/customer/commercial",rateLimit({windowMs:15*60*1000,limit:60,standardHeaders:"draft-8",legacyHeaders:false}),customerCommercialRouter({pool,allowedOrigins:origins,queueJourneyEvent}));
 
 // Enforce central operations flags on actual write entry points (not just dashboard state).
 app.use('/api/orders', (req,res,next)=>req.method==='POST'?operationGuard(pool,'new_orders')(req,res,next):next());
@@ -1143,8 +1145,9 @@ app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requireRole("own
  const client=await pool.connect();try{await client.query("BEGIN");const old=await client.query("SELECT * FROM commercial_quotes WHERE id=$1 FOR UPDATE",[req.params.id]);
  if(!old.rowCount||!["draft","issued"].includes(old.rows[0].status)){await client.query("ROLLBACK");return res.status(409).json({error:"Cannot revise quote"})}
  const x=old.rows[0];
- const associatedContract=await client.query("SELECT 1 FROM customer_contracts WHERE quote_id=$1 AND status<>'void' LIMIT 1",[x.id]);
- if(associatedContract.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Existing issued contracts cannot be silently rewritten or repriced"});}
+ const associatedContract=await client.query("SELECT id,status FROM customer_contracts WHERE quote_id=$1 AND status<>'void' FOR UPDATE",[x.id]);
+ if(associatedContract.rows.some(contract=>contract.status==="signed")){await client.query("ROLLBACK");return res.status(409).json({error:"Signed contracts cannot be rewritten or repriced"});}
+ if(associatedContract.rowCount)await client.query("UPDATE customer_contracts SET status='void' WHERE quote_id=$1 AND status='issued'",[x.id]);
  const newer=await client.query("INSERT INTO commercial_quotes(customer_email,customer_account_id,revision,items,total_piasters,valid_until) VALUES($1,$2,$3,$4::jsonb,$5,$6) RETURNING *",[x.customer_email,x.customer_account_id,x.revision+1,JSON.stringify(items),total,validUntil||null]);
  const oldLink=await client.query("UPDATE commercial_order_quote_links SET is_current=false WHERE quote_id=$1 AND is_current=true RETURNING order_id,project_id,draft_id",[x.id]);
  if(oldLink.rowCount){
@@ -1152,6 +1155,7 @@ app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requireRole("own
  }
  await client.query("UPDATE commercial_quotes SET status='superseded' WHERE id=$1",[x.id]);
  await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[x.id]);
+ await client.query("UPDATE commercial_quote_change_requests SET status='resolved',resolved_at=now(),resolution_note='New quote version issued' WHERE quote_id=$1 AND status='pending'",[x.id]);
  await queueJourneyEvent(client,"quote.revised",`quote.revised:${newer.rows[0].id}`,{quoteId:newer.rows[0].id,supersedes:x.id,orderId:oldLink.rows[0]?.order_id||null});
  await client.query("COMMIT");res.status(201).json({quote:newer.rows[0],supersedes:x.id});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
@@ -1200,10 +1204,12 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
  const evidence={method:"typed_name_explicit_consent",ip:req.ip,userAgent:String(req.get("user-agent")||"").slice(0,250),consent:true};
  const c=await client.query("UPDATE customer_contracts SET status='signed',signer_name=$2,signed_at=now(),signature_evidence=$3::jsonb WHERE quote_id=$1 AND status='issued' RETURNING id,signed_at",[id,signerName.trim(),JSON.stringify(evidence)]);
  if(!c.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Contract unavailable"})}
+ const quoteAmount=await client.query("SELECT total_piasters FROM commercial_quotes WHERE id=$1",[id]);
+ const invoices=await ensureInvoiceScheduleOnAcceptance(client,{quoteId:Number(id),totalPiasters:quoteAmount.rows[0].total_piasters});
  await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[id]);await client.query(`UPDATE customer_journey_projects SET status='payment_pending',updated_at=now()
   WHERE id IN (SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true) AND status='quoted'`,[id]);
  await queueJourneyEvent(client,"contract.signed",`contract.signed:${c.rows[0].id}`,{contractId:c.rows[0].id,quoteId:id,signedAt:c.rows[0].signed_at});
- await client.query("COMMIT");res.json({accepted:true,quoteId:id,contractId:c.rows[0].id,signedAt:c.rows[0].signed_at,paymentStatus:"not_started"});
+ await client.query("COMMIT");res.json({accepted:true,quoteId:id,contractId:c.rows[0].id,signedAt:c.rows[0].signed_at,paymentStatus:"pending_gateway",invoices:invoices.invoices.map(x=>({id:x.id,status:x.status}))});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
 }));
 
