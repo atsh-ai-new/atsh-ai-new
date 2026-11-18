@@ -31,10 +31,14 @@ export default function CustomerAccount(){
  const [guestPending,setGuestPending]=useState(false);
  const [merging,setMerging]=useState(false);
  const [hubTab,setHubTab]=useState<HubTab>("overview");
+ const [accountStatus,setAccountStatus]=useState<"checking"|"authenticated"|"guest">("checking");
  const previewRequestRef=useRef(0);
  useEffect(()=>{
    if(action!=="dashboard")return;
    let active=true;
+   void fetch("/api/customer/auth/me",{credentials:"include",cache:"no-store"})
+    .then(response=>{if(active)setAccountStatus(response.ok?"authenticated":"guest")})
+    .catch(()=>{if(active)setAccountStatus("guest")});
    const guest=loadGuestWorkspace();
    setGuestPending(Object.keys(guest).length>0);
    void fetch("/api/customer/auth/workspace",{credentials:"include",cache:"no-store"}).then(async r=>r.ok?r.json():null)
@@ -151,7 +155,12 @@ export default function CustomerAccount(){
  {["register","login","reset-password"].includes(action)&&<label>كلمة المرور<input type="password" minLength={action==="login"?1:12} required value={password} onChange={e=>setPassword(e.target.value)}/></label>}
  <button type="submit">متابعة</button></form>}
  {(action==="login"||action==="register")&&<><p><a href="/account/login">لدي حساب · تسجيل الدخول</a> · <a href="/account/register">إنشاء حساب جديد</a> · <a href="/account/forgot">نسيت كلمة المرور؟</a> · <a href="/account/resend-verification">إعادة إرسال التأكيد</a></p><div ref={googleContainer} aria-label="تسجيل الدخول باستخدام Google"/></>}
- {action==="dashboard"&&<>
+ {action==="dashboard"&&accountStatus!=="authenticated"&&<section style={{background:"white",border:"1px solid #dce5ee",borderRadius:16,padding:20}}>
+   <h2>{accountStatus==="checking"?"جارٍ التحقق من حسابك…":"سجل دخولك لعرض مشروعاتك"}</h2>
+   <p>لحماية المشروعات والعروض والفواتير، لا تظهر لوحة العميل إلا بعد التحقق من الجلسة. اختياراتك غير المحفوظة تبقى على هذا المتصفح حتى تقرر نقلها.</p>
+   <div style={{display:"flex",flexWrap:"wrap",gap:11}}><a href="/account/login" style={{padding:"11px 15px",background:"#203958",color:"white",borderRadius:10}}>تسجيل الدخول</a><a href="/account/register" style={{padding:"11px 15px",border:"1px solid #cbd5e1",borderRadius:10}}>إنشاء حساب</a></div>
+  </section>}
+ {action==="dashboard"&&accountStatus==="authenticated"&&<>
  <CustomerJourneyHub active={hubTab} onTab={setHubTab} draftCount={projectDrafts.length} projectCount={projects.length} orderCount={orders.length} quoteCount={quotes.length} contractCount={contracts.length} invoiceCount={invoices.length} deliveryCount={deliverables.length}
   currentProject={selectedProjectDraft?(()=>{const project=projectDrafts.find(d=>d.id===selectedProjectDraft);return project?{title:project.title,sectorName:project.draft?.sectorName,id:project.id,revision:project.revision}:undefined})():undefined}
   currentPreviewStatus={selectedProjectDraft&&previewVersions.length?previewVersions[0].approval_status:undefined}/>
