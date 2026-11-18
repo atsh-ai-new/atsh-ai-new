@@ -366,7 +366,7 @@ export default function HomePage() {
           <span><strong>ATSH <b>AI</b></strong><small>{copy("brandTagline")}</small></span>
         </a>
         <nav className="platform-nav" aria-label={copy("mainNavigationLabel")}>
-          <a href="#why">{copy("navWhy")}</a><a href="#packages">{copy("navPackages")}</a><a href="/catalog">معرض الأنظمة</a><a href="/account/register">إنشاء حساب عميل</a><a href="/account/login">دخول العميل</a><a href="#how">{copy("navHow")}</a><a href="#faq">{copy("navFaq")}</a>{pageLinks.map((item) => <a key={item.slug} href={`/${item.slug}`}>{item.title}</a>)}
+          <a href="#why">{copy("navWhy")}</a><a href="/start">ابدأ مشروعك</a><a href="#packages">{copy("navPackages")}</a><a href="/catalog">معرض الأنظمة</a><a href="/account/register">إنشاء حساب عميل</a><a href="/account/login">دخول العميل</a><a href="#how">{copy("navHow")}</a><a href="#faq">{copy("navFaq")}</a>{pageLinks.map((item) => <a key={item.slug} href={`/${item.slug}`}>{item.title}</a>)}
         </nav>
         <div className="platform-header-actions"><a className="language-pill" href="/account/register">حساب جديد</a><a className="button button-small" href="#configurator">{copy("navAction")} <span>←</span></a></div>
       </header>
@@ -376,7 +376,7 @@ export default function HomePage() {
           <span className="eyebrow-pill">{copy("heroEyebrow")}</span>
           <h1>{copy("heroTitle")}</h1>
           <p>{copy("heroDescription")}</p>
-          <div className="hero-actions"><button className="button" onClick={() => begin()}>{copy("ctaText")} <span>←</span></button><a className="button button-quiet" href="#packages">{copy("secondaryCta")}</a></div>
+          <div className="hero-actions"><button className="button" onClick={() => begin()}>{copy("ctaText")} <span>←</span></button><a className="button button-quiet" href="/start">ابدأ مشروعًا جديدًا</a><a className="button button-quiet" href="#packages">{copy("secondaryCta")}</a></div>
           <div className="hero-trust">{cardsFromContent("heroTrustItems", [1,2,3].map((n) => ({ id: `hero-trust-${n}`, title: copy(`heroTrust${n}`) }))).map((item, index) => <span key={item.id ?? index}>✓ {item.title}</span>)}</div>
         </div>
         <div className="build-hero-art">
