@@ -1,11 +1,15 @@
 name: ATSH Browser E2E (Desktop + Mobile)
 on:
   push:
-    branches: [atsh-platform-rebuild, main]
+    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1]
     paths:
       - 'source/e2e/**'
       - 'source/playwright.config.ts'
       - 'source/src/app/catalog/**'
+      - 'source/src/app/account/**'
+      - 'source/src/app/page.tsx'
+      - 'source/src/components/customer-journey-hub.tsx'
+      - 'source/src/lib/customer-workspace.ts'
       - 'source/src/components/catalog-preview-loader.tsx'
       - 'source/src/components/sector-preview.tsx'
       - 'source/src/components/sector-interactive-demo.tsx'
