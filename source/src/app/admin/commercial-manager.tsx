@@ -61,8 +61,43 @@ export default function CommercialManager(){
    <label>رقم الطلب UUID<input aria-label="رقم الطلب لإنشاء عرض السعر" required pattern="[a-fA-F0-9-]{36}" value={orderIdToQuote} onChange={e=>setOrderIdToQuote(e.target.value)} placeholder="رقم الطلب من لوحة الطلبات"/></label>
    <button type="submit">توليد عرض سعر مرتبط بالطلب</button>
   </form>
- <div><h3>عروض الأسعار</h3>{quotes.map(q=><div key={q.id} style={{border:"1px solid #bbb",padding:12,marginBottom:8}}><b>#{q.id}</b> — {q.customer_email} — {(Number(q.total_piasters)/100).toLocaleString("ar-EG")} ج.م — {q.status} — إصدار {q.revision}<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{q.status==="draft"&&<button onClick={()=>void run(()=>request(`quotes/${q.id}/issue`,"POST",{}))}>إصدار العرض</button>}{q.status==="issued"&&<><button onClick={()=>{const id=prompt("رقم قالب العقد");if(id)void run(()=>request("contracts/issue","POST",{quoteId:q.id,templateId:Number(id)}))}}>إصدار عقد من قالب</button><button onClick={()=>void run(async()=>{const result=await request(`quotes/${q.id}/review-link`,"POST",{});const url=`${location.origin}/commercial/review?token=${encodeURIComponent(result.reviewToken)}`;setMessage(`رابط مراجعة خاص — أرسله للعميل بشكل آمن: ${url}`)})}>رابط مراجعة العقد</button></>}</div></div>)}</div>
- <section style={{display:"grid",gap:14,border:"1px solid #d7e1ec",borderRadius:14,padding:18}}>
+ <section aria-label="الطلبات المؤهلة لإعداد عرض سعر" style={{padding:15,border:"1px solid #cfddea",borderRadius:13,background:"#f4f8fc"}}>
+  <h3>طلبات العملاء الجاهزة للتسعير</h3>
+  <p>يُنشأ العرض من بيانات الطلب المحفوظة على الخادم، ولا يمكن إصداره إلا بعد اعتماد العميل أحدث معاينة.</p>
+  {!eligibleOrders.length&&<p>لا توجد طلبات جديدة مؤهلة حاليًا.</p>}
+  {eligibleOrders.map(order=><div key={order.id} style={{padding:12,borderBottom:"1px solid #d7e1eb",display:"flex",flexWrap:"wrap",gap:12,justifyContent:"space-between",alignItems:"center"}}>
+   <span><b>{order.reference}</b> — {order.project_title||"مشروع عميل"} — {Number(order.total).toLocaleString("ar-EG")} {order.currency}<br/><small>حالة أحدث معاينة: {order.latest_preview_status==="approved"?"معتمدة":order.latest_preview_status||"غير مُنشأة"}</small></span>
+   <button type="button" disabled={order.latest_preview_status!=="approved"} onClick={()=>void run(()=>request(`orders/${encodeURIComponent(order.id)}/quote`,"POST",{}))}>توليد عرض السعر الرسمي</button>
+  </div>)}
+ </section>
+ <section aria-label="طلبات تعديل العروض" style={{padding:15,border:"1px solid #d9e2ec",borderRadius:13}}>
+  <h3>ملاحظات العملاء على عروض الأسعار</h3>
+  {!changeRequests.some(row=>row.status==="pending")&&<p>لا توجد طلبات تعديل تنتظر المراجعة.</p>}
+  {changeRequests.filter(row=>row.status==="pending").map(row=><article key={row.id} style={{background:"#fff6e8",padding:13,borderRadius:10,marginBottom:8}}>
+    <strong>عرض #{row.quote_id} — {row.customer_email}</strong><p style={{whiteSpace:"pre-wrap"}}>{row.details}</p>
+    <small>حالة العرض: {row.quote_status} · إصدار {row.revision}</small>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
+     <button type="button" onClick={()=>document.getElementById(`quote-${row.quote_id}`)?.scrollIntoView({behavior:"smooth",block:"start"})}>فتح بنود العرض لتعديلها ↓</button>
+     <button type="button" onClick={()=>{const note=prompt("سبب معالجة الملاحظة دون تغيير سعر أو شروط العرض");if(note?.trim()&&note.trim().length>=10)void run(()=>request(`change-requests/${row.id}/resolve`,"POST",{resolutionNote:note.trim()}))}}>توضيح للعميل وإغلاق الملاحظة</button>
+    </div>
+   </article>)}
+ </section>
+ <div><h3>عروض الأسعار وإصدار العقود</h3>{quotes.map(q=><article id={`quote-${q.id}`} key={q.id} style={{border:"1px solid #d4e1ec",borderRadius:12,padding:14,marginBottom:12,background:"#fff"}}>
+  <strong>عرض #{q.id}</strong> — {q.customer_email} — {(Number(q.total_piasters)/100).toLocaleString("ar-EG")} ج.م — {q.status} — إصدار {q.revision}
+  <div style={{display:"flex",gap:9,flexWrap:"wrap",alignItems:"center",marginTop:10}}>
+   {q.status==="draft"&&<button type="button" onClick={()=>void run(()=>request(`quotes/${q.id}/issue`,"POST",{}))}>إصدار العرض للمراجعة</button>}
+   {q.status==="issued"&&<>
+    <select aria-label={`اختر قالب العقد للعرض ${q.id}`} value={contractChoices[q.id]||""} onChange={e=>setContractChoices(old=>({...old,[q.id]:e.target.value}))}>
+     <option value="">اختر قالب عقد منشورًا</option>{templates.filter(t=>t.is_published&&!t.is_archived).map(t=><option key={t.id} value={t.id}>{t.title} — إصدار {t.revision}</option>)}
+    </select>
+    <button type="button" disabled={!contractChoices[q.id]} onClick={()=>void run(()=>request("contracts/issue","POST",{quoteId:q.id,templateId:Number(contractChoices[q.id])}))}>إصدار العقد</button>
+    <button type="button" onClick={async()=>{try{const result=await request(`quotes/${q.id}/review-link`,"POST",{});setReviewLink(`${location.origin}/commercial/review?token=${encodeURIComponent(result.reviewToken)}`);setMessage("نسخة الرابط الخاص أُنشئت، شاركها مع العميل بأمان.")}catch(e){setMessage(e instanceof Error?e.message:"تعذر إنشاء الرابط؛ تأكد من إصدار العقد أولًا.")}}}>إنشاء رابط مراجعة مستقل</button>
+   </>}
+  </div>
+  {(q.status==="draft"||q.status==="issued")&&<QuoteRevisionEditor quote={q} onSave={async(items,validUntil)=>{await request(`quotes/${q.id}/revise`,"POST",{items,validUntil});await refresh();setMessage("أُصدر عرض معدل جديد. اعتمده ثم أنشئ عقدًا جديدًا من أحدث قالب.")}}/>}
+ </article>)}</div>
+ {reviewLink&&<section role="status" style={{border:"1px solid #b7d8ca",background:"#ebf8f1",borderRadius:12,padding:13,overflowWrap:"anywhere"}}><b>رابط خاص للعرض والعقد (يظهر هنا فقط):</b><p>{reviewLink}</p><button type="button" onClick={()=>void navigator.clipboard.writeText(reviewLink)}>نسخ الرابط</button><button type="button" onClick={()=>setReviewLink("")}>إخفاؤه</button><p><small>يمكن للعميل المسجّل مراجعة عرضه أيضًا من داخل حسابه، دون تداول رمز خاص.</small></p></section>}
+  <section style={{display:"grid",gap:14,border:"1px solid #d7e1ec",borderRadius:14,padding:18}}>
  <h3>العقود — إدارة الصياغة والإصدارات</h3>
  <p>يمكن للمالك أو المدير المخوّل تعديل القوالب ونسخها ونشرها. أي تعديل ينشئ إصدارًا جديدًا؛ العقود المُصدرة والموقعة تظل بنصوصها السابقة.</p>
  <label>ابحث عن قالب<input aria-label="البحث عن قالب عقد" value={contractFilter} onChange={e=>setContractFilter(e.target.value)} placeholder="عنوان أو نوع القالب" /></label>
