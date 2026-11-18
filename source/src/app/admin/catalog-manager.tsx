@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
 import { sectorTemplates, type SectorTemplate } from "@/lib/sector-catalog";
-import { normalizeCatalogSectors, resolvePlacement, validCatalogId, canRemoveSector, canRemoveSubcategory, type CatalogSector } from "@/lib/catalog-sectors";
+import { normalizeCatalogSectors, defaultCatalogPlacements, resolvePlacement, validCatalogId, canRemoveSector, canRemoveSubcategory, type CatalogSector } from "@/lib/catalog-sectors";
 
 type PricedAddon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
 type CatalogItem = SectorTemplate & {published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[];sectorId?:string;subcategoryId?:string};
@@ -93,6 +93,13 @@ export default function CatalogManager() {
       setDraft(empty());setOriginalSlug("");
     }
   };
+  const importStarter=async()=>{
+    const used=new Set(items.map(item=>item.slug));
+    const starter=seed().filter(item=>!used.has(item.slug)).map(item=>({...item,...(defaultCatalogPlacements[item.slug]??{})}));
+    if(!starter.length){setNotice("النماذج المبدئية موجودة بالفعل. راجع نشر وإخفاء كل نموذج.");return;}
+    if(!window.confirm("استيراد نماذج توضيحية ناقصة بدون استبدال بياناتك أو أسعارك؟"))return;
+    await saveAll([...items,...starter],"تم استيراد نماذج توضيحية مبدئية. لا تمثل أنظمة تجارية جاهزة.");
+  };
   const edit=(item:CatalogItem)=>{const place=resolvePlacement(item,sectors);setDraft({...item,sectorId:place.sector?.id,subcategoryId:place.subcategory?.id});setAddonText(item.pricedAddons.map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\n"));setOriginalSlug(item.slug);setError("");setNotice("");};
   const update=(key:keyof CatalogItem,value:unknown)=>setDraft(d=>({...d,[key]:value}));
   const toggle=async(item:CatalogItem,patch:Partial<CatalogItem>)=>saveAll(items.map(x=>x.slug===item.slug?{...x,...patch}:x),"تم تحديث حالة الكتالوج.");
@@ -173,7 +180,14 @@ export default function CatalogManager() {
     <section className="admin-content-card"><div className="admin-content-title"><div><h2>إدارة كتالوجات ومعاينات القطاعات</h2><p>إضافة وتعديل وإخفاء وأرشفة الكتالوجات. تُحفظ التغييرات على خادم المنصة عبر صلاحيات الإدارة، وليس داخل المتصفح.</p></div></div>
       {notice&&<p role="status" className="success-message">{notice}</p>}{error&&<p role="alert" className="error-message">{error}</p>}
       {!ready?<p>جارٍ تحميل الكتالوجات…</p>:<>
-        <div className="admin-actions"><button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());setAddonText("");}}>+ كتالوج جديد</button><a className="inline-add" href="/catalog" target="_blank" rel="noreferrer">عرض المعرض ↗</a></div>
+        <div className="admin-actions">
+          <button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());setAddonText("");}}>+ كتالوج جديد</button>
+          <button type="button" className="button button-outline" disabled={busy} onClick={()=>void importStarter()}>استيراد النماذج الأربعة المبدئية دون تكرار</button>
+          <a className="inline-add" href="/catalog" target="_blank" rel="noreferrer">عرض المعرض ↗</a>
+        </div>
+        <label className="check-row"><input type="checkbox" checked={pageWasPublished} onChange={e=>setPageWasPublished(e.target.checked)}/> نشر صفحة المعرض بالكامل</label>
+        <button type="button" className="inline-add" disabled={busy} onClick={()=>void saveAll(items,pageWasPublished?"تم نشر المعرض":"تم حفظ المعرض كمسودة")}>حفظ حالة نشر المعرض</button>
+        {!pageWasPublished&&<p className="api-notice">المعرض مخفي من الواجهة العامة حتى تنشر الصفحة بالكامل، حتى لو كانت بطاقات النماذج منشورة.</p>}
         <div className="admin-team-list">{items.map(item=><article className="admin-team-row" key={item.slug} style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
           <strong>{item.icon} {item.name}</strong><span>{item.category}</span><span>{item.archived?"مؤرشف":item.published?"منشور":"مسودة"}</span>
           <button type="button" className="inline-add" disabled={busy} onClick={()=>edit(item)}>تعديل</button>
