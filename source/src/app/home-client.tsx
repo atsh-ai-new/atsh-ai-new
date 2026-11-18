@@ -179,7 +179,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
         setSectorAddonCodes(Array.isArray(draft.sectorAddonCodes)?draft.sectorAddonCodes:[]);
         if(draft.domainName)setRequestedDomainName(draft.domainName);
         if(draft.businessName)setCustomer(old=>({...old,company:draft.businessName}));
-      }).catch(()=>setRequestMessage("تعذر فتح مسودة المشروع المطلوبة. تحقق من ملكيتها وتسجيل الدخول."));
+      }).catch(()=>setRequestMessage(t("تعذر فتح مسودة المشروع المطلوبة. تحقق من ملكيتها وتسجيل الدخول.","Could not access the requested project draft. Verify your account and try again.")));
     return()=>{active=false};
   },[]);
   const localPackageFor = (backendId: string) => packages.find((item) => backendPackageIds[item.id] === backendId);
@@ -245,8 +245,8 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
   // Saving preferences is explicit and scoped to this authenticated project.
   // Server prices are NOT derived from the saved browser snapshot.
   const saveProjectChoices=async()=>{
-    if(!selectedProjectDraftId){setRequestMessage("اختر مسودة المشروع أولًا من حسابك.");return;}
-    setRequestMessage("جارٍ حفظ الاختيارات في مسودة المشروع...");
+    if(!selectedProjectDraftId){setRequestMessage(t("اختر مسودة المشروع أولًا من حسابك.","Select a saved project draft from your account first."));return;}
+    setRequestMessage(t("جارٍ حفظ الاختيارات في مسودة المشروع...","Saving your project selections…"));
     try{
       const endpoint=`/api/customer/auth/project-drafts/${encodeURIComponent(selectedProjectDraftId)}`;
       const current=await fetch(endpoint,{credentials:"include",cache:"no-store"});
@@ -256,9 +256,9 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
       const response=await fetch(endpoint,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({expectedRevision:Number(body.projectDraft.revision),patch})});
       const result=await response.json().catch(()=>({}));
       if(!response.ok)throw Error(result.error||"تعذر حفظ المسودة؛ راجع التعديلات الجديدة.");
-      setRequestMessage("تم حفظ اختيارات النموذج وإضافاته في حسابك. يمكن استكمال معاينتها من لوحة العميل.");
+      setRequestMessage(t("تم حفظ اختيارات النموذج وإضافاته في حسابك. يمكن استكمال معاينتها من لوحة العميل.","Your project choices are saved to your account. Continue from your client dashboard."));
       setRequestState("idle");
-    }catch(error){setRequestMessage(error instanceof Error?error.message:"فشل حفظ الاختيارات");setRequestState("error");}
+    }catch(error){setRequestMessage(error instanceof Error?error.message:t("فشل حفظ الاختيارات","Unable to save selections"));setRequestState("error");}
   };
   const toggleAddon = (id: AddonId) => setAddons((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   const toggleExtraOption = (id: string) => setSelectedExtraOptionIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -367,7 +367,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
 
   return (
     <main className="platform" lang={locale} dir={isEnglish?"ltr":"rtl"} style={{ "--navy": siteConfig.theme?.navy, "--navy-2": siteConfig.theme?.blue, "--blue": siteConfig.theme?.blue, "--gold": siteConfig.theme?.gold, "--page": siteConfig.theme?.page, "--site-font": siteConfig.theme?.fontFamily ? `\"${siteConfig.theme.fontFamily}\", system-ui, sans-serif` : undefined, "--card-radius": siteConfig.theme?.cardRadius === undefined ? undefined : `${siteConfig.theme.cardRadius}px`, backgroundImage: siteConfig.theme?.backgroundImageUrl ? `linear-gradient(rgba(250,249,245,.94), rgba(250,249,245,.94)), url(${JSON.stringify(siteConfig.theme.backgroundImageUrl)})` : undefined, backgroundSize: siteConfig.theme?.backgroundImageUrl ? "cover" : undefined, backgroundAttachment: siteConfig.theme?.backgroundImageUrl ? "fixed" : undefined } as CSSProperties}>
-      <Concierge />
+      <Concierge locale={locale} />
       <header className="platform-header">
         <a className="platform-brand" href="#top" aria-label={copy("homeAriaLabel")}>
           <img src={siteConfig.theme?.logoUrl || "/images/atsh-logo.jpg"} alt={copy("logoAlt")} />
@@ -428,7 +428,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
             <button className={item.recommended ? "button package-cta" : "button button-outline package-cta"} onClick={() => begin(item.id as PackageId)}>{item.price === null ? copy("customQuoteButton") : copy("packageButton")} <span>←</span></button>
           </article>)}
         </div>
-        <HomeCatalogShowcase selectedSlug={selectedSector?.slug} selectedAddons={sectorAddonCodes}
+        <HomeCatalogShowcase locale={locale} selectedSlug={selectedSector?.slug} selectedAddons={sectorAddonCodes}
           onSelect={(item:HomeCatalogItem)=>{
             setSelectedSector({slug:item.slug,name:item.name});setSectorAddonCodes([]);
             setSectorPricedAddons(Array.isArray(item.pricedAddons)?item.pricedAddons:[]);
@@ -446,19 +446,19 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
 
       <section className="configurator-section" id="configurator">
         <details style={{margin:"12px 0",padding:"12px 14px",border:"1px solid #e2e8f0",borderRadius:12,background:"#fff"}}>
-          <summary style={{cursor:"pointer",fontWeight:700}}>فحص توافر الدومين الحقيقي قبل الشراء</summary>
-          <DomainLookup onDomainChange={setRequestedDomainName}/>
+          <summary style={{cursor:"pointer",fontWeight:700}}>{t("فحص توافر الدومين الحقيقي قبل الشراء","Check domain availability before purchase")}</summary>
+          <DomainLookup locale={locale} onDomainChange={setRequestedDomainName}/>
         </details>
         {selectedSector && sectorPricedAddons.length>0 && <section style={{border:"1px solid #d5e1ef",background:"#fff",padding:16,borderRadius:12,marginBottom:14}}>
-          <h3>إضافات خاصة بنظام {selectedSector.name}</h3>
+          <h3>{t("إضافات خاصة بنظام","Additional features for")} {isEnglish?selectedSector.slug:selectedSector.name}</h3>
           {sectorPricedAddons.map(option=><label key={option.code} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"9px 0"}}>
             <span><input type="checkbox" checked={sectorAddonCodes.includes(option.code)} onChange={event=>setSectorAddonCodes(current=>{const next=event.target.checked?[...new Set([...current,option.code])]:current.filter(x=>x!==option.code);saveGuestWorkspace({sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes:next,source:"configurator"});return next;})}/> {localizeOption(option.code,option.name)}</span>
-            <b>{money(option.price)} {option.pricingType==="monthly"?"/ شهري":option.pricingType==="yearly"?"/ سنوي":""}</b>
+            <b>{money(option.price)} {option.pricingType==="monthly"?t("/ شهري","/ month"):option.pricingType==="yearly"?t("/ سنوي","/ year"):""}</b>
           </label>)}
         </section>}
-        {selectedProjectDraftId&&<div role="group" aria-label="حفظ اختيارات المشروع" style={{background:"#eaf8ee",color:"#166534",padding:12,borderRadius:10,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}><span>أنت تستكمل مسودة مشروع محفوظة في حسابك. سيتم ربط الطلب النهائي بهذه المسودة فقط.</span><button type="button" onClick={()=>void saveProjectChoices()} style={{background:"#203958",color:"white",border:0,borderRadius:9,padding:"10px 13px",cursor:"pointer"}}>حفظ الاختيارات والإضافات في مشروعي</button></div>}
+        {selectedProjectDraftId&&<div role="group" aria-label={t("حفظ اختيارات المشروع","Save project selections")} style={{background:"#eaf8ee",color:"#166534",padding:12,borderRadius:10,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}><span>{t("أنت تستكمل مسودة مشروع محفوظة في حسابك. سيتم ربط الطلب النهائي بهذه المسودة فقط.","You are editing a saved project draft in your account. The final request will be linked only to this draft.")}</span><button type="button" onClick={()=>void saveProjectChoices()} style={{background:"#203958",color:"white",border:0,borderRadius:9,padding:"10px 13px",cursor:"pointer"}}>حفظ الاختيارات والإضافات في مشروعي</button></div>}
         {selectedSector && <div role="status" style={{border:"1px solid #d5e1ef",borderRadius:12,padding:"12px 16px",margin:"18px 0",background:"#eef5fc",color:"#203958"}}>
-          النموذج الذي اخترته: <strong>{selectedSector.name}</strong>. تُحسب أسعار القطاع والإضافات المنشورة من الخادم. {sectorNeedsQuote ? "تكلفة هذا النظام تحتاج اعتماد عرض مخصص قبل الشراء." : `تكلفة قطاعك وإضافاته: ${money(sectorSubtotal)}.`}
+          {t("النموذج الذي اخترته:","Selected solution:")} <strong>{isEnglish?selectedSector.slug:selectedSector.name}</strong>. {t("تُحسب أسعار القطاع والإضافات المنشورة من الخادم.","Published sector prices and add-ons are calculated on the server.")} {sectorNeedsQuote?t("تكلفة هذا النظام تحتاج اعتماد عرض مخصص قبل الشراء.","This solution needs an approved custom quote before purchase."):(isEnglish?`Sector and add-ons: ${money(sectorSubtotal)}.`:`تكلفة قطاعك وإضافاته: ${money(sectorSubtotal)}.`)}
         </div>}
         <div className="section-heading configurator-title"><div><span className="section-kicker">{copy("configuratorKicker")}</span><h2>{copy("configuratorTitle")}</h2></div><p>{copy("configuratorDescription")}</p></div>
         <div className="builder-layout">
@@ -542,9 +542,9 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
               {!packageId ? <p className="empty-summary">{copy("quoteEmpty")}</p> : <>
                 <div className="summary-lines">{sectorPrice&&!sectorPrice.needsCustomQuote&&sectorPrice.items.map(item=><div className="summary-line" key={item.code}><span>{item.name}<small>{item.pricingType==="yearly"?t("سنوي","annual"):item.pricingType==="monthly"?t("شهري","monthly"):t("مرة واحدة","one time")}</small></span><b>{money(item.price)}</b></div>)}{localizedQuoteItems.map((item) => <div className="summary-line" key={item.id}><span>{item.label}{item.period ? <small>{item.period}</small> : null}</span><b>{money(item.amount)}</b></div>)}</div>
                 <div className="summary-math"><div><span>{copy("reviewSubtotal")}</span><b>{money(quoteSubtotal)}</b></div><div><span>{copy("reviewTax")} ({vatRate}%)</span><b>{money(quoteTax)}</b></div><div className="summary-grand"><span>{copy("reviewTotal")}</span><strong>{money(quoteTotal)}</strong></div></div>
-                <div className="summary-annual"><span>رسوم لمرة واحدة</span><b>{money(quoteSummary.oneTime)}</b></div>
-                <div className="summary-annual"><span>رسوم شهرية متكررة</span><b>{money(quoteSummary.monthly)}</b></div>
-                <div className="summary-annual"><span>رسوم سنوية متكررة</span><b>{money(quoteSummary.yearly)}</b></div>
+                <div className="summary-annual"><span>{t("رسوم لمرة واحدة","One-time charges")}</span><b>{money(quoteSummary.oneTime)}</b></div>
+                <div className="summary-annual"><span>{t("رسوم شهرية متكررة","Monthly recurring charges")}</span><b>{money(quoteSummary.monthly)}</b></div>
+                <div className="summary-annual"><span>{t("رسوم سنوية متكررة","Annual recurring charges")}</span><b>{money(quoteSummary.yearly)}</b></div>
                 {(quote.needsCustomQuote||sectorNeedsQuote) && <p className="custom-quote-note">{copy("quoteCustomNote")}</p>}
               </>}
               <p className="summary-footnote">{copy("quoteFootnote")}</p>
