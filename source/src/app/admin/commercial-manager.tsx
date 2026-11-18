@@ -3,6 +3,7 @@ import {useEffect,useState} from "react";
 import QuoteRevisionEditor from "@/components/quote-revision-editor";
 type Quote={id:number;customer_email:string;status:string;revision:number;total_piasters:number;valid_until:string|null;items:Array<{label:string;quantity:number;unitPricePiasters:number;period?:string}>};
 type EligibleOrder={id:string;reference:string;total:number;currency:string;project_title:string;latest_preview_status:string|null};
+type EligibleDraft={id:string;title:string;email:string;draft:{solutionType?:string;requirements?:string;businessName?:string;deliveryMethod?:string};latest_preview_status:string|null};
 type ChangeRequest={id:number;quote_id:number;customer_email:string;quote_status:string;revision:number;status:string;details:string;created_at:string;resolution_note?:string};
 type Template={id:number;title:string;body:string;revision:number;category:string;is_published:boolean;is_archived:boolean};
 type TemplateVersion={template_id:number;title:string;body:string;revision:number;edited_by:string|null;created_at:string;is_published:boolean};
@@ -15,7 +16,8 @@ export default function CommercialManager(){
  const [invoices,setInvoices]=useState<Invoice[]>([]);
  const [finance,setFinance]=useState<FinanceSummary|null>(null),[selectedInvoice,setSelectedInvoice]=useState<number|null>(null),[payments,setPayments]=useState<Payment[]>([]),[paymentsBusy,setPaymentsBusy]=useState(false);
  const [quotes,setQuotes]=useState<Quote[]>([]),[templates,setTemplates]=useState<Template[]>([]),[tickets,setTickets]=useState<Ticket[]>([]);
- const [eligibleOrders,setEligibleOrders]=useState<EligibleOrder[]>([]),[changeRequests,setChangeRequests]=useState<ChangeRequest[]>([]),[contractChoices,setContractChoices]=useState<Record<number,string>>({});
+ const [eligibleOrders,setEligibleOrders]=useState<EligibleOrder[]>([]),[eligibleDrafts,setEligibleDrafts]=useState<EligibleDraft[]>([]),[changeRequests,setChangeRequests]=useState<ChangeRequest[]>([]),[contractChoices,setContractChoices]=useState<Record<number,string>>({});
+ const [customPrices,setCustomPrices]=useState<Record<string,string>>({}),[customDescriptions,setCustomDescriptions]=useState<Record<string,string>>({});
  const [reviewLink,setReviewLink]=useState("");
  const [email,setEmail]=useState(""),[description,setDescription]=useState(""),[amount,setAmount]=useState(""),[title,setTitle]=useState(""),[body,setBody]=useState(""),[message,setMessage]=useState("");
  const [selectedTemplate,setSelectedTemplate]=useState<number|null>(null);
@@ -45,7 +47,7 @@ export default function CommercialManager(){
   newContract();
  }
  async function showContractVersions(id:number){try{const response=await request(`contracts/templates/${id}/versions`);setContractVersions(response.versions||[]);}catch(e){setMessage(e instanceof Error?e.message:"فشل تحميل الإصدارات");}}
- async function refresh(){try{const [q,t,s,i,o,f]=await Promise.all([request("quotes"),request("contracts/templates"),request("tickets"),request("invoices"),request("orders/eligible"),request("change-requests")]);setInvoices(i.invoices||[]);setQuotes(q.quotes||[]);setTemplates(t.templates||[]);setTickets(s.tickets||[]);setEligibleOrders(o.orders||[]);setChangeRequests(f.changeRequests||[]);try{setFinance(await request("finance/summary"))}catch{setFinance(null)}}catch(e){setMessage(String(e));}}
+ async function refresh(){try{const [q,t,s,i,o,f,d]=await Promise.all([request("quotes"),request("contracts/templates"),request("tickets"),request("invoices"),request("orders/eligible"),request("change-requests"),request("project-drafts/eligible")]);setInvoices(i.invoices||[]);setQuotes(q.quotes||[]);setTemplates(t.templates||[]);setTickets(s.tickets||[]);setEligibleOrders(o.orders||[]);setEligibleDrafts(d.drafts||[]);setChangeRequests(f.changeRequests||[]);try{setFinance(await request("finance/summary"))}catch{setFinance(null)}}catch(e){setMessage(String(e));}}
  useEffect(()=>{void refresh()},[]);
  async function showPayments(id:number){setSelectedInvoice(id);setPaymentsBusy(true);try{const result=await request(`invoices/${id}/payments`);setPayments(result.payments||[])}catch(e){setMessage(String(e));setPayments([])}finally{setPaymentsBusy(false)}}
  async function run(action:()=>Promise<unknown>){try{setMessage("");await action();setMessage("تم تنفيذ العملية بنجاح");await refresh()}catch(e){setMessage(e instanceof Error?e.message:"حدث خطأ")}}
@@ -61,6 +63,21 @@ export default function CommercialManager(){
    <label>رقم الطلب UUID<input aria-label="رقم الطلب لإنشاء عرض السعر" required pattern="[a-fA-F0-9-]{36}" value={orderIdToQuote} onChange={e=>setOrderIdToQuote(e.target.value)} placeholder="رقم الطلب من لوحة الطلبات"/></label>
    <button type="submit">توليد عرض سعر مرتبط بالطلب</button>
   </form>
+ <section aria-label="مشروعات مخصصة تنتظر تسعير الشركة" style={{padding:15,border:"1px solid #cbdcec",borderRadius:13,background:"#f5f7fc"}}>
+  <h3>المشروعات المخصصة التي تحتاج عرض سعر من ATSH AI</h3>
+  <p>تراجع الشركة وصف المشروع ومعاينته أولًا، ثم تدخل السعر الأساسي قبل الضريبة. يضيف الخادم الضريبة المضبوطة في لوحة الشركة، دون قبول إجمالي من المتصفح.</p>
+  {!eligibleDrafts.length&&<p>لا توجد مسودات مخصصة جاهزة لإعداد العرض.</p>}
+  {eligibleDrafts.filter(d=>d.draft?.solutionType||d.latest_preview_status==="approved").map(d=><div key={d.id} style={{border:"1px solid #d6e2ec",borderRadius:11,padding:13,margin:"10px 0",background:"white"}}>
+    <strong>{d.title} — {d.email}</strong><p style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>نوع الحل: {d.draft.solutionType||"لم يُحدد"} · طريقة التسليم: {d.draft.deliveryMethod||"تحتاج تحديدًا"} · أحدث معاينة: {d.latest_preview_status==="approved"?"معتمدة":d.latest_preview_status||"لم تُنشأ"}</p>
+    {d.draft.requirements&&<details><summary>متطلبات العميل</summary><p style={{whiteSpace:"pre-wrap"}}>{d.draft.requirements}</p></details>}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,210px),1fr))",gap:9,marginTop:10}}>
+      <label>اسم بند التنفيذ<input value={customDescriptions[d.id]??`تنفيذ مشروع: ${d.title}`} onChange={e=>setCustomDescriptions(old=>({...old,[d.id]:e.target.value}))} maxLength={250}/></label>
+      <label>السعر قبل الضريبة بالجنيه<input type="number" min={0.01} step={0.01} value={customPrices[d.id]||""} onChange={e=>setCustomPrices(old=>({...old,[d.id]:e.target.value}))} placeholder="أدخل سعرًا مراجَعًا"/></label>
+    </div>
+    <button type="button" disabled={d.latest_preview_status!=="approved"||!customPrices[d.id]||Number(customPrices[d.id])<=0} onClick={()=>{const value=Math.round(Number(customPrices[d.id])*100);if(!Number.isSafeInteger(value)||value<1){setMessage("السعر غير صالح");return;}void run(()=>request(`project-drafts/${encodeURIComponent(d.id)}/quote`,"POST",{items:[{label:customDescriptions[d.id]??`تنفيذ مشروع: ${d.title}`,quantity:1,unitPricePiasters:value,period:"fixed"}]}));}}>إعداد عرض رسمي للمشروع المخصص</button>
+    {d.latest_preview_status!=="approved"&&<small style={{display:"block",color:"#a45e24"}}>لا يمكن إصدار العرض قبل اعتماد أحدث نسخة معاينة من العميل.</small>}
+   </div>)}
+ </section>
  <section aria-label="الطلبات المؤهلة لإعداد عرض سعر" style={{padding:15,border:"1px solid #cfddea",borderRadius:13,background:"#f4f8fc"}}>
   <h3>طلبات العملاء الجاهزة للتسعير</h3>
   <p>يُنشأ العرض من بيانات الطلب المحفوظة على الخادم، ولا يمكن إصداره إلا بعد اعتماد العميل أحدث معاينة.</p>
