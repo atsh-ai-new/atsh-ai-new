@@ -150,7 +150,10 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
    const signed=await client.query("UPDATE customer_contracts SET status='signed',signer_name=$2,signed_at=now(),signature_evidence=$3::jsonb WHERE id=$1 AND status='issued' RETURNING id,signed_at",[contract.id,parsed.data.signerName,JSON.stringify(evidence)]);
    if(!accepted.rowCount||!signed.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'Document changed before acceptance'});}
    const schedule=await ensureInvoiceScheduleOnAcceptance(client,{quoteId:id,totalPiasters:quote.total_piasters});
-   await client.query("UPDATE customer_journey_projects SET status='payment_pending',updated_at=now() WHERE id IN (SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true) AND status='quoted'",[id]);
+   await client.query(`UPDATE customer_journey_projects SET status='payment_pending',updated_at=now()
+    WHERE id IN (SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true
+     UNION ALL SELECT project_id FROM commercial_custom_quote_links WHERE quote_id=$1 AND is_current=true)
+    AND status='quoted'`,[id]);
    await client.query('UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL',[id]);
    await queueJourneyEvent(client,'contract.signed',`contract.signed:${signed.rows[0].id}`,{contractId:signed.rows[0].id,quoteId:id,signedAt:signed.rows[0].signed_at,customerAccount:true});
    await client.query('COMMIT');
