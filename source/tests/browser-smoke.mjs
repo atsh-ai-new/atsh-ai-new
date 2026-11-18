@@ -18,12 +18,11 @@ try{
   await page.getByRole("heading",{name:"عيادتي"}).waitFor();
   await page.getByRole("heading",{name:"سوبر ماركت"}).waitFor({state:"detached",timeout:5000});
   await page.locator('a[href="/catalog/eyadaty"]').click();
-  await page.getByRole("heading",{name:/عيادتي/}).waitFor();
-  const title=page.getByLabel("اسم النشاط التجريبي");
-  await title.fill("عيادة اختبار ATSH");
-  assert.match(await page.getByRole("heading",{level:1}).innerText(),/عيادة اختبار ATSH/);
-  await page.getByRole("button",{name:"المرضى"}).click();
-  await page.getByRole("heading",{name:"المرضى",level:2}).waitFor();
+  // Browser Smoke runs the production frontend WITHOUT its API/DB.
+  // Missing backend must fail closed (no stale private/unpublished catalog fallback).
+  // Full interactive sector CRUD is checked in the separate PostgreSQL-backed Browser E2E workflow.
+  await page.getByRole("heading",{name:"الكتالوج غير متاح"}).waitFor({timeout:12000});
+  assert.equal(await page.locator("iframe").count(),0,"Unpublished or unavailable demos must not be exposed");
   const overflow=await page.evaluate(()=>({document:document.documentElement.scrollWidth,viewport:innerWidth}));
   assert.ok(overflow.document<=overflow.viewport+2,`Horizontal overflow on ${width}px: ${JSON.stringify(overflow)}`);
   checked++;
