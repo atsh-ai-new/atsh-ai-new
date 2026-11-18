@@ -1129,6 +1129,35 @@ app.post('/api/admin/builder/jobs/:id/cancel',requireAdmin,requireRole('owner','
 app.get('/api/admin/builder/jobs',requireAdmin,requireRole('owner','admin','viewer'),route(async(_req,res)=>{
  const q=await pool.query('SELECT id,kind,source_id,status,attempts,last_error,preview_url,commit_sha,created_at,updated_at FROM builder_execution_jobs ORDER BY created_at DESC LIMIT 100');res.json({jobs:q.rows});
 }));
+// Human-reviewed customer quotation feedback: account-scoped on the public side,
+// explicit staff resolution on the admin side. No automatic price changes.
+app.get("/api/admin/commercial/change-requests",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+ const q=await pool.query(`SELECT f.id,f.quote_id,f.details,f.status,f.resolution_note,f.created_at,f.resolved_at,
+ q.customer_email,q.status AS quote_status,q.revision
+ FROM commercial_quote_change_requests f JOIN commercial_quotes q ON q.id=f.quote_id
+ ORDER BY (f.status='pending') DESC,f.created_at DESC LIMIT 200`);
+ res.set("Cache-Control","no-store").json({changeRequests:q.rows});
+}));
+app.post("/api/admin/commercial/change-requests/:id/resolve",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+ const id=Number(req.params.id);
+ const body=z.object({resolutionNote:z.string().trim().min(10).max(1200)}).strict().safeParse(req.body);
+ if(!Number.isSafeInteger(id)||id<1||!body.success)return res.status(400).json({error:"Valid request and staff response required"});
+ const result=await pool.query("UPDATE commercial_quote_change_requests SET status='resolved',resolved_at=now(),resolution_note=$2 WHERE id=$1 AND status='pending' RETURNING id,quote_id,status,resolution_note",[id,body.data.resolutionNote]);
+ if(!result.rowCount)return res.status(409).json({error:"Change request already reviewed"});
+ res.json({request:result.rows[0]});
+}));
+app.get("/api/admin/commercial/orders/eligible",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+ const r=await pool.query(`SELECT o.id,o.reference,o.total,o.currency,o.created_at,
+ p.id AS project_id,p.customer_email,d.id AS draft_id,d.title AS project_title,preview.approval_status AS latest_preview_status
+ FROM orders o
+ JOIN customer_journey_order_links link ON link.order_id=o.id
+ JOIN customer_journey_projects p ON p.id=link.project_id AND p.customer_account_id IS NOT NULL
+ JOIN customer_project_drafts d ON d.linked_journey_id=p.id AND d.customer_id=p.customer_account_id
+ LEFT JOIN LATERAL (SELECT approval_status FROM customer_preview_versions v WHERE v.draft_id=d.id ORDER BY v.revision DESC LIMIT 1) preview ON true
+ WHERE NOT EXISTS(SELECT 1 FROM commercial_order_quote_links c WHERE c.order_id=o.id AND c.is_current=true)
+ ORDER BY o.created_at DESC LIMIT 100`);
+ res.set("Cache-Control","no-store").json({orders:r.rows});
+}));
 // Stage 13: immutable contract snapshots, one-time customer review link and approval evidence.
 const validCommercialId=value=>Number.isSafeInteger(Number(value))&&Number(value)>0;
 const hashReviewToken=token=>createHash("sha256").update(token).digest("hex");
