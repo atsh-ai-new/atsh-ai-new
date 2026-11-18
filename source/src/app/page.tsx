@@ -501,7 +501,7 @@ export default function HomePage() {
               <div className="included-banner">✦ 3 تصاميم و5 اتجاهات لونية مشمولة</div>
               {!packageId ? <p className="empty-summary">{copy("quoteEmpty")}</p> : <>
                 <div className="summary-lines">{sectorPrice&&!sectorPrice.needsCustomQuote&&sectorPrice.items.map(item=><div className="summary-line" key={item.code}><span>{item.name}<small>{item.pricingType==="yearly"?"سنوي":item.pricingType==="monthly"?"شهري":"مرة واحدة"}</small></span><b>{formatEgp(item.price)}</b></div>)}{quote.items.map((item) => <div className="summary-line" key={item.id}><span>{item.label}{item.period ? <small>{item.period}</small> : null}</span><b>{formatEgp(item.amount)}</b></div>)}</div>
-                <div className="summary-math"><div><span>{copy("reviewSubtotal")}</span><b>{formatEgp(quote.subtotal)}</b></div><div><span>{copy("reviewTax")} ({vatRate}%)</span><b>{formatEgp(quote.tax)}</b></div><div className="summary-grand"><span>{copy("reviewTotal")}</span><strong>{formatEgp(quoteTotal)}</strong></div></div>
+                <div className="summary-math"><div><span>{copy("reviewSubtotal")}</span><b>{formatEgp(quoteSubtotal)}</b></div><div><span>{copy("reviewTax")} ({vatRate}%)</span><b>{formatEgp(quoteTax)}</b></div><div className="summary-grand"><span>{copy("reviewTotal")}</span><strong>{formatEgp(quoteTotal)}</strong></div></div>
                 <div className="summary-annual"><span>رسوم لمرة واحدة</span><b>{formatEgp(quoteSummary.oneTime)}</b></div>
                 <div className="summary-annual"><span>رسوم شهرية متكررة</span><b>{formatEgp(quoteSummary.monthly)}</b></div>
                 <div className="summary-annual"><span>رسوم سنوية متكررة</span><b>{formatEgp(quoteSummary.yearly)}</b></div>
