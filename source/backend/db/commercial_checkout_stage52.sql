@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS commercial_quote_change_requests (
  details text NOT NULL CHECK (char_length(details) BETWEEN 10 AND 2000),
  status varchar(16) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','resolved','cancelled')),
  created_at timestamptz NOT NULL DEFAULT now(),
+ resolution_note text,
  resolved_at timestamptz
 );
 CREATE UNIQUE INDEX IF NOT EXISTS commercial_quote_one_pending_change_idx
