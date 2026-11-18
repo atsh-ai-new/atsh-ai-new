@@ -13,3 +13,17 @@ export const sectorTemplates: SectorTemplate[] = [
 export function findSector(slug: string): SectorTemplate | undefined {
   return sectorTemplates.find((item)=>item.slug===slug);
 }
+
+
+/** Curated, source-controlled interactive demos. CMS entries may select one as
+ * their preview engine; arbitrary HTML uploads are never executed in-site. */
+export const interactiveDemoPaths: Record<string,string> = {
+  eyadaty:"/demos/eyadaty.html",
+  agzakhana:"/demos/agzakhana.html",
+  supermarket:"/demos/supermarket.html",
+  avocato:"/demos/avocato.html"
+};
+export function interactiveDemoSlug(catalogSlug:string, configuredSlug?:string):string|undefined {
+  const chosen=configuredSlug || catalogSlug;
+  return Object.prototype.hasOwnProperty.call(interactiveDemoPaths,chosen)?chosen:undefined;
+}
