@@ -191,6 +191,7 @@ export default function CatalogManager() {
         <div className="admin-team-list">{items.map(item=><article className="admin-team-row" key={item.slug} style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
           <strong>{item.icon} {item.name}</strong><span>{item.category}</span><span>{item.archived?"مؤرشف":item.published?"منشور":"مسودة"}</span>
           <button type="button" className="inline-add" disabled={busy} onClick={()=>edit(item)}>تعديل</button>
+          {item.published&&!item.archived&&<a className="inline-add" href={`/catalog/${encodeURIComponent(item.slug)}`} target="_blank" rel="noopener noreferrer">معاينة العميل ↗</a>}
           <button type="button" className="inline-add" disabled={busy||item.archived} onClick={()=>void toggle(item,{published:!item.published})}>{item.published?"إخفاء":"نشر"}</button>
           {item.archived?<button type="button" className="inline-add" disabled={busy} onClick={()=>void toggle(item,{archived:false})}>استعادة</button>:<button type="button" className="inline-add" disabled={busy} onClick={()=>void archive(item)}>أرشفة</button>}
         </article>)}</div>
