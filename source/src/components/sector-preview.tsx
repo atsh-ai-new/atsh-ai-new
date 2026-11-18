@@ -2,11 +2,12 @@
 import { useEffect, useState } from "react";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 import Link from "next/link";
-import type { SectorTemplate } from "@/lib/sector-catalog";
+import { interactiveDemoPaths, type SectorTemplate } from "@/lib/sector-catalog";
 import SectorInteractiveDemo,{isInteractiveSector} from "@/components/sector-interactive-demo";
 
-export default function SectorPreview({template}: {template: SectorTemplate}) {
+export default function SectorPreview({template,demoSlug}: {template: SectorTemplate;demoSlug?:string}) {
   const [active,setActive]=useState(template.modules[0]);
+  const [previewMode,setPreviewMode]=useState<"full"|"simple">(demoSlug?"full":"simple");
   const [rows,setRows]=useState(template.sampleRows);
   const [name,setName]=useState("");
   const [brand,setBrand]=useState("#203958");
@@ -82,7 +83,16 @@ export default function SectorPreview({template}: {template: SectorTemplate}) {
       {logoError&&<p role="alert" style={{color:"#b91c1c"}}>{logoError}</p>}
       {logoNotice&&<p role="status" style={{color:"#166534"}}>{logoNotice}</p>}
     </section>
-    <div className="sector-preview-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,230px) minmax(0,1fr)",gap:16}}>
+    {demoSlug && interactiveDemoPaths[demoSlug] && <section aria-label="نوع المعاينة" style={{background:"#fff",border:"1px solid #dce5f0",borderRadius:14,padding:12,marginBottom:16,display:"flex",gap:9,flexWrap:"wrap",alignItems:"center"}}>
+      <strong style={{marginInlineEnd:8}}>اختر طريقة تجربة النظام:</strong>
+      <button type="button" onClick={()=>setPreviewMode("full")} aria-pressed={previewMode==="full"} style={{background:previewMode==="full"?brand:"#edf3f8",color:previewMode==="full"?"white":"#203958",border:0,borderRadius:9,padding:"10px 13px",cursor:"pointer"}}>المعاينة التفاعلية الكاملة</button>
+      <button type="button" onClick={()=>setPreviewMode("simple")} aria-pressed={previewMode==="simple"} style={{background:previewMode==="simple"?brand:"#edf3f8",color:previewMode==="simple"?"white":"#203958",border:0,borderRadius:9,padding:"10px 13px",cursor:"pointer"}}>المعاينة المبسطة</button>
+      <a href={interactiveDemoPaths[demoSlug]} target="_blank" rel="noopener noreferrer" style={{marginInlineStart:"auto",color:"#174e83",textDecoration:"underline"}}>فتح النظام في نافذة كاملة ↗</a>
+    </section>}
+    {demoSlug && interactiveDemoPaths[demoSlug] && previewMode==="full" ? <section aria-label="المعاينة التفاعلية الكاملة" style={{background:"white",border:"1px solid #e2e8f0",borderRadius:16,overflow:"hidden"}}>
+      <iframe title={`معاينة ${template.name} التفاعلية الكاملة`} src={interactiveDemoPaths[demoSlug]} loading="eager" referrerPolicy="no-referrer" sandbox="allow-scripts allow-forms allow-modals allow-same-origin" style={{width:"100%",minHeight:680,border:0,display:"block"}} />
+      <p style={{fontSize:12,padding:"8px 14px",color:"#64748b"}}>المعاينة تفاعلية وبياناتها تجريبية داخل المتصفح؛ ليست متصلة ببيانات العملاء أو بالفوترة الحقيقية.</p>
+    </section> : <div className="sector-preview-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,230px) minmax(0,1fr)",gap:16}}> 
       <nav className="sector-preview-nav" aria-label="أقسام النموذج" style={{background:brand,color:"white",borderRadius:16,padding:14,alignSelf:"start"}}>
         {template.modules.map(module=><button key={module} onClick={()=>setActive(module)} aria-current={active===module?"page":undefined} style={{display:"block",width:"100%",textAlign:"right",marginBottom:5,padding:12,borderRadius:9,border:0,cursor:"pointer",background:active===module?"#ffffff30":"transparent",color:"white",fontWeight:active===module?700:400}}>{module}</button>)}
       </nav>
@@ -106,6 +116,6 @@ export default function SectorPreview({template}: {template: SectorTemplate}) {
         </section>
         </>}
       </section>
-    </div>
+    </div>}
   </main>;
 }
