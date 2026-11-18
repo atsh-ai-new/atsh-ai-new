@@ -1,9 +1,21 @@
 "use client";
-import {useState} from "react";
+import {useEffect,useState} from "react";
 type Review={quote:{id:number;status:string;items:{label:string;quantity:number;unitPricePiasters:number}[];totalPiasters:number;currency:string;validUntil:string|null};contract:{id:number;body:string;status:string;signedAt:string|null}};
 export default function CommercialReview(){
  const [token,setToken]=useState("");const [review,setReview]=useState<Review|null>(null);const [name,setName]=useState("");const [consent,setConsent]=useState(false);const [error,setError]=useState("");const [busy,setBusy]=useState(false);const [signed,setSigned]=useState(false);
- async function load(){setBusy(true);setError("");try{const r=await fetch(`/api/commercial/review/${encodeURIComponent(token.trim())}`,{cache:"no-store"});const j=await r.json();if(!r.ok)throw Error(j.error||"تعذر فتح المستند");setReview(j)}catch(e){setError(e instanceof Error?e.message:"خطأ")}finally{setBusy(false)}}
+ async function load(value=token){setBusy(true);setError("");try{const r=await fetch(`/api/commercial/review/${encodeURIComponent(value.trim())}`,{cache:"no-store"});const j=await r.json();if(!r.ok)throw Error(j.error||"تعذر فتح المستند");setReview(j)}catch(e){setError(e instanceof Error?e.message:"خطأ")}finally{setBusy(false)}}
+ useEffect(()=>{
+  const query=new URLSearchParams(window.location.search);
+  const fromLink=query.get("token")||"";
+  if(!/^[A-Za-z0-9_-]{43}$/.test(fromLink))return;
+  setToken(fromLink);
+  // Remove a one-time bearer URL secret from the visible address/history
+  // before users share a screenshot or navigate away.
+  window.history.replaceState(window.history.state,"",window.location.pathname);
+  void load(fromLink);
+  // Review is intentionally fetched once for the explicit link, not per keystroke.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[]);
  async function sign(){if(!review||!consent||name.trim().length<3)return;setBusy(true);setError("");try{const r=await fetch(`/api/commercial/review/${encodeURIComponent(token.trim())}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({signerName:name.trim(),consent:true})});const j=await r.json();if(!r.ok)throw Error(j.error||"تعذر التوقيع");setSigned(true)}catch(e){setError(e instanceof Error?e.message:"خطأ")}finally{setBusy(false)}}
  return <main dir="rtl" style={{maxWidth:800,margin:"2rem auto",padding:24,fontFamily:"Arial,sans-serif",color:"#203958"}}><h1>عرض السعر والعقد — ATSH AI</h1><p>راجع جميع البنود قبل الموافقة. التوقيع بالاسم وإقرار الموافقة؛ لا يعني دفع أي مبلغ.</p>
  {!review&&!signed&&<section className="no-print"><label>رمز المراجعة الخاص بك<input value={token} onChange={e=>setToken(e.target.value)} type="password" autoComplete="off" style={{display:"block",width:"100%",padding:12}}/></label><button disabled={busy||!token} onClick={load}>فتح العرض والعقد</button></section>}
