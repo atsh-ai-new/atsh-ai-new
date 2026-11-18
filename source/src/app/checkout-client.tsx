@@ -14,7 +14,7 @@ type Checkout={
 };
 const money=(piasters:number,currency="EGP")=>`${(Number(piasters)/100).toLocaleString("ar-EG",{minimumFractionDigits:2,maximumFractionDigits:2})} ${currency==="EGP"?"جنيه":currency}`;
 const stageLabel:Record<string,string>={draft:"مسودة",issued:"في انتظار موافقتك",accepted:"موافق عليه",superseded:"نسخة قديمة",expired:"منتهي",unpaid:"بانتظار الدفع",part_paid:"مدفوع جزئيًا",paid:"تم الدفع بعد التحقق",void:"ملغي",signed:"موافقة مسجلة"};
-export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;const status=(v:string)=>en?({draft:"Draft",issued:"Awaiting approval",accepted:"Approved",superseded:"Superseded",expired:"Expired",unpaid:"Unpaid",part_paid:"Partially paid",paid:"Paid and verified",void:"Cancelled",signed:"Signed"} as Record<string,string>)[v]||v:status(v);
+export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;const status=(v:string)=>en?({draft:"Draft",issued:"Awaiting approval",accepted:"Approved",superseded:"Superseded",expired:"Expired",unpaid:"Unpaid",part_paid:"Partially paid",paid:"Paid and verified",void:"Cancelled",signed:"Signed"} as Record<string,string>)[v]||v:stageLabel[v]||v;
  const {id}=useParams<{id:string}>();
  const [data,setData]=useState<Checkout|null>(null),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(""),[success,setSuccess]=useState("");
  const [name,setName]=useState(""),[consent,setConsent]=useState(false),[changes,setChanges]=useState(""),[showChanges,setShowChanges]=useState(false);
