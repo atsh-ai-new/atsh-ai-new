@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
-
 export const metadata: Metadata = {
-  title: "ATSH AI | ابنِ موقعك باختيارك",
-  description: "صمّم باقتك، اختر الإضافات، وشاهد التقدير بالجنيه المصري قبل إرسال طلبك إلى ATSH AI.",
-  applicationName: "ATSH AI"
+  title: "ATSH AI | Digital solutions built for your business",
+  description: "ATSH AI builds websites, applications and intelligent software solutions.",
+  applicationName: "ATSH AI",
+  alternates:{languages:{ar:"/",en:"/en"}}
 };
-
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="ar" dir="rtl"><body>{children}</body></html>;
+export default async function RootLayout({children}:Readonly<{children:React.ReactNode}>) {
+  const locale=(await headers()).get("x-atsh-locale")==="en"?"en":"ar";
+  return <html lang={locale} dir={locale==="en"?"ltr":"rtl"}><body>{children}</body></html>;
 }
