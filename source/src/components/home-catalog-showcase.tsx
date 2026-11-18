@@ -52,7 +52,7 @@ export default function HomeCatalogShowcase({selectedSlug,selectedAddons,onSelec
  const displayed=expanded?visible:visible.slice(0,6);
  const selected=items.find(x=>x.slug===selectedSlug);
  const selectedPlace=selected?resolvePlacement(selected,sectors):null;
- const choose=(item:HomeCatalogItem)=>{onSelect(item);document.getElementById("configurator")?.scrollIntoView({behavior:"smooth",block:"start"})};
+ const choose=(item:HomeCatalogItem)=>{onSelect(item)};
  return <div className="home-catalog-showcase" aria-label="الكتالوجات والتطبيقات المتاحة" style={{marginTop:34}}>
   <style>{`
     .hc-filter{display:flex;gap:9px;overflow-x:auto;padding:7px 1px 13px}.hc-filter button{flex-shrink:0;border:1px solid #d7e0eb;background:white;border-radius:10px;padding:10px 13px;color:#203958;cursor:pointer;font:inherit}.hc-filter button[aria-pressed=true]{background:#203958;color:white;border-color:#203958}
