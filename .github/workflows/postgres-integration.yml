@@ -1,7 +1,7 @@
 name: ATSH PostgreSQL API Integration
 on:
   push:
-    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1]
+    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1, catalog-commerce-payment-ready-v1]
     paths:
       - 'source/backend/**'
       - '.github/workflows/postgres-integration.yml'
@@ -38,6 +38,7 @@ jobs:
       ALLOWED_ORIGINS: http://127.0.0.1:3017
       COOKIE_SECURE: 'false'
       PORT: '3017'
+      ATSH_CI_TEST_RATE_LIMIT: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

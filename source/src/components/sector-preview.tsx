@@ -1,14 +1,16 @@
 "use client";
 import { useEffect, useState } from "react";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
+type PreviewAddon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
 import Link from "next/link";
 import { interactiveDemoPaths, type SectorTemplate } from "@/lib/sector-catalog";
 import SectorInteractiveDemo,{isInteractiveSector} from "@/components/sector-interactive-demo";
 
-export default function SectorPreview({template,demoSlug}: {template: SectorTemplate;demoSlug?:string}) {
+export default function SectorPreview({template,demoSlug,pricedAddons=[],basePrice=null}: {template: SectorTemplate;demoSlug?:string;pricedAddons?:PreviewAddon[];basePrice?:number|null}) {
   const [active,setActive]=useState(template.modules[0]);
   const [previewMode,setPreviewMode]=useState<"full"|"simple">(demoSlug?"full":"simple");
   const [rows,setRows]=useState(template.sampleRows);
+  const [selectedAddons,setSelectedAddons]=useState<string[]>([]);
   const [name,setName]=useState("");
   const [brand,setBrand]=useState("#203958");
   const [customTitle,setCustomTitle]=useState("");
@@ -16,6 +18,7 @@ export default function SectorPreview({template,demoSlug}: {template: SectorTemp
   useEffect(()=>{
     const guest=loadGuestWorkspace();
     if(guest.sectorSlug===template.slug){
+      setSelectedAddons(Array.isArray(guest.sectorAddonCodes)?guest.sectorAddonCodes.filter(code=>pricedAddons.some(item=>item.code===code)):[]);
       if(guest.businessName)setCustomTitle(guest.businessName);
       if(guest.businessDescription)setCustomDescription(guest.businessDescription);
       if(guest.brandColor)setBrand(guest.brandColor);
@@ -82,6 +85,17 @@ export default function SectorPreview({template,demoSlug}: {template: SectorTemp
       </div>
       {logoError&&<p role="alert" style={{color:"#b91c1c"}}>{logoError}</p>}
       {logoNotice&&<p role="status" style={{color:"#166534"}}>{logoNotice}</p>}
+    </section>
+    <section aria-label="الخصائص والإضافات القابلة للتخصيص" style={{background:"#fff",border:"1px solid #dce5f0",borderRadius:14,padding:16,marginBottom:16}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:9}}><div><h2 style={{fontSize:20,margin:"0 0 6px",color:brand}}>المزايا والإضافات الخاصة بالنظام</h2><p style={{margin:0,color:"#60728a",fontSize:13}}>اختر ما تحتاجه؛ البنود المدفوعة تُراجع داخل التسعير الرسمي، ولا تُنشئ فاتورة أو طلب شراء من هنا.</p></div><strong>{basePrice===null?"سعر النظام حسب العرض المعتمد":`سعر الأساس: ${basePrice.toLocaleString("ar-EG")} ج.م`}</strong></div>
+      {(template.features||[]).length>0&&<p style={{lineHeight:1.9,fontSize:14}}>يشمل النموذج: {template.features.join(" · ")}</p>}
+      {pricedAddons.length>0?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,230px),1fr))",gap:10,margin:"12px 0"}}>
+       {pricedAddons.map(addon=><label key={addon.code} style={{display:"flex",gap:10,border:"1px solid #dce5ee",borderRadius:9,padding:12,alignItems:"center",flexWrap:"wrap"}}>
+         <input type="checkbox" checked={selectedAddons.includes(addon.code)} onChange={event=>setSelectedAddons(previous=>{const next=event.target.checked?[...new Set([...previous,addon.code])]:previous.filter(code=>code!==addon.code);saveGuestWorkspace({sectorSlug:template.slug,sectorName:template.name,sectorAddonCodes:next,source:"preview"});return next})}/>
+         <span style={{flex:"1 1 120px"}}>{addon.name}</span><strong style={{fontSize:13}}>{addon.price.toLocaleString("ar-EG")} ج.م{addon.pricingType==="monthly"?"/ شهر":addon.pricingType==="yearly"?"/ سنة":""}</strong>
+       </label>)}
+      </div>:<p style={{fontSize:13,color:"#60728a"}}>لا توجد إضافات قطاعية محددة الأسعار لهذا النموذج حاليًا.</p>}
+      <Link href={`/?sector=${encodeURIComponent(template.slug)}#configurator`} style={{display:"inline-block",background:brand,color:"white",borderRadius:10,padding:"11px 15px",textDecoration:"none",fontWeight:700}}>متابعة الطلب والتسعير مع الإضافات المحددة ←</Link>
     </section>
     {demoSlug && interactiveDemoPaths[demoSlug] && <section aria-label="نوع المعاينة" style={{background:"#fff",border:"1px solid #dce5f0",borderRadius:14,padding:12,marginBottom:16,display:"flex",gap:9,flexWrap:"wrap",alignItems:"center"}}>
       <strong style={{marginInlineEnd:8}}>اختر طريقة تجربة النظام:</strong>

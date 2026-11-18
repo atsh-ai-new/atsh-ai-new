@@ -23,6 +23,7 @@ import {queueJourneyEvent,deliverJourneyEvents,eventDestination} from "./custome
 import {checkDomainWithNamecheap} from "./domain-availability.js";
 import {seedCatalogIfAbsent} from "./catalog-starter.js";
 import {deriveQuoteFromOrder} from "./order-quote.js";
+import {ensureInvoiceScheduleOnAcceptance} from "./customer-checkout.js";
 import { buildProjectPlan, proposeVisualEdit } from "./project-builder.js";
 import {verifyCallback,validJobResult,canTransition} from "./builder-job-rules.js";
 import { operationGuard } from "./operation-guards.js";
@@ -65,6 +66,7 @@ await pool.query(await readFile(new URL("../db/customer_project_logos_stage46.sq
 await pool.query(await readFile(new URL("../db/visitor_ai_usage_stage51.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/commercial_checkout_stage52.sql", import.meta.url), "utf8"));
 await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim()).filter(Boolean);
 const cookie = "atsh_admin";
@@ -100,7 +102,9 @@ app.use("/api/internal/verified-payments",express.raw({type:"application/json",l
 app.use("/api/admin/pages/catalog",express.json({limit:"1mb"}));
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
-app.use("/api", rateLimit({ windowMs: 15*60*1000, limit: 120, standardHeaders: "draft-8", legacyHeaders: false }));
+// Allow exhaustive isolated CI smoke tests to exceed visitor throttling without changing production limits.
+const isolatedCiRate=process.env.ATSH_CI_TEST_RATE_LIMIT==="true"&&process.env.NODE_ENV!=="production";
+app.use("/api", rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?600:120, standardHeaders: "draft-8", legacyHeaders: false }));
 
 async function requireAdmin(req,res,next) {
   try {
@@ -143,11 +147,11 @@ async function sendTransactionalEmail({to,toName,subject,textContent}) {
   return true;
 }
 
-app.use("/api/customer/auth",rateLimit({windowMs:15*60*1000,limit:20,standardHeaders:"draft-8",legacyHeaders:false}),customerAuthRouter({pool,sendEmail:sendTransactionalEmail,allowedOrigins:origins}));
+app.use("/api/customer/auth",rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?600:20,standardHeaders:"draft-8",legacyHeaders:false}),customerAuthRouter({pool,sendEmail:sendTransactionalEmail,allowedOrigins:origins}));
 app.use("/api/customer/deliverables",deliveryCustomerRouter({pool,allowedOrigins:origins}));
 app.use("/api/admin/deliverables",requireAdmin,requireRole("owner","admin","editor"),deliveryAdminRouter({pool}));
 app.use("/api/admin/operations",requireAdmin,requireRole("owner","admin"),deliveryAdminRouter({pool,operationsOnly:true}));
-app.use("/api/customer/commercial",rateLimit({windowMs:15*60*1000,limit:60,standardHeaders:"draft-8",legacyHeaders:false}),customerCommercialRouter({pool}));
+app.use("/api/customer/commercial",rateLimit({windowMs:15*60*1000,limit:60,standardHeaders:"draft-8",legacyHeaders:false}),customerCommercialRouter({pool,allowedOrigins:origins,queueJourneyEvent}));
 
 // Enforce central operations flags on actual write entry points (not just dashboard state).
 app.use('/api/orders', (req,res,next)=>req.method==='POST'?operationGuard(pool,'new_orders')(req,res,next):next());
@@ -1127,6 +1131,36 @@ app.post('/api/admin/builder/jobs/:id/cancel',requireAdmin,requireRole('owner','
 app.get('/api/admin/builder/jobs',requireAdmin,requireRole('owner','admin','viewer'),route(async(_req,res)=>{
  const q=await pool.query('SELECT id,kind,source_id,status,attempts,last_error,preview_url,commit_sha,created_at,updated_at FROM builder_execution_jobs ORDER BY created_at DESC LIMIT 100');res.json({jobs:q.rows});
 }));
+// Human-reviewed customer quotation feedback: account-scoped on the public side,
+// explicit staff resolution on the admin side. No automatic price changes.
+app.get("/api/admin/commercial/change-requests",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+ const q=await pool.query(`SELECT f.id,f.quote_id,f.details,f.status,f.resolution_note,f.created_at,f.resolved_at,
+ q.customer_email,q.status AS quote_status,q.revision
+ FROM commercial_quote_change_requests f JOIN commercial_quotes q ON q.id=f.quote_id
+ ORDER BY (f.status='pending') DESC,f.created_at DESC LIMIT 200`);
+ res.set("Cache-Control","no-store").json({changeRequests:q.rows});
+}));
+app.post("/api/admin/commercial/change-requests/:id/resolve",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+ const id=Number(req.params.id);
+ const body=z.object({resolutionNote:z.string().trim().min(10).max(1200)}).strict().safeParse(req.body);
+ if(!Number.isSafeInteger(id)||id<1||!body.success)return res.status(400).json({error:"Valid request and staff response required"});
+ const result=await pool.query("UPDATE commercial_quote_change_requests SET status='resolved',resolved_at=now(),resolution_note=$2 WHERE id=$1 AND status='pending' RETURNING id,quote_id,status,resolution_note",[id,body.data.resolutionNote]);
+ if(!result.rowCount)return res.status(409).json({error:"Change request already reviewed"});
+ res.json({request:result.rows[0]});
+}));
+app.get("/api/admin/commercial/orders/eligible",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+ const r=await pool.query(`SELECT o.id,o.reference,o.total,o.currency,o.created_at,
+ p.id AS project_id,p.customer_email,d.id AS draft_id,d.title AS project_title,CASE WHEN preview.approval_status='approved' AND preview.snapshot->>'sourceRevision'=d.revision::text THEN 'approved'
+ ELSE CASE WHEN preview.approval_status='approved' THEN 'stale' ELSE preview.approval_status END END AS latest_preview_status
+ FROM orders o
+ JOIN customer_journey_order_links link ON link.order_id=o.id
+ JOIN customer_journey_projects p ON p.id=link.project_id AND p.customer_account_id IS NOT NULL
+ JOIN customer_project_drafts d ON d.linked_journey_id=p.id AND d.customer_id=p.customer_account_id
+ LEFT JOIN LATERAL (SELECT approval_status,snapshot FROM customer_preview_versions v WHERE v.draft_id=d.id ORDER BY v.revision DESC LIMIT 1) preview ON true
+ WHERE NOT EXISTS(SELECT 1 FROM commercial_order_quote_links c WHERE c.order_id=o.id AND c.is_current=true)
+ ORDER BY o.created_at DESC LIMIT 100`);
+ res.set("Cache-Control","no-store").json({orders:r.rows});
+}));
 // Stage 13: immutable contract snapshots, one-time customer review link and approval evidence.
 const validCommercialId=value=>Number.isSafeInteger(Number(value))&&Number(value)>0;
 const hashReviewToken=token=>createHash("sha256").update(token).digest("hex");
@@ -1143,15 +1177,22 @@ app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requireRole("own
  const client=await pool.connect();try{await client.query("BEGIN");const old=await client.query("SELECT * FROM commercial_quotes WHERE id=$1 FOR UPDATE",[req.params.id]);
  if(!old.rowCount||!["draft","issued"].includes(old.rows[0].status)){await client.query("ROLLBACK");return res.status(409).json({error:"Cannot revise quote"})}
  const x=old.rows[0];
- const associatedContract=await client.query("SELECT 1 FROM customer_contracts WHERE quote_id=$1 AND status<>'void' LIMIT 1",[x.id]);
- if(associatedContract.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Existing issued contracts cannot be silently rewritten or repriced"});}
+ const associatedContract=await client.query("SELECT id,status FROM customer_contracts WHERE quote_id=$1 AND status<>'void' FOR UPDATE",[x.id]);
+ if(associatedContract.rows.some(contract=>contract.status==="signed")){await client.query("ROLLBACK");return res.status(409).json({error:"Signed contracts cannot be rewritten or repriced"});}
+ if(associatedContract.rowCount)await client.query("UPDATE customer_contracts SET status='void' WHERE quote_id=$1 AND status='issued'",[x.id]);
  const newer=await client.query("INSERT INTO commercial_quotes(customer_email,customer_account_id,revision,items,total_piasters,valid_until) VALUES($1,$2,$3,$4::jsonb,$5,$6) RETURNING *",[x.customer_email,x.customer_account_id,x.revision+1,JSON.stringify(items),total,validUntil||null]);
  const oldLink=await client.query("UPDATE commercial_order_quote_links SET is_current=false WHERE quote_id=$1 AND is_current=true RETURNING order_id,project_id,draft_id",[x.id]);
  if(oldLink.rowCount){
    await client.query("INSERT INTO commercial_order_quote_links(order_id,quote_id,project_id,draft_id,is_current) VALUES($1,$2,$3,$4,true)",[oldLink.rows[0].order_id,newer.rows[0].id,oldLink.rows[0].project_id,oldLink.rows[0].draft_id]);
  }
+ const customLink=await client.query("UPDATE commercial_custom_quote_links SET is_current=false WHERE quote_id=$1 AND is_current=true RETURNING draft_id,project_id,customer_account_id",[x.id]);
+ if(customLink.rowCount){
+   const linked=customLink.rows[0];
+   await client.query("INSERT INTO commercial_custom_quote_links(quote_id,draft_id,project_id,customer_account_id,is_current) VALUES($1,$2,$3,$4,true)",[newer.rows[0].id,linked.draft_id,linked.project_id,linked.customer_account_id]);
+ }
  await client.query("UPDATE commercial_quotes SET status='superseded' WHERE id=$1",[x.id]);
  await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[x.id]);
+ await client.query("UPDATE commercial_quote_change_requests SET status='resolved',resolved_at=now(),resolution_note='New quote version issued' WHERE quote_id=$1 AND status='pending'",[x.id]);
  await queueJourneyEvent(client,"quote.revised",`quote.revised:${newer.rows[0].id}`,{quoteId:newer.rows[0].id,supersedes:x.id,orderId:oldLink.rows[0]?.order_id||null});
  await client.query("COMMIT");res.status(201).json({quote:newer.rows[0],supersedes:x.id});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
@@ -1195,15 +1236,23 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
  const token=req.params.token;if(!/^[A-Za-z0-9_-]{43}$/.test(token))return res.status(404).json({error:"Invalid link"});
  const client=await pool.connect();try{await client.query("BEGIN");const l=await client.query("SELECT quote_id FROM commercial_review_links WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>now() FOR UPDATE",[hashReviewToken(token)]);
  if(!l.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Link expired or used"})}
- const id=l.rows[0].quote_id;const q=await client.query("UPDATE commercial_quotes SET status='accepted',accepted_at=now() WHERE id=$1 AND status='issued' AND (valid_until IS NULL OR valid_until>now()) RETURNING id",[id]);
+ const id=l.rows[0].quote_id;
+ const pendingChanges=await client.query("SELECT 1 FROM commercial_quote_change_requests WHERE quote_id=$1 AND status='pending' LIMIT 1",[id]);
+ if(pendingChanges.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Unresolved quote change request must be reviewed first"});}
+ const q=await client.query("UPDATE commercial_quotes SET status='accepted',accepted_at=now() WHERE id=$1 AND status='issued' AND (valid_until IS NULL OR valid_until>now()) RETURNING id",[id]);
  if(!q.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Quote unavailable"})}
  const evidence={method:"typed_name_explicit_consent",ip:req.ip,userAgent:String(req.get("user-agent")||"").slice(0,250),consent:true};
  const c=await client.query("UPDATE customer_contracts SET status='signed',signer_name=$2,signed_at=now(),signature_evidence=$3::jsonb WHERE quote_id=$1 AND status='issued' RETURNING id,signed_at",[id,signerName.trim(),JSON.stringify(evidence)]);
  if(!c.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Contract unavailable"})}
+ const quoteAmount=await client.query("SELECT total_piasters FROM commercial_quotes WHERE id=$1",[id]);
+ const invoices=await ensureInvoiceScheduleOnAcceptance(client,{quoteId:Number(id),totalPiasters:quoteAmount.rows[0].total_piasters});
  await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[id]);await client.query(`UPDATE customer_journey_projects SET status='payment_pending',updated_at=now()
-  WHERE id IN (SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true) AND status='quoted'`,[id]);
+  WHERE id IN (
+    SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true
+    UNION ALL SELECT project_id FROM commercial_custom_quote_links WHERE quote_id=$1 AND is_current=true
+   ) AND status='quoted'`,[id]);
  await queueJourneyEvent(client,"contract.signed",`contract.signed:${c.rows[0].id}`,{contractId:c.rows[0].id,quoteId:id,signedAt:c.rows[0].signed_at});
- await client.query("COMMIT");res.json({accepted:true,quoteId:id,contractId:c.rows[0].id,signedAt:c.rows[0].signed_at,paymentStatus:"not_started"});
+ await client.query("COMMIT");res.json({accepted:true,quoteId:id,contractId:c.rows[0].id,signedAt:c.rows[0].signed_at,paymentStatus:"not_started",checkoutStage:"payment_pending",gatewayConnected:false,invoices:invoices.invoices.map(x=>({id:x.id,status:x.status}))});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
 }));
 
@@ -1317,8 +1366,10 @@ app.post("/api/internal/verified-payments",rateLimit({windowMs:60*1000,limit:40,
 // Payments can unlock only a signed accepted quote with all invoices fully verified.
 async function advancePaidJourneyIfEligible(client,invoiceId){
  const linked=await client.query(`SELECT l.project_id,l.quote_id
-  FROM commercial_invoices i JOIN commercial_order_quote_links l
-  ON l.quote_id=i.quote_id AND l.is_current=true WHERE i.id=$1`,[invoiceId]);
+  FROM commercial_invoices i JOIN (
+    SELECT project_id,quote_id FROM commercial_order_quote_links WHERE is_current=true
+    UNION ALL SELECT project_id,quote_id FROM commercial_custom_quote_links WHERE is_current=true
+  ) l ON l.quote_id=i.quote_id WHERE i.id=$1`,[invoiceId]);
  if(!linked.rowCount)return null;
  const {project_id:projectId,quote_id:quoteId}=linked.rows[0];
  const project=await client.query("SELECT status FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[projectId]);
@@ -1343,6 +1394,74 @@ app.post("/api/admin/commercial/leads",requireAdmin,requireRole("owner","admin",
 app.get("/api/admin/commercial/leads",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
  const q=await pool.query("SELECT * FROM crm_leads ORDER BY created_at DESC LIMIT 100");res.json({leads:q.rows});
 }));
+// Individually reviewed custom-solution drafts. No fixed-package checkout
+// or client-submitted monetary price is invented for bespoke projects.
+app.get("/api/admin/commercial/project-drafts/eligible",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+ const r=await pool.query(`SELECT d.id,d.title,d.draft,d.updated_at,c.email,
+ CASE WHEN p.approval_status='approved' AND p.snapshot->>'sourceRevision'=d.revision::text THEN 'approved'
+ ELSE CASE WHEN p.approval_status='approved' THEN 'stale' ELSE p.approval_status END END AS latest_preview_status
+ FROM customer_project_drafts d JOIN customer_accounts c ON c.id=d.customer_id
+ LEFT JOIN LATERAL (SELECT approval_status,snapshot FROM customer_preview_versions WHERE draft_id=d.id ORDER BY revision DESC LIMIT 1) p ON true
+ WHERE c.is_active=true AND c.email_verified_at IS NOT NULL
+ AND NOT EXISTS(SELECT 1 FROM commercial_custom_quote_links l WHERE l.draft_id=d.id AND l.is_current=true)
+ AND NOT EXISTS(SELECT 1 FROM commercial_order_quote_links l WHERE l.draft_id=d.id AND l.is_current=true)
+ ORDER BY d.updated_at DESC LIMIT 100`);
+ res.set("Cache-Control","no-store").json({drafts:r.rows});
+}));
+const customQuoteInput=z.object({items:z.array(z.object({
+ label:z.string().trim().min(3).max(250),quantity:z.number().int().min(1).max(100),
+ unitPricePiasters:z.number().int().min(0).max(100000000000),period:z.enum(["fixed","monthly","yearly"]).optional()
+}).strict()).min(1).max(60),validUntil:z.string().datetime({offset:true}).optional()}).strict();
+app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid draft id"});
+ const parsed=customQuoteInput.safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid priced line items"});
+ if(JSON.stringify(parsed.data.items).length>16000)return res.status(400).json({error:"Quote too large"});
+ let total;try{total=quoteTotal(parsed.data.items);}catch(e){return res.status(422).json({error:e.message});}
+ if(total<1)return res.status(422).json({error:"Custom projects require a reviewed nonzero price"});
+ if(parsed.data.validUntil&&new Date(parsed.data.validUntil).getTime()<=Date.now())return res.status(400).json({error:"Quote validity must be in the future"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const drafts=await client.query(`SELECT d.id,d.title,d.draft,d.revision,d.linked_journey_id,
+   c.id AS account_id,c.email,c.name,c.email_verified_at,c.is_active
+   FROM customer_project_drafts d JOIN customer_accounts c ON c.id=d.customer_id
+   WHERE d.id=$1 FOR UPDATE OF d`,[req.params.id]);
+  const d=drafts.rows[0];
+  if(!d?.is_active||!d.email_verified_at){await client.query("ROLLBACK");return res.status(409).json({error:"Verified customer draft required"});}
+  const latest=await client.query("SELECT approval_status,snapshot->>'sourceRevision' AS source_revision FROM customer_preview_versions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 1",[d.id]);
+  if(latest.rows[0]?.approval_status!=="approved"||Number(latest.rows[0]?.source_revision)!==Number(d.revision)){await client.query("ROLLBACK");return res.status(409).json({error:"Latest preview must be approved before issuing a custom quote"});}
+  const active=await client.query(`SELECT 1 FROM commercial_custom_quote_links WHERE draft_id=$1 AND is_current=true
+   UNION ALL SELECT 1 FROM commercial_order_quote_links WHERE draft_id=$1 AND is_current=true LIMIT 1`,[d.id]);
+  if(active.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"An active quote already exists for this draft"});}
+  let projectId=d.linked_journey_id;
+  if(projectId){
+    const p=await client.query("SELECT id,status FROM customer_journey_projects WHERE id=$1 AND customer_account_id=$2 FOR UPDATE",[projectId,d.account_id]);
+    if(!p.rowCount||!["draft","configured","quoted"].includes(p.rows[0].status)){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage not open to custom quoting"});}
+    const priorOrder=await client.query("SELECT 1 FROM customer_journey_order_links WHERE project_id=$1",[projectId]);
+    if(priorOrder.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Use the existing verified order quotation path for this project"});}
+  }else{
+    const created=await client.query(`INSERT INTO customer_journey_projects(customer_name,customer_email,template_id,created_by,customer_account_id,status)
+      VALUES($1,$2,$3,$4,$5,'quoted') RETURNING id`,[d.name,d.email,d.draft?.sectorSlug||null,req.admin.email,d.account_id]);
+    projectId=created.rows[0].id;
+    await client.query("UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2 AND customer_id=$3",[projectId,d.id,d.account_id]);
+  }
+  const config=await client.query("SELECT vat_rate FROM site_settings WHERE id=1");
+  const vatRate=config.rows[0]?.vat_rate===null?0:Number(config.rows[0]?.vat_rate??0);
+  if(!Number.isFinite(vatRate)||vatRate<0||vatRate>100)throw Error("Invalid VAT configuration");
+  const tax=Math.round(total*vatRate/100);
+  const pricedItems=[...parsed.data.items,...(tax>0?[{label:`ضريبة القيمة المضافة (${vatRate}%)`,quantity:1,unitPricePiasters:tax,period:"fixed"}]:[])];
+  const grossTotal=total+tax;
+  if(!Number.isSafeInteger(grossTotal))throw Error("Quote amount overflow");
+  const q=await client.query(`INSERT INTO commercial_quotes(customer_email,customer_account_id,items,total_piasters,currency,valid_until)
+   VALUES($1,$2,$3::jsonb,$4,'EGP',$5) RETURNING id,revision,status,total_piasters,valid_until`,
+   [d.email,d.account_id,JSON.stringify(pricedItems),grossTotal,parsed.data.validUntil||new Date(Date.now()+14*86400000).toISOString()]);
+  await client.query("INSERT INTO commercial_custom_quote_links(quote_id,draft_id,project_id,customer_account_id) VALUES($1,$2,$3,$4)",[q.rows[0].id,d.id,projectId,d.account_id]);
+  await client.query("UPDATE customer_journey_projects SET status='quoted',updated_at=now() WHERE id=$1 AND status IN ('draft','configured')",[projectId]);
+  await queueJourneyEvent(client,"quote.created",`quote.created:${q.rows[0].id}`,{quoteId:q.rows[0].id,projectId,custom:true,totalPiasters:grossTotal});
+  await client.query("COMMIT");res.status(201).json({quote:q.rows[0],projectId,requiresAdminIssue:true});
+ }catch(error){await client.query("ROLLBACK");if(error.code==="23505")return res.status(409).json({error:"Concurrent custom quote already exists"});throw error;}finally{client.release();}
+}));
 // Strict order → latest approved preview → draft commercial quote bridge.
 app.post("/api/admin/commercial/orders/:orderId/quote",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.orderId).success)return res.status(400).json({error:"Invalid order ID"});
@@ -1356,10 +1475,10 @@ app.post("/api/admin/commercial/orders/:orderId/quote",requireAdmin,requireRole(
    WHERE o.id=$1 FOR UPDATE OF o,p`,[req.params.orderId]);
   if(!order.rowCount||!order.rows[0].customer_account_id){await client.query("ROLLBACK");return res.status(409).json({error:"Order must belong to a verified customer project"});}
   const selected=order.rows[0];
-  const draft=await client.query("SELECT id FROM customer_project_drafts WHERE linked_journey_id=$1 AND customer_id=$2",[selected.project_id,selected.customer_account_id]);
+  const draft=await client.query("SELECT id,revision FROM customer_project_drafts WHERE linked_journey_id=$1 AND customer_id=$2",[selected.project_id,selected.customer_account_id]);
   if(!draft.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Linked project draft required"});}
-  const approved=await client.query("SELECT approval_status FROM customer_preview_versions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 1",[draft.rows[0].id]);
-  if(!approved.rowCount||approved.rows[0].approval_status!=="approved"){await client.query("ROLLBACK");return res.status(409).json({error:"Customer must approve latest project preview"});}
+  const approved=await client.query("SELECT approval_status,snapshot->>'sourceRevision' AS source_revision FROM customer_preview_versions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 1",[draft.rows[0].id]);
+  if(!approved.rowCount||approved.rows[0].approval_status!=="approved"||Number(approved.rows[0].source_revision)!==Number(draft.rows[0].revision)){await client.query("ROLLBACK");return res.status(409).json({error:"Customer must approve latest project preview"});}
   const active=await client.query("SELECT 1 FROM commercial_order_quote_links WHERE order_id=$1 AND is_current=true FOR UPDATE",[selected.id]);
   if(active.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Order already has a current quote"});}
   let priced;

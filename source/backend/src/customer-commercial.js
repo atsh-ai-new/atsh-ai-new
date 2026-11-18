@@ -1,11 +1,12 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import {createHash} from 'node:crypto';
+import {validateCheckoutGate,ensureInvoiceScheduleOnAcceptance} from './customer-checkout.js';
 import {z} from 'zod';
 
 const tokenHash=value=>createHash('sha256').update(value).digest('hex');
 import {canClaimQuote} from './customer-commercial-rules.js';
-export function customerCommercialRouter({pool}){
+export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEvent=async()=>{}}){
  const router=express.Router();
  const auth=async(req,res,next)=>{
   try{
@@ -18,6 +19,10 @@ export function customerCommercialRouter({pool}){
  };
  const safe=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
  router.use(auth);
+ router.use((req,res,next)=>{
+  if(['POST','PATCH','DELETE','PUT'].includes(req.method)&&(!req.get('origin')||!allowedOrigins.includes(req.get('origin'))))return res.status(403).json({error:'Customer commercial origin not allowed'});
+  next();
+ });
  router.post('/quotes/claim',safe(async(req,res)=>{
   const parsed=z.object({quoteId:z.number().int().positive(),reviewToken:z.string().min(20).max(512)}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:'Invalid claim request'});
@@ -83,6 +88,77 @@ export function customerCommercialRouter({pool}){
     WHERE p.customer_account_id=$1 AND o.id=$2 LIMIT 1`,[req.customer.id,req.params.id]);
   if(!q.rowCount)return res.status(404).json({error:'Not found'});
   res.json({order:q.rows[0]});
+ }));
+
+ // Account-owned, read-only checkout. No account may retrieve another customer's
+ // quote even when it knows the sequential identifier.
+ router.get('/quotes/:id/checkout',safe(async(req,res)=>{
+  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
+  const [quoteResult,contractResult,invoiceResult,feedbackResult,projectResult]=await Promise.all([
+   pool.query('SELECT id,revision,status,items,total_piasters,currency,valid_until,accepted_at,created_at FROM commercial_quotes WHERE id=$1 AND customer_account_id=$2',[id,req.customer.id]),
+   pool.query("SELECT id,quote_id,body_snapshot,status,signer_name,signed_at,template_revision,template_category FROM customer_contracts WHERE quote_id=$1 AND status<>'void' AND EXISTS(SELECT 1 FROM commercial_quotes WHERE id=$1 AND customer_account_id=$2) ORDER BY id DESC LIMIT 1",[id,req.customer.id]),
+   pool.query("SELECT id,amount_piasters,verified_paid_piasters,due_at,status FROM commercial_invoices WHERE quote_id=$1 AND EXISTS(SELECT 1 FROM commercial_quotes WHERE id=$1 AND customer_account_id=$2) ORDER BY id",[id,req.customer.id]),
+   pool.query("SELECT id,details,status,created_at,resolution_note FROM commercial_quote_change_requests WHERE quote_id=$1 AND customer_account_id=$2 ORDER BY created_at DESC LIMIT 30",[id,req.customer.id]),
+   pool.query(`SELECT p.id,p.status,p.template_id,l.draft_id
+   FROM (SELECT project_id,quote_id,draft_id FROM commercial_order_quote_links
+         UNION ALL SELECT project_id,quote_id,draft_id FROM commercial_custom_quote_links) l
+   JOIN customer_journey_projects p ON p.id=l.project_id
+   WHERE l.quote_id=$1 AND p.customer_account_id=$2 LIMIT 1`,[id,req.customer.id])
+  ]);
+  if(!quoteResult.rowCount)return res.status(404).json({error:'Not found'});
+  res.set('Cache-Control','private, no-store').json({quote:quoteResult.rows[0],contract:contractResult.rows[0]||null,invoices:invoiceResult.rows,changeRequests:feedbackResult.rows,project:projectResult.rows[0]||null,payment:{gatewayConnected:false,canPayOnline:false,note:'الدفع الإلكتروني غير مفعل بعد؛ لا تُدخل بيانات بطاقتك ولا تعتبر الفاتورة مدفوعة.'}});
+ }));
+
+ // A customer can request changes on an issued quote; an unresolved request
+ // blocks acceptance. Admin resolves it or supersedes the unsigned contract.
+ router.post('/quotes/:id/request-changes',safe(async(req,res)=>{
+  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
+  const parsed=z.object({details:z.string().trim().min(10).max(2000)}).strict().safeParse(req.body);
+  if(!parsed.success)return res.status(400).json({error:'Please describe required changes'});
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   const q=await client.query('SELECT id,status,revision,valid_until FROM commercial_quotes WHERE id=$1 AND customer_account_id=$2 FOR UPDATE',[id,req.customer.id]);
+   if(!q.rowCount||q.rows[0].status!=='issued'){await client.query('ROLLBACK');return res.status(409).json({error:'Quote is not open for changes'});}
+   const already=await client.query("SELECT id FROM commercial_quote_change_requests WHERE quote_id=$1 AND customer_account_id=$2 AND status='pending'",[id,req.customer.id]);
+   if(already.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'A previous change request is awaiting admin review'});}
+   const result=await client.query('INSERT INTO commercial_quote_change_requests(quote_id,customer_account_id,details) VALUES($1,$2,$3) RETURNING id,status,details,created_at',[id,req.customer.id,parsed.data.details]);
+   await queueJourneyEvent(client,'quote.changes_requested',`quote.changes_requested:${result.rows[0].id}`,{quoteId:id,customerId:req.customer.id,requestId:result.rows[0].id});
+   await client.query('COMMIT');res.status(201).set('Cache-Control','private, no-store').json({changeRequest:result.rows[0]});
+  }catch(error){await client.query('ROLLBACK');if(error.code==='23505')return res.status(409).json({error:'Change request already pending'});throw error;}finally{client.release();}
+ }));
+
+ // Verified account + exact issued quote revision + current unsigned contract
+ // + explicit consent. This records an electronic acknowledgement, NOT a
+ // qualified national electronic signature. The payment gateway is separate.
+ router.post('/quotes/:id/accept',safe(async(req,res)=>{
+  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
+  const parsed=z.object({signerName:z.string().trim().min(3).max(160),consent:z.literal(true),quoteRevision:z.number().int().positive(),contractId:z.number().int().positive()}).strict().safeParse(req.body);
+  if(!parsed.success)return res.status(400).json({error:'Explicit consent and current document IDs required'});
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   const quoteResult=await client.query('SELECT id,revision,status,total_piasters,valid_until FROM commercial_quotes WHERE id=$1 AND customer_account_id=$2 FOR UPDATE',[id,req.customer.id]);
+   if(!quoteResult.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Not found'});}
+   const contractResult=await client.query("SELECT id,status,body_snapshot FROM customer_contracts WHERE quote_id=$1 AND status='issued' ORDER BY id DESC LIMIT 1 FOR UPDATE",[id]);
+   const pending=await client.query("SELECT id FROM commercial_quote_change_requests WHERE quote_id=$1 AND customer_account_id=$2 AND status='pending' LIMIT 1",[id,req.customer.id]);
+   const quote=quoteResult.rows[0],contract=contractResult.rows[0];
+   const gate=validateCheckoutGate({quote,contract,hasPendingChangeRequest:pending.rowCount>0,expectedRevision:parsed.data.quoteRevision,expectedContractId:parsed.data.contractId});
+   if(gate){await client.query('ROLLBACK');return res.status(409).json({error:gate});}
+   const evidence={method:'authenticated_account_approval',customerId:req.customer.id,verifiedEmail:req.customer.email,contractSha256:createHash('sha256').update(contract.body_snapshot).digest('hex'),quoteRevision:quote.revision,contractId:contract.id,consent:true,ip:req.ip,userAgent:String(req.get('user-agent')||'').slice(0,250)};
+   const accepted=await client.query("UPDATE commercial_quotes SET status='accepted',accepted_at=now() WHERE id=$1 AND status='issued' RETURNING id,accepted_at",[id]);
+   const signed=await client.query("UPDATE customer_contracts SET status='signed',signer_name=$2,signed_at=now(),signature_evidence=$3::jsonb WHERE id=$1 AND status='issued' RETURNING id,signed_at",[contract.id,parsed.data.signerName,JSON.stringify(evidence)]);
+   if(!accepted.rowCount||!signed.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'Document changed before acceptance'});}
+   const schedule=await ensureInvoiceScheduleOnAcceptance(client,{quoteId:id,totalPiasters:quote.total_piasters});
+   await client.query(`UPDATE customer_journey_projects SET status='payment_pending',updated_at=now()
+    WHERE id IN (SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true
+     UNION ALL SELECT project_id FROM commercial_custom_quote_links WHERE quote_id=$1 AND is_current=true)
+    AND status='quoted'`,[id]);
+   await client.query('UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL',[id]);
+   await queueJourneyEvent(client,'contract.signed',`contract.signed:${signed.rows[0].id}`,{contractId:signed.rows[0].id,quoteId:id,signedAt:signed.rows[0].signed_at,customerAccount:true});
+   await client.query('COMMIT');
+   res.set('Cache-Control','private, no-store').json({accepted:true,quoteId:id,contractId:signed.rows[0].id,paymentStatus:'pending_gateway',invoiceIds:schedule.invoices.map(invoice=>invoice.id),onlinePaymentEnabled:false});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
  }));
  return router;
 }

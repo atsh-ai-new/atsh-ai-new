@@ -24,6 +24,10 @@ export default function CatalogPage(){
   }).catch(()=>{if(active)setNotice("نعرض النماذج الافتراضية إلى حين تفعيل الكتالوج المتصل.");});
   return()=>{active=false;};
  },[]);
+ useEffect(()=>{
+  const requested=new URLSearchParams(window.location.search).get("sector");
+  if(requested&&sectors.some(s=>s.id===requested&&s.isPublished)){setSectorId(requested);setSubId("all")}
+ },[sectors]);
  const published=[...sectors].filter(s=>s.isPublished).sort((a,b)=>a.sortOrder-b.sortOrder);
  const activeSector=published.find(s=>s.id===sectorId);
  const visible=items.filter(item=>{

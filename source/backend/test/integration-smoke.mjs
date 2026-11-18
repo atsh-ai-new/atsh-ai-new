@@ -110,7 +110,11 @@ try{
  assert.equal(customerSigned.status,200,JSON.stringify(customerSigned));
  const statusBefore=await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id]);
  assert.equal(statusBefore.rows[0].status,"payment_pending");
- const targetInvoice=await pool.query("INSERT INTO commercial_invoices(quote_id,amount_piasters) VALUES($1,114000) RETURNING id",[derived.result.quote.id]);
+ // Acceptance automatically issues the pending invoice. A duplicate would block full settlement.
+ const targetInvoice=await pool.query("SELECT id,amount_piasters,status FROM commercial_invoices WHERE quote_id=$1 ORDER BY id",[derived.result.quote.id]);
+ assert.equal(targetInvoice.rowCount,1,"Contract acceptance creates exactly one unpaid invoice");
+ assert.equal(Number(targetInvoice.rows[0].amount_piasters),114000);
+ assert.equal(targetInvoice.rows[0].status,"unpaid");
  const eventFor=(amountPiasters,reference)=>Buffer.from(JSON.stringify({invoiceId:Number(targetInvoice.rows[0].id),amountPiasters,providerReference:reference,paidAt:new Date().toISOString(),status:"settled"}));
  const bridge=async(raw)=>{
   const timestamp=Math.floor(Date.now()/1000).toString();
@@ -126,6 +130,64 @@ try{
  assert.equal(settledBridge.status,201,JSON.stringify(settledBridge));
  const after=await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id]);
  assert.equal(after.rows[0].status,"paid");
+ // Checkout: authenticated ownership, customer change request and staff resolution.
+ const ownedQuote=await pool.query(`INSERT INTO commercial_quotes(customer_email,customer_account_id,status,items,total_piasters,currency,valid_until)
+   VALUES($1,$2,'issued',$3::jsonb,22500,'EGP',now()+interval '12 days') RETURNING id`,
+   [`first-${suffix}@example.test`,accountA,JSON.stringify([{label:"نظام إدارة أعمال مخصص",quantity:1,unitPricePiasters:22500}])]);
+ const ownedQuoteId=Number(ownedQuote.rows[0].id);
+ const ownedContract=await req("/api/admin/commercial/contracts/issue",{method:"POST",cookie:adminCookie,body:{quoteId:ownedQuoteId,templateId}});
+ assert.equal(ownedContract.status,201,JSON.stringify(ownedContract));
+ const otherAccountCheckout=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/checkout`,{cookie:cookieFor(accountB)});
+ assert.equal(otherAccountCheckout.status,404,"Cross-customer quote access must be denied");
+ const ownedCheckout=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/checkout`,{cookie:cookieFor(accountA)});
+ assert.equal(ownedCheckout.status,200,JSON.stringify(ownedCheckout));
+ assert.equal(ownedCheckout.result.payment.canPayOnline,false);
+ const change=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/request-changes`,{
+   method:"POST",cookie:cookieFor(accountA),body:{details:"أحتاج توضيحًا حول رسوم الصيانة السنوية وشروط الخدمة."}});
+ assert.equal(change.status,201,JSON.stringify(change));
+ const acceptPayload={signerName:"Client A Verified",consent:true,quoteRevision:1,contractId:Number(ownedContract.result.contract.id)};
+ const blocked=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/accept`,{method:"POST",cookie:cookieFor(accountA),body:acceptPayload});
+ assert.equal(blocked.status,409,"Pending changes block acceptance");
+ const resolved=await req(`/api/admin/commercial/change-requests/${change.result.changeRequest.id}/resolve`,{
+   method:"POST",cookie:adminCookie,body:{resolutionNote:"تم توضيح نطاق الصيانة في العقد الحالي؛ لا تغيير في البنود."}});
+ assert.equal(resolved.status,200,JSON.stringify(resolved));
+ const acceptedOwned=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/accept`,{method:"POST",cookie:cookieFor(accountA),body:acceptPayload});
+ assert.equal(acceptedOwned.status,200,JSON.stringify(acceptedOwned));
+ assert.equal(acceptedOwned.result.paymentStatus,"pending_gateway");
+ const afterAcceptance=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/checkout`,{cookie:cookieFor(accountA)});
+ assert.equal(afterAcceptance.result.invoices.length,1,"Acceptance must make exactly one invoice");
+ assert.equal(afterAcceptance.result.invoices[0].status,"unpaid","Acceptance is not payment");
+ assert.equal(Number(afterAcceptance.result.invoices[0].verified_paid_piasters),0);
+ const replay=await req(`/api/customer/commercial/quotes/${ownedQuoteId}/accept`,{method:"POST",cookie:cookieFor(accountA),body:acceptPayload});
+ assert.equal(replay.status,409,"Repeated acceptance must not duplicate invoices");
+ // Bespoke projects use a staff-reviewed price, not a browser-supplied amount.
+ const customPreview=await req(`/api/customer/auth/project-drafts/${two.result.projectDraft.id}/previews`,{method:"POST",cookie:cookieFor(accountA),body:{}});
+ assert.equal(customPreview.status,201,JSON.stringify(customPreview));
+ const customDecision=await req(`/api/customer/auth/project-drafts/${two.result.projectDraft.id}/previews/${customPreview.result.preview.id}/decision`,{method:"POST",cookie:cookieFor(accountA),body:{decision:"approved",comment:"المعاينة المخصصة مناسبة"}});
+ assert.equal(customDecision.status,200,JSON.stringify(customDecision));
+ const customQuote=await req(`/api/admin/commercial/project-drafts/${two.result.projectDraft.id}/quote`,{
+  method:"POST",cookie:adminCookie,body:{items:[{label:"منصة محاماة مخصصة",quantity:1,unitPricePiasters:1200000,period:"fixed"}]}
+ });
+ assert.equal(customQuote.status,201,JSON.stringify(customQuote));
+ assert.equal(Number(customQuote.result.quote.total_piasters),1368000,"VAT is added by server to reviewed custom price");
+ const duplicateCustom=await req(`/api/admin/commercial/project-drafts/${two.result.projectDraft.id}/quote`,{
+  method:"POST",cookie:adminCookie,body:{items:[{label:"منصة محاماة مخصصة",quantity:1,unitPricePiasters:1200000}]}
+ });
+ assert.equal(duplicateCustom.status,409,"Do not silently create two active quotes for one project");
+ const issuedCustom=await req(`/api/admin/commercial/quotes/${customQuote.result.quote.id}/issue`,{method:"POST",cookie:adminCookie,body:{}});
+ assert.equal(issuedCustom.status,200,JSON.stringify(issuedCustom));
+ const contractCustom=await req("/api/admin/commercial/contracts/issue",{method:"POST",cookie:adminCookie,body:{quoteId:Number(customQuote.result.quote.id),templateId}});
+ assert.equal(contractCustom.status,201,JSON.stringify(contractCustom));
+ const customAccept=await req(`/api/customer/commercial/quotes/${customQuote.result.quote.id}/accept`,{
+  method:"POST",cookie:cookieFor(accountA),body:{signerName:"Client A Verified",consent:true,quoteRevision:1,contractId:Number(contractCustom.result.contract.id)}
+ });
+ assert.equal(customAccept.status,200,JSON.stringify(customAccept));
+ const customJourney=await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[customQuote.result.projectId]);
+ assert.equal(customJourney.rows[0].status,"payment_pending");
+ const unpaidCustom=await req(`/api/customer/commercial/quotes/${customQuote.result.quote.id}/checkout`,{cookie:cookieFor(accountA)});
+ assert.equal(unpaidCustom.status,200);
+ assert.equal(unpaidCustom.result.project?.status,"payment_pending");
+ assert.equal(unpaidCustom.result.invoices[0]?.status,"unpaid");
  // Project-specific image ownership, even for separate drafts of the same customer.
  const png=Buffer.from([137,80,78,71,13,10,26,10,0,0,0,0]);
  const writeLogo=await fetch(base+`/api/customer/auth/project-drafts/${id}/logo`,{method:"POST",headers:{origin,"content-type":"image/png",cookie:cookieFor(accountA)},body:png});

@@ -8,6 +8,7 @@ type Props={
  contractCount:number;invoiceCount:number;deliveryCount:number;
  currentProject?:{title:string;sectorName?:string;id:string;revision:number};
  currentPreviewStatus?:"pending"|"approved"|"changes_requested"|string;
+ currentJourneyStatus?:string;
 };
 const tabs:Array<{id:HubTab;label:string}>= [
  {id:"overview",label:"الرئيسية"},
@@ -23,7 +24,8 @@ export default function CustomerJourneyHub(props:Props){
  const counts=[{title:"مسودات المشروعات",number:props.draftCount},{title:"مشروعات مرتبطة",number:props.projectCount},{title:"طلبات",number:props.orderCount},{title:"عروض أسعار",number:props.quoteCount}];
  const previewStatus=props.currentPreviewStatus;
  // Do not infer financial or delivery completion from an unrelated invoice or project.
- const completed=props.currentProject?(previewStatus==="approved"?3:previewStatus?2:1):0;
+ const status=props.currentJourneyStatus;
+ const completed=!props.currentProject?0:status==="delivered"||status==="support"?6:["paid","building","preview_ready","approved"].includes(status||"")?5:status==="payment_pending"?4:previewStatus==="approved"?3:previewStatus?2:1;
  return <div dir="rtl" style={{marginBottom:24}}>
   <style>{`.atsh-hub-nav{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.atsh-hub-tab{border:1px solid #d0dced;border-radius:11px;padding:11px 13px;cursor:pointer;background:white;color:#203958;font:inherit;font-size:14px}.atsh-hub-tab[aria-current="page"]{background:#203958;color:white;font-weight:800}.atsh-hub-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px}.atsh-hub-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}@media(max-width:600px){.atsh-hub-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.atsh-hub-tab{flex:1 1 130px}.atsh-hub-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}`}</style>
   <header style={{background:"linear-gradient(125deg,#203958,#2c5c87)",color:"white",padding:"22px 20px",borderRadius:19,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:14}}>
@@ -47,7 +49,9 @@ export default function CustomerJourneyHub(props:Props){
       return <div key={label} aria-current={state==="current"?"step":undefined} style={{border:"1px solid "+(state==="done"?"#a2d4be":state==="current"?"#89aacb":"#e1e6ed"),background:state==="done"?"#edf9f2":state==="current"?"#eff5ff":"#f9fafb",borderRadius:12,padding:12,minWidth:0}}>
       <span style={{fontSize:12,fontWeight:800,color:state==="done"?"#17633f":"#203958"}}>{state==="done"?"✓ مكتمل":state==="current"?"● المرحلة الحالية":"○ لاحقًا"}</span><div style={{fontWeight:700,marginTop:8,fontSize:13}}>{index+1}. {label}</div></div>;
     })}</div>
-    <p style={{fontSize:12,color:"#64748b",margin:"12px 0 0"}}>يُعرض التقدم المؤكد لمسودة المعاينة فقط؛ مراحل الدفع والتنفيذ لا تعتبر مكتملة إلا بعد تحقق سجلاتها الخاصة.</p>
+    <p style={{fontSize:12,color:"#64748b",margin:"12px 0 0"}}>تُحسب المراحل من أحدث اعتماد معاينة وسجل المشروع الموثوق بالخادم؛ لا يعتبر الضغط على قبول العقد عملية سداد.</p>
+    {status==="payment_pending"&&<p role="status" style={{padding:12,background:"#fff4d6",borderRadius:10,color:"#83591b"}}>العقد معتمد والطلب بانتظار الدفع. بوابة الدفع الإلكتروني لم يتم ربطها بعد؛ التنفيذ لن يبدأ تلقائيًا.</p>}
+    {["paid","building","preview_ready","approved","delivered","support"].includes(status||"")&&<p role="status" style={{padding:12,background:"#e8f7f1",borderRadius:10,color:"#1b6547"}}>تم تأكيد دفعة المشروع رسميًا من الخادم. متابعة التنفيذ والتسليم تظهر في أقسام حسابك.</p>}
    </div>
    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:12}}>
     <button type="button" className="atsh-hub-tab" onClick={()=>props.onTab("quotes")}>الطلبات والعروض ({props.orderCount+props.quoteCount})</button>
