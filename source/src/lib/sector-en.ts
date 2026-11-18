@@ -74,3 +74,8 @@ export function englishTemplateLabel(slug:string,fallback:string,kind:"name"|"ca
 export function englishTemplateFeatures(slug:string,features:string[]){return templates[slug]?.features||features;}
 export function englishCatalogSectors(items:CatalogSector[]):CatalogSector[]{return items.map(s=>({...s,name:englishSectorLabel(s.id,s.name),description:sectors[s.id]?.description||s.description,subcategories:s.subcategories.map(c=>({...c,name:englishSubcategoryLabel(c.id,c.name)}))}));}
 export function englishTemplate(item:SectorTemplate):SectorTemplate{return {...item,name:englishTemplateLabel(item.slug,item.name),category:englishTemplateLabel(item.slug,item.category,"category"),description:englishTemplateLabel(item.slug,item.description,"description"),features:englishTemplateFeatures(item.slug,item.features)};}
+
+const demoLabels:Record<string,string>={
+"لوحة القيادة":"Dashboard","المرضى":"Patients","المواعيد":"Appointments","الكشوفات":"Consultations","الروشتات":"Prescriptions","الفواتير":"Invoices","الكاشير":"Point of sale","الأصناف":"Products","المبيعات":"Sales","الموردون":"Suppliers","التقارير":"Reports","الأدوية":"Medicines","المشتريات":"Purchases","القضايا":"Cases","الموكلون":"Clients","الجلسات":"Hearings","الأتعاب":"Fees","المستندات":"Documents","نموذج جديد":"New demo","جديد":"New","مؤكد":"Confirmed","انتظار":"Pending","مكتملة":"Completed","قيد التنفيذ":"In progress","منخفض":"Low stock","مراجعة":"Needs review"
+};
+export function englishDemoLabel(text:string):string{return demoLabels[text]||text;}
