@@ -7,6 +7,7 @@ import { findSector } from "@/lib/sector-catalog";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 import Concierge from "@/components/concierge";
 import DomainLookup from "@/components/domain-lookup";
+import HomeCatalogShowcase, {type HomeCatalogItem} from "@/components/home-catalog-showcase";
 import { combinedQuoteSummary } from "@/lib/quote-breakdown";
 
 type Customer = { name: string; company: string; email: string; phone: string; details: string; compliance: string };
@@ -420,6 +421,17 @@ export default function HomePage() {
             <button className={item.recommended ? "button package-cta" : "button button-outline package-cta"} onClick={() => begin(item.id as PackageId)}>{item.price === null ? copy("customQuoteButton") : copy("packageButton")} <span>←</span></button>
           </article>)}
         </div>
+        <HomeCatalogShowcase selectedSlug={selectedSector?.slug} selectedAddons={sectorAddonCodes}
+          onSelect={(item:HomeCatalogItem)=>{
+            setSelectedSector({slug:item.slug,name:item.name});setSectorAddonCodes([]);
+            setSectorPricedAddons(Array.isArray(item.pricedAddons)?item.pricedAddons:[]);
+            saveGuestWorkspace({sectorSlug:item.slug,sectorName:item.name,sectorAddonCodes:[],source:"catalog"});
+          }}
+          onToggleAddon={(code,checked)=>setSectorAddonCodes(current=>{
+            const next=checked?[...new Set([...current,code])]:current.filter(v=>v!==code);
+            if(selectedSector)saveGuestWorkspace({sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes:next,source:"catalog"});
+            return next;
+          })}/>
         <div className="comparison-wrap"><h3>{copy("comparisonTitle")}</h3><div className="comparison-scroll"><table className="comparison-table"><thead><tr><th>{copy("comparisonFeatureTitle")}</th>{visiblePackages.map((item) => <th key={item.id}>{item.name}</th>)}</tr></thead><tbody>
           {[...new Set(visiblePackages.flatMap((item) => item.features))].map((feature) => <tr key={feature}><th>{feature}</th>{visiblePackages.map((item) => <td key={item.id}>{item.features.includes(feature) ? "✓" : "—"}</td>)}</tr>)}
         </tbody></table></div></div>
