@@ -5,6 +5,12 @@ on:
     paths:
       - 'source/e2e/**'
       - 'source/playwright.config.ts'
+      - 'source/src/app/catalog/**'
+      - 'source/src/components/catalog-preview-loader.tsx'
+      - 'source/src/components/sector-preview.tsx'
+      - 'source/src/components/sector-interactive-demo.tsx'
+      - 'source/src/lib/sector-catalog.ts'
+      - 'source/backend/src/catalog-starter.js'
       - '.github/workflows/browser-e2e.yml'
   workflow_dispatch:
 permissions:
