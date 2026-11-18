@@ -1,0 +1,64 @@
+name: Import and validate ATSH AI bilingual release
+on:
+  push:
+    paths:
+      - 'ATSH_AI_BILINGUAL_READY_TO_DEPLOY.zip'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: atsh-bilingual-import
+  cancel-in-progress: false
+jobs:
+  validate-and-import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Extract release into a temporary folder and verify expected project files
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, zipfile
+          archive=pathlib.Path('ATSH_AI_BILINGUAL_READY_TO_DEPLOY.zip')
+          if not archive.is_file(): raise SystemExit('Release archive not found; upload the named zip to main first')
+          root=pathlib.Path('.').resolve()
+          with zipfile.ZipFile(archive) as z:
+              names=z.namelist()
+              required={'package.json','Dockerfile','src/app/page.tsx','backend/src/server.js'}
+              if not required.issubset(set(names)): raise SystemExit('Release missing required project files')
+              for item in z.infolist():
+                  path=pathlib.PurePosixPath(item.filename)
+                  if path.is_absolute() or '..' in path.parts: raise SystemExit('Unsafe archive path')
+                  if item.is_dir(): continue
+                  if any(part in {'.git','node_modules','.next'} for part in path.parts): raise SystemExit('Blocked internal folder')
+                  dest=(root / item.filename).resolve()
+                  if not dest.is_relative_to(root): raise SystemExit('Path escapes repository')
+                  dest.parent.mkdir(parents=True,exist_ok=True)
+                  dest.write_bytes(z.read(item))
+          print('Release files extracted')
+          PY
+      - name: Backend tests
+        run: node --test backend/test/*.test.js
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+      - name: Frontend TypeScript check
+        run: npm run typecheck
+      - name: Frontend production build
+        run: npm run build
+      - name: Commit validated release files to main
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No release changes to commit"
+          else
+            git commit -m "Deploy validated ATSH bilingual source [skip ci]"
+            git push origin HEAD:main
+          fi
