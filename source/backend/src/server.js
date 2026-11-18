@@ -1150,12 +1150,13 @@ app.post("/api/admin/commercial/change-requests/:id/resolve",requireAdmin,requir
 }));
 app.get("/api/admin/commercial/orders/eligible",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
  const r=await pool.query(`SELECT o.id,o.reference,o.total,o.currency,o.created_at,
- p.id AS project_id,p.customer_email,d.id AS draft_id,d.title AS project_title,preview.approval_status AS latest_preview_status
+ p.id AS project_id,p.customer_email,d.id AS draft_id,d.title AS project_title,CASE WHEN preview.approval_status='approved' AND preview.snapshot->>'sourceRevision'=d.revision::text THEN 'approved'
+ ELSE CASE WHEN preview.approval_status='approved' THEN 'stale' ELSE preview.approval_status END END AS latest_preview_status
  FROM orders o
  JOIN customer_journey_order_links link ON link.order_id=o.id
  JOIN customer_journey_projects p ON p.id=link.project_id AND p.customer_account_id IS NOT NULL
  JOIN customer_project_drafts d ON d.linked_journey_id=p.id AND d.customer_id=p.customer_account_id
- LEFT JOIN LATERAL (SELECT approval_status FROM customer_preview_versions v WHERE v.draft_id=d.id ORDER BY v.revision DESC LIMIT 1) preview ON true
+ LEFT JOIN LATERAL (SELECT approval_status,snapshot FROM customer_preview_versions v WHERE v.draft_id=d.id ORDER BY v.revision DESC LIMIT 1) preview ON true
  WHERE NOT EXISTS(SELECT 1 FROM commercial_order_quote_links c WHERE c.order_id=o.id AND c.is_current=true)
  ORDER BY o.created_at DESC LIMIT 100`);
  res.set("Cache-Control","no-store").json({orders:r.rows});
@@ -1397,9 +1398,10 @@ app.get("/api/admin/commercial/leads",requireAdmin,requireRole("owner","admin","
 // or client-submitted monetary price is invented for bespoke projects.
 app.get("/api/admin/commercial/project-drafts/eligible",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
  const r=await pool.query(`SELECT d.id,d.title,d.draft,d.updated_at,c.email,
- p.approval_status AS latest_preview_status
+ CASE WHEN p.approval_status='approved' AND p.snapshot->>'sourceRevision'=d.revision::text THEN 'approved'
+ ELSE CASE WHEN p.approval_status='approved' THEN 'stale' ELSE p.approval_status END END AS latest_preview_status
  FROM customer_project_drafts d JOIN customer_accounts c ON c.id=d.customer_id
- LEFT JOIN LATERAL (SELECT approval_status FROM customer_preview_versions WHERE draft_id=d.id ORDER BY revision DESC LIMIT 1) p ON true
+ LEFT JOIN LATERAL (SELECT approval_status,snapshot FROM customer_preview_versions WHERE draft_id=d.id ORDER BY revision DESC LIMIT 1) p ON true
  WHERE c.is_active=true AND c.email_verified_at IS NOT NULL
  AND NOT EXISTS(SELECT 1 FROM commercial_custom_quote_links l WHERE l.draft_id=d.id AND l.is_current=true)
  AND NOT EXISTS(SELECT 1 FROM commercial_order_quote_links l WHERE l.draft_id=d.id AND l.is_current=true)
@@ -1421,14 +1423,14 @@ app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requireRo
  const client=await pool.connect();
  try{
   await client.query("BEGIN");
-  const drafts=await client.query(`SELECT d.id,d.title,d.draft,d.linked_journey_id,
+  const drafts=await client.query(`SELECT d.id,d.title,d.draft,d.revision,d.linked_journey_id,
    c.id AS account_id,c.email,c.name,c.email_verified_at,c.is_active
    FROM customer_project_drafts d JOIN customer_accounts c ON c.id=d.customer_id
    WHERE d.id=$1 FOR UPDATE OF d`,[req.params.id]);
   const d=drafts.rows[0];
   if(!d?.is_active||!d.email_verified_at){await client.query("ROLLBACK");return res.status(409).json({error:"Verified customer draft required"});}
-  const latest=await client.query("SELECT approval_status FROM customer_preview_versions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 1",[d.id]);
-  if(latest.rows[0]?.approval_status!=="approved"){await client.query("ROLLBACK");return res.status(409).json({error:"Latest preview must be approved before issuing a custom quote"});}
+  const latest=await client.query("SELECT approval_status,snapshot->>'sourceRevision' AS source_revision FROM customer_preview_versions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 1",[d.id]);
+  if(latest.rows[0]?.approval_status!=="approved"||Number(latest.rows[0]?.source_revision)!==Number(d.revision)){await client.query("ROLLBACK");return res.status(409).json({error:"Latest preview must be approved before issuing a custom quote"});}
   const active=await client.query(`SELECT 1 FROM commercial_custom_quote_links WHERE draft_id=$1 AND is_current=true
    UNION ALL SELECT 1 FROM commercial_order_quote_links WHERE draft_id=$1 AND is_current=true LIMIT 1`,[d.id]);
   if(active.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"An active quote already exists for this draft"});}
@@ -1473,10 +1475,10 @@ app.post("/api/admin/commercial/orders/:orderId/quote",requireAdmin,requireRole(
    WHERE o.id=$1 FOR UPDATE OF o,p`,[req.params.orderId]);
   if(!order.rowCount||!order.rows[0].customer_account_id){await client.query("ROLLBACK");return res.status(409).json({error:"Order must belong to a verified customer project"});}
   const selected=order.rows[0];
-  const draft=await client.query("SELECT id FROM customer_project_drafts WHERE linked_journey_id=$1 AND customer_id=$2",[selected.project_id,selected.customer_account_id]);
+  const draft=await client.query("SELECT id,revision FROM customer_project_drafts WHERE linked_journey_id=$1 AND customer_id=$2",[selected.project_id,selected.customer_account_id]);
   if(!draft.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Linked project draft required"});}
-  const approved=await client.query("SELECT approval_status FROM customer_preview_versions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 1",[draft.rows[0].id]);
-  if(!approved.rowCount||approved.rows[0].approval_status!=="approved"){await client.query("ROLLBACK");return res.status(409).json({error:"Customer must approve latest project preview"});}
+  const approved=await client.query("SELECT approval_status,snapshot->>'sourceRevision' AS source_revision FROM customer_preview_versions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 1",[draft.rows[0].id]);
+  if(!approved.rowCount||approved.rows[0].approval_status!=="approved"||Number(approved.rows[0].source_revision)!==Number(draft.rows[0].revision)){await client.query("ROLLBACK");return res.status(409).json({error:"Customer must approve latest project preview"});}
   const active=await client.query("SELECT 1 FROM commercial_order_quote_links WHERE order_id=$1 AND is_current=true FOR UPDATE",[selected.id]);
   if(active.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Order already has a current quote"});}
   let priced;
