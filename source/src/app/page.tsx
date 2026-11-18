@@ -110,12 +110,14 @@ export default function HomePage() {
     const slug=new URLSearchParams(window.location.search).get("sector");
     if(!slug&&guest.sectorSlug&&guest.sectorName)setSelectedSector({slug:guest.sectorSlug,name:guest.sectorName});
     if(guest.packageId)setPackageId(guest.packageId);
+    if(Array.isArray(guest.sectorAddonCodes)&&(!slug||guest.sectorSlug===slug))setSectorAddonCodes(guest.sectorAddonCodes);
     // Account-owned draft is only read after authentication; never silently merge guest data into another account.
     if(!guest.sectorSlug&&!guest.packageId&&!slug){
       void loadAccountWorkspace().then(account=>{
         if(!active||!account)return;
         if(account.sectorSlug&&account.sectorName)setSelectedSector({slug:account.sectorSlug,name:account.sectorName});
         if(account.packageId)setPackageId(account.packageId);
+        if(Array.isArray(account.sectorAddonCodes))setSectorAddonCodes(account.sectorAddonCodes);
       }).catch(()=>undefined);
     }
     return()=>{active=false;};
@@ -167,6 +169,7 @@ export default function HomePage() {
         setSelectedProjectDraftId(draftId);
         if(draft.sectorSlug&&draft.sectorName)setSelectedSector({slug:draft.sectorSlug,name:draft.sectorName});
         if(draft.packageId)setPackageId(draft.packageId);
+        setSectorAddonCodes(Array.isArray(draft.sectorAddonCodes)?draft.sectorAddonCodes:[]);
         if(draft.domainName)setRequestedDomainName(draft.domainName);
         if(draft.businessName)setCustomer(old=>({...old,company:draft.businessName}));
       }).catch(()=>setRequestMessage("تعذر فتح مسودة المشروع المطلوبة. تحقق من ملكيتها وتسجيل الدخول."));
@@ -231,6 +234,24 @@ export default function HomePage() {
     document.getElementById("configurator")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  // Saving preferences is explicit and scoped to this authenticated project.
+  // Server prices are NOT derived from the saved browser snapshot.
+  const saveProjectChoices=async()=>{
+    if(!selectedProjectDraftId){setRequestMessage("اختر مسودة المشروع أولًا من حسابك.");return;}
+    setRequestMessage("جارٍ حفظ الاختيارات في مسودة المشروع...");
+    try{
+      const endpoint=`/api/customer/auth/project-drafts/${encodeURIComponent(selectedProjectDraftId)}`;
+      const current=await fetch(endpoint,{credentials:"include",cache:"no-store"});
+      const body=await current.json().catch(()=>({}));
+      if(!current.ok||!body.projectDraft)throw Error("تعذر قراءة مسودة المشروع؛ تحقق من الجلسة.");
+      const patch={...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes}:{}),...(packageId?{packageId}:{}),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||body.projectDraft.draft?.businessName||""};
+      const response=await fetch(endpoint,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({expectedRevision:Number(body.projectDraft.revision),patch})});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok)throw Error(result.error||"تعذر حفظ المسودة؛ راجع التعديلات الجديدة.");
+      setRequestMessage("تم حفظ اختيارات النموذج وإضافاته في حسابك. يمكن استكمال معاينتها من لوحة العميل.");
+      setRequestState("idle");
+    }catch(error){setRequestMessage(error instanceof Error?error.message:"فشل حفظ الاختيارات");setRequestState("error");}
+  };
   const toggleAddon = (id: AddonId) => setAddons((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   const toggleExtraOption = (id: string) => setSelectedExtraOptionIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   const updateCustomer = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setCustomer((current) => ({ ...current, [event.target.name]: event.target.value }));
@@ -412,11 +433,11 @@ export default function HomePage() {
         {selectedSector && sectorPricedAddons.length>0 && <section style={{border:"1px solid #d5e1ef",background:"#fff",padding:16,borderRadius:12,marginBottom:14}}>
           <h3>إضافات خاصة بنظام {selectedSector.name}</h3>
           {sectorPricedAddons.map(option=><label key={option.code} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"9px 0"}}>
-            <span><input type="checkbox" checked={sectorAddonCodes.includes(option.code)} onChange={event=>setSectorAddonCodes(current=>event.target.checked?[...current,option.code]:current.filter(x=>x!==option.code))}/> {option.name}</span>
+            <span><input type="checkbox" checked={sectorAddonCodes.includes(option.code)} onChange={event=>setSectorAddonCodes(current=>{const next=event.target.checked?[...new Set([...current,option.code])]:current.filter(x=>x!==option.code);saveGuestWorkspace({sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes:next,source:"configurator"});return next;})}/> {option.name}</span>
             <b>{formatEgp(option.price)} {option.pricingType==="monthly"?"/ شهري":option.pricingType==="yearly"?"/ سنوي":""}</b>
           </label>)}
         </section>}
-        {selectedProjectDraftId&&<p role="status" style={{background:"#eaf8ee",color:"#166534",padding:12,borderRadius:10}}>أنت تستكمل مسودة مشروع محفوظة في حسابك. سيتم ربط الطلب النهائي بهذه المسودة فقط.</p>}
+        {selectedProjectDraftId&&<div role="group" aria-label="حفظ اختيارات المشروع" style={{background:"#eaf8ee",color:"#166534",padding:12,borderRadius:10,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}><span>أنت تستكمل مسودة مشروع محفوظة في حسابك. سيتم ربط الطلب النهائي بهذه المسودة فقط.</span><button type="button" onClick={()=>void saveProjectChoices()} style={{background:"#203958",color:"white",border:0,borderRadius:9,padding:"10px 13px",cursor:"pointer"}}>حفظ الاختيارات والإضافات في مشروعي</button></div>}
         {selectedSector && <div role="status" style={{border:"1px solid #d5e1ef",borderRadius:12,padding:"12px 16px",margin:"18px 0",background:"#eef5fc",color:"#203958"}}>
           النموذج الذي اخترته: <strong>{selectedSector.name}</strong>. تُحسب أسعار القطاع والإضافات المنشورة من الخادم. {sectorNeedsQuote ? "تكلفة هذا النظام تحتاج اعتماد عرض مخصص قبل الشراء." : `تكلفة قطاعك وإضافاته: ${formatEgp(sectorSubtotal)}.`}
         </div>}
