@@ -1,6 +1,9 @@
 "use client";
 import {useEffect,useState} from "react";
-type Quote={id:number;customer_email:string;status:string;revision:number;total_piasters:number;valid_until:string|null};
+import QuoteRevisionEditor from "@/components/quote-revision-editor";
+type Quote={id:number;customer_email:string;status:string;revision:number;total_piasters:number;valid_until:string|null;items:Array<{label:string;quantity:number;unitPricePiasters:number;period?:string}>};
+type EligibleOrder={id:string;reference:string;total:number;currency:string;project_title:string;latest_preview_status:string|null};
+type ChangeRequest={id:number;quote_id:number;customer_email:string;quote_status:string;revision:number;status:string;details:string;created_at:string;resolution_note?:string};
 type Template={id:number;title:string;body:string;revision:number;category:string;is_published:boolean;is_archived:boolean};
 type TemplateVersion={template_id:number;title:string;body:string;revision:number;edited_by:string|null;created_at:string;is_published:boolean};
 type Invoice={id:number;quote_id:number;customer_email:string;amount_piasters:number;verified_paid_piasters:number;remaining_piasters:number;due_at:string|null;due_state:string;status:string};
@@ -12,6 +15,8 @@ export default function CommercialManager(){
  const [invoices,setInvoices]=useState<Invoice[]>([]);
  const [finance,setFinance]=useState<FinanceSummary|null>(null),[selectedInvoice,setSelectedInvoice]=useState<number|null>(null),[payments,setPayments]=useState<Payment[]>([]),[paymentsBusy,setPaymentsBusy]=useState(false);
  const [quotes,setQuotes]=useState<Quote[]>([]),[templates,setTemplates]=useState<Template[]>([]),[tickets,setTickets]=useState<Ticket[]>([]);
+ const [eligibleOrders,setEligibleOrders]=useState<EligibleOrder[]>([]),[changeRequests,setChangeRequests]=useState<ChangeRequest[]>([]),[contractChoices,setContractChoices]=useState<Record<number,string>>({});
+ const [reviewLink,setReviewLink]=useState("");
  const [email,setEmail]=useState(""),[description,setDescription]=useState(""),[amount,setAmount]=useState(""),[title,setTitle]=useState(""),[body,setBody]=useState(""),[message,setMessage]=useState("");
  const [selectedTemplate,setSelectedTemplate]=useState<number|null>(null);
  const [orderIdToQuote,setOrderIdToQuote]=useState("");
@@ -40,7 +45,7 @@ export default function CommercialManager(){
   newContract();
  }
  async function showContractVersions(id:number){try{const response=await request(`contracts/templates/${id}/versions`);setContractVersions(response.versions||[]);}catch(e){setMessage(e instanceof Error?e.message:"فشل تحميل الإصدارات");}}
- async function refresh(){try{const [q,t,s,i]=await Promise.all([request("quotes"),request("contracts/templates"),request("tickets"),request("invoices")]);setInvoices(i.invoices||[]);setQuotes(q.quotes||[]);setTemplates(t.templates||[]);setTickets(s.tickets||[]);try{setFinance(await request("finance/summary"))}catch{setFinance(null)}}catch(e){setMessage(String(e));}}
+ async function refresh(){try{const [q,t,s,i,o,f]=await Promise.all([request("quotes"),request("contracts/templates"),request("tickets"),request("invoices"),request("orders/eligible"),request("change-requests")]);setInvoices(i.invoices||[]);setQuotes(q.quotes||[]);setTemplates(t.templates||[]);setTickets(s.tickets||[]);setEligibleOrders(o.orders||[]);setChangeRequests(f.changeRequests||[]);try{setFinance(await request("finance/summary"))}catch{setFinance(null)}}catch(e){setMessage(String(e));}}
  useEffect(()=>{void refresh()},[]);
  async function showPayments(id:number){setSelectedInvoice(id);setPaymentsBusy(true);try{const result=await request(`invoices/${id}/payments`);setPayments(result.payments||[])}catch(e){setMessage(String(e));setPayments([])}finally{setPaymentsBusy(false)}}
  async function run(action:()=>Promise<unknown>){try{setMessage("");await action();setMessage("تم تنفيذ العملية بنجاح");await refresh()}catch(e){setMessage(e instanceof Error?e.message:"حدث خطأ")}}
