@@ -251,11 +251,11 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
       const endpoint=`/api/customer/auth/project-drafts/${encodeURIComponent(selectedProjectDraftId)}`;
       const current=await fetch(endpoint,{credentials:"include",cache:"no-store"});
       const body=await current.json().catch(()=>({}));
-      if(!current.ok||!body.projectDraft)throw Error("تعذر قراءة مسودة المشروع؛ تحقق من الجلسة.");
+      if(!current.ok||!body.projectDraft)throw Error(t("تعذر قراءة مسودة المشروع؛ تحقق من الجلسة.","Unable to access the project draft. Verify your sign-in."));
       const patch={...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes}:{}),...(packageId?{packageId}:{}),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||body.projectDraft.draft?.businessName||""};
       const response=await fetch(endpoint,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({expectedRevision:Number(body.projectDraft.revision),patch})});
       const result=await response.json().catch(()=>({}));
-      if(!response.ok)throw Error(result.error||"تعذر حفظ المسودة؛ راجع التعديلات الجديدة.");
+      if(!response.ok)throw Error(isEnglish?"Unable to save the current project draft":result.error||"تعذر حفظ المسودة؛ راجع التعديلات الجديدة.");
       setRequestMessage(t("تم حفظ اختيارات النموذج وإضافاته في حسابك. يمكن استكمال معاينتها من لوحة العميل.","Your project choices are saved to your account. Continue from your client dashboard."));
       setRequestState("idle");
     }catch(error){setRequestMessage(error instanceof Error?error.message:t("فشل حفظ الاختيارات","Unable to save selections"));setRequestState("error");}
@@ -268,27 +268,27 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
 
   const downloadSummary = () => {
     const summary = [
-      "طلب تقدير سعر — ATSH AI",
-      `الباقة: ${selectedPackage?.name ?? "عرض مخصص"}`,
-      `الصفحات المطلوبة: ${pages}`,
-      `اللغات: ${bilingual ? "العربية والإنجليزية" : "العربية"}`,
-      `الهوية: ${identityOptions.find((item) => item.id === identity)?.name ?? "شعار العميل"}`,
-      `المحتوى: ${content === "writing" ? "كتابة محتوى" : "محتوى مقدم من العميل"}`,
+      t("طلب تقدير سعر — ATSH AI","Quotation request — ATSH AI"),
+      `${t("الباقة","Package")}: ${selectedPackage?.name ?? copy("customQuoteLabel")}`,
+      `${t("الصفحات المطلوبة","Requested pages")}: ${pages}`,
+      `${t("اللغات","Languages")}: ${bilingual ? copy("languageBilingual") : copy("languageArabic")}`,
+      `${t("الهوية","Brand identity")}: ${localizeOption(identity,identityOptions.find((item) => item.id === identity)?.name ?? "شعار العميل")}`,
+      `${t("المحتوى","Content")}: ${content === "writing" ? copy("requestWriting") : copy("provideContent")}`,
       ...localizedQuoteItems.map((item) => `${item.label}: ${money(item.amount)}${item.period ? ` / ${item.period}` : ""}`),
       ...(sectorPrice&&!sectorPrice.needsCustomQuote?sectorPrice.items.map(item=>`${item.name}: ${money(item.price)} / ${item.pricingType}`):[]),
-      `المجموع قبل الضريبة: ${money(quoteSubtotal)}`,
-      `ضريبة القيمة المضافة (${vatRate}%): ${money(quoteTax)}`,
-      `إجمالي البنود المسعّرة: ${money(quoteTotal)}`,
-      `مبلغ شهري متكرر: ${money(quoteSummary.monthly)}`,
-      `مبلغ سنوي متكرر: ${money(quoteSummary.yearly)}`,
-      `رسوم التأسيس/لمرة واحدة: ${money(quoteSummary.oneTime)}`,
-      quote.needsCustomQuote ? "يتطلب الطلب مراجعة بنود مخصصة قبل اعتماد السعر النهائي." : "",
+      `${t("المجموع قبل الضريبة","Subtotal before tax")}: ${money(quoteSubtotal)}`,
+      `${t("ضريبة القيمة المضافة","VAT")} (${vatRate}%): ${money(quoteTax)}`,
+      `${t("إجمالي البنود المسعّرة","Total priced items")}: ${money(quoteTotal)}`,
+      `${t("مبلغ شهري متكرر","Monthly recurring")}: ${money(quoteSummary.monthly)}`,
+      `${t("مبلغ سنوي متكرر","Annual recurring")}: ${money(quoteSummary.yearly)}`,
+      `${t("رسوم التأسيس/لمرة واحدة","Setup / one-time fees")}: ${money(quoteSummary.oneTime)}`,
+      quote.needsCustomQuote ? t("يتطلب الطلب مراجعة بنود مخصصة قبل اعتماد السعر النهائي.","Custom items need review before a final price can be approved.") : "",
       `${copy("startDateLabel")}: ${startWindowLabel}`,
-      customer.name ? `الاسم: ${customer.name}` : "",
-      customer.company ? `الشركة: ${customer.company}` : "",
-      customer.email ? `البريد: ${customer.email}` : "",
-      customer.phone ? `الهاتف: ${customer.phone}` : "",
-      customer.details ? `التفاصيل: ${customer.details}` : "",
+      customer.name ? `${t("الاسم","Name")}: ${customer.name}` : "",
+      customer.company ? `${t("الشركة","Company")}: ${customer.company}` : "",
+      customer.email ? `${t("البريد","Email")}: ${customer.email}` : "",
+      customer.phone ? `${t("الهاتف","Phone")}: ${customer.phone}` : "",
+      customer.details ? `${t("التفاصيل","Details")}: ${customer.details}` : "",
     ].filter(Boolean).join("\n");
     const blob = new Blob([summary], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -309,7 +309,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
     setRequestState("sending");
     setRequestMessage("");
     try {
-      if (!selectedServerPackage || selectedServerOptions.some((option) => !option)) throw new Error("تعذر مطابقة اختياراتك مع كتالوج الخادم. أعد تحميل الصفحة أو تواصل معنا.");
+      if (!selectedServerPackage || selectedServerOptions.some((option) => !option)) throw new Error(t("تعذر مطابقة اختياراتك مع كتالوج الخادم. أعد تحميل الصفحة أو تواصل معنا.","Some selected items are no longer in the live catalog. Refresh or contact us."));
       const resolvedOptions = selectedServerOptions.filter((option): option is BackendOption => Boolean(option));
       const optionQuantities = Object.fromEntries(resolvedOptions.filter((option) => option.pricing_type === "per_page").map((option) => [option.id, pages]));
       const notes = [
@@ -348,12 +348,12 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
         })
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || data.error || "تعذر تسجيل الطلب الآن.");
+      if (!response.ok) throw new Error(isEnglish?"Unable to submit your request at the moment.":data.message || data.error || "تعذر تسجيل الطلب الآن.");
       setRequestState("sent");
       setRequestMessage(`${copy("orderSuccessPrefix")} ${data.order?.reference ?? copy("orderSuccessFallback")}`);
     } catch (error) {
       setRequestState("error");
-      setRequestMessage(error instanceof Error ? error.message : "تعذر تسجيل الطلب الآن.");
+      setRequestMessage(error instanceof Error ? error.message : t("تعذر تسجيل الطلب الآن.","Unable to submit the request."));
     }
   };
 
