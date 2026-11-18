@@ -36,7 +36,7 @@ test("customer can review exact quote and contract, request changes, and accept 
  await page.goto(`/account/checkout/${quoteId}`);
  await expect(page.getByRole("heading",{name:`عرض السعر رقم #${quoteId}`})).toBeVisible();
  await expect(page.getByText("بوابة الدفع الإلكتروني غير مفعّلة بعد",{exact:false})).toBeVisible();
- await expect(page.getByText("نظام عيادات",{exact:false})).toBeVisible();
+ await expect(page.getByRole("cell",{name:"نظام عيادات"})).toBeVisible();
  await page.getByRole("button",{name:"طلب تعديل على العرض"}).click();
  await page.getByRole("textbox",{name:"ما البنود التي تريد تعديلها؟"}).fill("أريد تحديث بند الاستضافة السنوية");
  await page.getByRole("button",{name:"إرسال طلب التعديل للإدارة"}).click();
