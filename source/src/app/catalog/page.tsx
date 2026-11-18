@@ -3,7 +3,7 @@ import {useEffect,useState} from "react";
 import Link from "next/link";
 import {sectorTemplates,type SectorTemplate} from "@/lib/sector-catalog";
 import {normalizeCatalogSectors,resolvePlacement,type CatalogSector} from "@/lib/catalog-sectors";
-import {saveGuestWorkspace} from "@/lib/customer-workspace";
+import {loadGuestWorkspace,saveGuestWorkspace} from "@/lib/customer-workspace";
 import CatalogCardPreview from "@/components/catalog-card-preview";
 import {isInteractiveSector} from "@/components/sector-interactive-demo";
 type Item=SectorTemplate&{published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;previewUrl?:string;sectorId?:string;subcategoryId?:string};
@@ -34,10 +34,10 @@ export default function CatalogPage(){
   return [item.name,item.category,item.description,place.sector.name,place.subcategory?.name,...(item.features??[])].join(" ").toLocaleLowerCase("ar").includes(query.trim().toLocaleLowerCase("ar"));
  }).sort((a,b)=>(a.sortOrder??0)-(b.sortOrder??0));
  const groups=published.filter(s=>sectorId==="all"||sectorId===s.id).map(sector=>({sector,records:visible.filter(i=>resolvePlacement(i,sectors).sector?.id===sector.id)})).filter(g=>g.records.length);
- const choose=(item:Item)=>saveGuestWorkspace({sectorSlug:item.slug,sectorName:item.name,source:"catalog"});
+ const choose=(item:Item)=>{const prior=loadGuestWorkspace();saveGuestWorkspace({sectorSlug:item.slug,sectorName:item.name,sectorAddonCodes:prior.sectorSlug===item.slug?prior.sectorAddonCodes??[]:[],source:"catalog"});};
  return <main dir="rtl" style={{maxWidth:1160,margin:"auto",padding:"22px 18px 70px",minHeight:"100vh"}}>
   <header style={{display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-   <Link href="/" style={{fontWeight:800,color:"#203958"}}>ATSH AI</Link>
+   <Link href="/" style={{fontWeight:800,color:"#203958"}}>ATSH AI</Link><Link href="/start" style={{color:"#203958",fontWeight:700}}>ابدأ مشروعك</Link>
    <Link href="/#configurator" style={{border:"1px solid #ccd1d6",padding:"10px 15px",borderRadius:10}}>الباقات ومحرك التسعير</Link>
   </header>
   <section style={{padding:"36px 0 20px"}}>

@@ -1,7 +1,7 @@
 name: ATSH Browser Smoke
 on:
   push:
-    branches: [atsh-platform-rebuild, main]
+    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1]
     paths:
       - 'source/tests/browser-smoke.mjs'
       - '.github/workflows/browser-smoke.yml'

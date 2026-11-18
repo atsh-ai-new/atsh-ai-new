@@ -1,12 +1,13 @@
 // Browser-only guest preference handoff. Never store passwords, access codes or payment data here.
 export type CustomerWorkspace = {
   sectorSlug?:string; sectorName?:string; packageId?:string; businessName?:string;
-  businessDescription?:string; brandColor?:string; options?:string[];
+  projectMode?:"ready"|"custom"; solutionType?:"website"|"store"|"mobile"|"management"|"ai"|"other"; requirements?:string;
+  businessDescription?:string; brandColor?:string; options?:string[]; sectorAddonCodes?:string[];
   deliveryMethod?:"managed"|"source-code"|"undecided"; domainName?:string;
   source?:"catalog"|"configurator"|"concierge"|"preview"|"account";
 };
 export const WORKSPACE_KEY="atsh_customer_workspace_v1";
-const allowed=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","brandColor","options","deliveryMethod","domainName","source"]);
+const allowed=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","brandColor","options","sectorAddonCodes","projectMode","solutionType","requirements","deliveryMethod","domainName","source"]);
 export function loadGuestWorkspace():CustomerWorkspace {
   if(typeof window==="undefined")return {};
   try{
@@ -48,4 +49,14 @@ export async function loadAccountWorkspace():Promise<CustomerWorkspace|null>{
   if(!response.ok)throw Error("Unable to load account workspace");
   const result=await response.json();
   return (result?.workspace?.draft??{}) as CustomerWorkspace;
+}
+
+/** Start a new project from a clean preference snapshot so a previous
+ * sector, package or addon cannot leak into a different customer's draft. */
+export function replaceGuestWorkspace(value:CustomerWorkspace):CustomerWorkspace {
+ const next=Object.fromEntries(Object.entries(value).filter(([key])=>allowed.has(key))) as CustomerWorkspace;
+ if(typeof window!=="undefined"){
+  try{window.localStorage.setItem(WORKSPACE_KEY,JSON.stringify(next));window.dispatchEvent(new CustomEvent("atsh-workspace-updated",{detail:next}));}catch{/* restricted storage */}
+ }
+ return next;
 }

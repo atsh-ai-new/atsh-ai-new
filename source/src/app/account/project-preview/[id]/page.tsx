@@ -4,7 +4,7 @@ import Link from "next/link";
 import {useParams} from "next/navigation";
 import {interactiveDemoPaths,interactiveDemoSlug,type SectorTemplate} from "@/lib/sector-catalog";
 
-type Preferences={sectorSlug?:string;sectorName?:string;businessName?:string;businessDescription?:string;brandColor?:string;domainName?:string;packageId?:string};
+type Preferences={sectorSlug?:string;sectorName?:string;businessName?:string;businessDescription?:string;brandColor?:string;domainName?:string;packageId?:string;sectorAddonCodes?:string[]};
 type Draft={id:string;title:string;draft:Preferences;revision:number|string;linked_journey_id?:string|null};
 type Preview={id:string;revision:string|number;approval_status:string;snapshot:Preferences;created_at:string;customer_comment?:string};
 const box={background:"#fff",border:"1px solid #dae3ee",padding:18,borderRadius:15};
@@ -59,7 +59,7 @@ export default function CustomerProjectPreview(){
   try{
    const result=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(id)}`,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},
     body:JSON.stringify({expectedRevision:Number(entry.revision),title:entry.title,patch:{
-      businessName:form.businessName||"",businessDescription:form.businessDescription||"",brandColor:form.brandColor||"#203958",domainName:form.domainName||""
+      businessName:form.businessName||"",businessDescription:form.businessDescription||"",brandColor:form.brandColor||"#203958",domainName:form.domainName||"",sectorAddonCodes:Array.isArray(form.sectorAddonCodes)?form.sectorAddonCodes:[]
     }})});
    const payload=await result.json();
    if(!result.ok)throw Error(payload.error||"تعذر الحفظ");
@@ -100,7 +100,7 @@ export default function CustomerProjectPreview(){
    <Link href="/account/dashboard">← مشروعاتي</Link>
    <Link href={`/?draftId=${encodeURIComponent(id)}#configurator`}>تكوين الباقة لهذا المشروع</Link>
   </header>
-  <p style={{padding:12,borderRadius:10,background:"#fff2d2",color:"#854d0e",lineHeight:1.8}}>معاينة تفاعلية تجريبية مخصصة لحسابك. التعديلات في قسم «سجلات تجريبية» لا تُنشئ بيانات حقيقية ولا تغيّر ما ستستلمه في المنتج النهائي.</p>
+  <p style={{padding:12,borderRadius:10,background:"#fff2d2",color:"#854d0e",lineHeight:1.8}}>معاينة تفاعلية تجريبية لمشروعك. بيانات المحاكاة لا تُنشئ سجلات إنتاجية، والإضافات المختارة تُحفظ مع مواصفات المشروع وعرض السعر، لكنها لا تغير سلوك البرنامج التجريبي تلقائيًا في هذه المرحلة.</p>
   <section style={{...box,marginBottom:18}}>
    <h1 style={{color:brand,display:"flex",alignItems:"center",gap:12}}>
     {logoReady&&<img src={`/api/customer/auth/project-drafts/${encodeURIComponent(id)}/logo?v=${logoNonce}`} alt="شعار النشاط" style={{width:54,height:54,objectFit:"contain"}}/>}
@@ -113,6 +113,15 @@ export default function CustomerProjectPreview(){
     <label>النص التعريفي<input maxLength={500} value={form.businessDescription||""} onChange={e=>patch("businessDescription",e.target.value)}/></label>
     <label>لون الهوية<input type="color" value={brand} onChange={e=>patch("brandColor",e.target.value)}/></label>
     <label>الدومين المطلوب (غير محجوز)<input maxLength={253} value={form.domainName||""} onChange={e=>patch("domainName",e.target.value)}/></label>
+    {template&&Array.isArray((template as SectorTemplate&{pricedAddons?:Array<{code:string;name:string;price:number;pricingType:string}>}).pricedAddons)&&<fieldset style={{gridColumn:"1/-1",border:"1px solid #dbe5ef",borderRadius:12,padding:15}}>
+      <legend style={{fontWeight:700}}>إضافات النموذج في مشروعك</legend>
+      <p style={{fontSize:13,color:"#64748b"}}>حدد الإضافات ثم احفظ تخصيص المشروع. التغيير يحتاج إعادة تسعير واعتماد عرض جديد إذا غيّر التكلفة.</p>
+      {((template as SectorTemplate&{pricedAddons?:Array<{code:string;name:string;price:number;pricingType:string}>}).pricedAddons||[]).map(addon=><label key={addon.code} style={{display:"flex",gap:10,padding:"9px 0",flexWrap:"wrap",alignItems:"center"}}>
+        <input type="checkbox" checked={(form.sectorAddonCodes||[]).includes(addon.code)} onChange={event=>setForm(current=>({...current,sectorAddonCodes:event.target.checked?[...new Set([...(current.sectorAddonCodes||[]),addon.code])]: (current.sectorAddonCodes||[]).filter(code=>code!==addon.code)}))}/>
+        <span>{addon.name}</span><span style={{marginInlineStart:"auto",fontWeight:600}}>{Number(addon.price).toLocaleString("ar-EG")} ج.م {addon.pricingType==="monthly"?"/ شهري":addon.pricingType==="yearly"?"/ سنوي":""}</span>
+      </label>)}
+      <Link href={`/?draftId=${encodeURIComponent(id)}#configurator`} style={{fontWeight:700,color:"#1b648f"}}>انتقل للتسعير والتحقق من السعر النهائي ↗</Link>
+    </fieldset>}
     <div style={{gridColumn:"1/-1",display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
       <button type="submit" disabled={saving} style={{background:brand,color:"#fff",border:0,padding:"12px 18px",borderRadius:9}}>{saving?"جارٍ الحفظ…":"حفظ تخصيص المشروع"}</button>
       <label>رفع شعار لهذا المشروع<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>void uploadLogo(e.target.files?.[0])}/></label>
