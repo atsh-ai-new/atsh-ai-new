@@ -1,7 +1,7 @@
 "use client";
 import {useEffect,useState,type FormEvent} from "react";
 import Link from "next/link";
-import {loadGuestWorkspace,saveGuestWorkspace,type CustomerWorkspace} from "@/lib/customer-workspace";
+import {loadGuestWorkspace,replaceGuestWorkspace,type CustomerWorkspace} from "@/lib/customer-workspace";
 type Kind=NonNullable<CustomerWorkspace["solutionType"]>;
 type Mode="ready"|"custom";
 const types:Array<{id:Kind;title:string;desc:string}>=[
@@ -33,7 +33,7 @@ export default function StartProject(){
  const submit=async(event:FormEvent)=>{
   event.preventDefault();if(!businessName.trim()){setError("اكتب اسم مشروعك.");return}
   const patch:CustomerWorkspace={projectMode:mode,solutionType:kind,businessName:businessName.trim(),requirements:requirements.trim(),options,source:"configurator"};
-  saveGuestWorkspace(patch);
+  replaceGuestWorkspace(patch);
   if(mode==="ready"){window.location.assign("/catalog");return}
   setSaving(true);setError("");
   try{
