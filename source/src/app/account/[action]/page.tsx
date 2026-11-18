@@ -127,8 +127,12 @@ export default function CustomerAccount(){
  return <main dir="rtl" style={{maxWidth:540,margin:"5rem auto",padding:24}}><h1>{({register:"إنشاء حساب",login:"تسجيل الدخول", "resend-verification":"إعادة إرسال تأكيد البريد",forgot:"استعادة كلمة المرور","reset-password":"تعيين كلمة مرور جديدة",verify:"تأكيد البريد",dashboard:"مشروعاتي"} as Record<string,string>)[action]||"حساب العميل"}</h1>
  {! ["verify","dashboard"].includes(action)&&<form onSubmit={e=>{e.preventDefault();const token=search.get("token")||"";
     const route=({register:"register",login:"login","resend-verification":"verification/resend",forgot:"password/forgot","reset-password":"password/reset"} as Record<string,string>)[action]||"login";
-    const data=action==="register"?{name,email,password}:action==="login"?{email,password}:action==="reset-password"?{password,token}:{email};
-    void request(route,data as Record<string,string>);}}>
+    const data:Record<string,string>={};
+    if(action!=="reset-password")data.email=email;
+    if(action==="register")data.name=name;
+    if(["register","login","reset-password"].includes(action))data.password=password;
+    if(action==="reset-password")data.token=token;
+    void request(route,data);}}>
  {action==="register"&&<label>الاسم<input required value={name} onChange={e=>setName(e.target.value)}/></label>}
  {action!=="reset-password"&&<label>البريد الإلكتروني<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label>}
  {["register","login","reset-password"].includes(action)&&<label>كلمة المرور<input type="password" minLength={action==="login"?1:12} required value={password} onChange={e=>setPassword(e.target.value)}/></label>}
