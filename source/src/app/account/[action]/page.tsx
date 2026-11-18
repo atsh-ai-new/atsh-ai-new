@@ -171,7 +171,7 @@ export default function CustomerAccount(){
   <p>كل مشروع له اختيارات منفصلة. اختر المسودة التي تريد استكمالها أو نقل اختيارات المتصفح إليها.</p>
   <label>اسم المشروع الجديد<input maxLength={120} value={draftTitle} onChange={e=>setDraftTitle(e.target.value)} placeholder="اسم مشروعك"/></label>
   <button type="button" onClick={()=>void createProjectDraft()}>إنشاء مسودة مشروع</button>
-  {guestPending&&<button type="button" onClick={()=>void createProjectDraft(true)} style={{marginInlineStart:10,background:"#203958",color:"white",border:0,borderRadius:8,padding:"11px 13px",cursor:"pointer"}}>إنشاء مشروع جديد باختياراتي السابقة</button>
+  {guestPending&&<button type="button" onClick={()=>void createProjectDraft(true)} style={{marginInlineStart:10,background:"#203958",color:"white",border:0,borderRadius:8,padding:"11px 13px",cursor:"pointer"}}>إنشاء مشروع جديد باختياراتي السابقة</button>}
   {projectDrafts.length===0&&<p style={{padding:12,background:"#f1f5fb",borderRadius:10}}>ليس لديك مشروع محفوظ بعد. أنشئ مسودة أو اختر نموذجًا من المعرض.</p>}
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,220px),1fr))",gap:10,margin:"12px 0"}}>
    {projectDrafts.map(d=><button type="button" key={d.id} aria-pressed={selectedProjectDraft===d.id} onClick={()=>setSelectedProjectDraft(d.id)} style={{border:selectedProjectDraft===d.id?"2px solid #203958":"1px solid #d8e2ef",borderRadius:12,padding:15,background:selectedProjectDraft===d.id?"#eaf1fb":"white",textAlign:"right",cursor:"pointer"}}>
