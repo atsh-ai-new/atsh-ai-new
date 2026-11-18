@@ -29,7 +29,7 @@ test("English project intake and catalog routes remain functional on mobile and 
  await expect(page.getByText("Required features")).toBeVisible();
  await page.goto("/en/catalog");
  await expect(page.getByRole("heading",{name:/Explore digital solutions by industry/})).toBeVisible();
- await expect(page.getByRole("link",{name:/English|العربية/}).first()).toBeVisible();
+ await expect(page.getByRole("link",{name:"Switch page to Arabic"})).toBeVisible();
 });
 
 test("English client login is a translated account form with original API flow",async({page})=>{
