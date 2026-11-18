@@ -1,7 +1,7 @@
 name: ATSH PostgreSQL API Integration
 on:
   push:
-    branches: [atsh-platform-rebuild]
+    branches: [atsh-platform-rebuild, main]
     paths:
       - 'source/backend/**'
       - '.github/workflows/postgres-integration.yml'
