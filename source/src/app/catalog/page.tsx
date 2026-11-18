@@ -4,7 +4,9 @@ import Link from "next/link";
 import {sectorTemplates,type SectorTemplate} from "@/lib/sector-catalog";
 import {normalizeCatalogSectors,resolvePlacement,type CatalogSector} from "@/lib/catalog-sectors";
 import {saveGuestWorkspace} from "@/lib/customer-workspace";
-type Item=SectorTemplate&{published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;sectorId?:string;subcategoryId?:string};
+import CatalogCardPreview from "@/components/catalog-card-preview";
+import {isInteractiveSector} from "@/components/sector-interactive-demo";
+type Item=SectorTemplate&{published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;previewUrl?:string;sectorId?:string;subcategoryId?:string};
 const defaults:Item[]=sectorTemplates.map((s,i)=>({...s,published:true,sortOrder:i*10}));
 export default function CatalogPage(){
  const [items,setItems]=useState<Item[]>(defaults);
@@ -65,13 +67,15 @@ export default function CatalogPage(){
    </div>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,245px),1fr))",gap:15}}>
     {records.map(item=>{const place=resolvePlacement(item,sectors);return <article key={item.slug} style={{background:"white",padding:20,borderRadius:16,border:"1px solid #e2e8f0",display:"flex",flexDirection:"column",gap:10,minWidth:0}}>
-     {(item.imageUrl?.startsWith("https://")||item.imageUrl?.startsWith("/api/site-media/"))?<img src={item.imageUrl} alt={item.name} style={{width:"100%",height:145,objectFit:"cover",borderRadius:10}}/>:<span aria-hidden style={{fontSize:32}}>{item.icon||"📁"}</span>}
+     {(item.imageUrl?.startsWith("https://")||item.imageUrl?.startsWith("/api/site-media/"))?<img src={item.imageUrl} alt={item.name} style={{width:"100%",height:145,objectFit:"cover",borderRadius:10}}/>:<CatalogCardPreview slug={item.slug} name={item.name}/> }
      <small style={{color:"#4c78ae"}}>{place.subcategory?.name||sector.name}</small>
+     {isInteractiveSector(item.slug)&&<small style={{fontWeight:700,color:"#127659"}}>● نظام قابل للتجربة: كاشير / مواعيد / إدارة وقضايا حسب المجال</small>}
      <h3 style={{margin:0,color:"#203958"}}>{item.name}</h3>
      <p style={{lineHeight:1.8,color:"#64748b",flex:1}}>{item.description}</p>
      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>{(item.features??[]).slice(0,5).map(feature=><span key={feature} style={{borderRadius:99,background:"#edf3f8",padding:"5px 8px",fontSize:12}}>{feature}</span>)}</div>
      <Link onClick={()=>choose(item)} href={`/catalog/${encodeURIComponent(item.slug)}`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>المعاينة التفاعلية ←</Link>
      <Link onClick={()=>choose(item)} href={`/?sector=${encodeURIComponent(item.slug)}#configurator`} style={{textAlign:"center",fontSize:13,color:"#203958",textDecoration:"underline"}}>اطلب تسعير النموذج</Link>
+     {item.previewUrl?.startsWith("https://")&&<a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{textAlign:"center",fontSize:13,color:"#1e749b"}}>افتح نسخة تجريبية منشورة خارجيًا ↗</a>}
     </article>})}
    </div>
   </section>)}
