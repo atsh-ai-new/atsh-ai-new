@@ -32,6 +32,6 @@ export default function CatalogPreviewLoader({slug}:{slug:string}) {
     <a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginInlineStart:14,color:"#174e83",fontWeight:700,textDecoration:"underline"}}>افتح النسخة الخارجية ↗</a>
     <small style={{display:"block",color:"#64748b",marginTop:5}}>الرابط يُدار من لوحة التحكم وقد يفتح موقعًا خارجيًا مستقلًا عن ATSH AI.</small>
   </div>}
-  <SectorPreview template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} />
+  <SectorPreview template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} demoSlug={interactiveDemoSlug(item.slug,item.demoSlug)} />
  </>;
 }
