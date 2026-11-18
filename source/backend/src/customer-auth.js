@@ -134,6 +134,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   domainName:z.string().trim().toLowerCase().max(253).optional(),
   brandColor:z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   options:z.array(z.string().max(100)).max(30).optional(),
+  sectorAddonCodes:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).max(30).optional(),
   deliveryMethod:z.enum(['managed','source-code','undecided']).optional(),
   source:z.enum(['catalog','configurator','concierge','preview','account']).optional()
  }).strict();
