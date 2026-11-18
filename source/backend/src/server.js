@@ -21,6 +21,7 @@ import { renderContractTemplate, makeContractContext } from "./contract-template
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
 import {queueJourneyEvent,deliverJourneyEvents,eventDestination} from "./customer-event-outbox.js";
 import {checkDomainWithNamecheap} from "./domain-availability.js";
+import {seedCatalogIfAbsent} from "./catalog-starter.js";
 import {deriveQuoteFromOrder} from "./order-quote.js";
 import { buildProjectPlan, proposeVisualEdit } from "./project-builder.js";
 import {verifyCallback,validJobResult,canTransition} from "./builder-job-rules.js";
@@ -64,6 +65,7 @@ await pool.query(await readFile(new URL("../db/customer_project_logos_stage46.sq
 await pool.query(await readFile(new URL("../db/visitor_ai_usage_stage51.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sql", import.meta.url), "utf8"));
+await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim()).filter(Boolean);
 const cookie = "atsh_admin";
 const cookieOptions = { httpOnly: true, secure: process.env.COOKIE_SECURE !== "false", sameSite: "strict", path: "/", maxAge: 8 * 60 * 60 * 1000 };
