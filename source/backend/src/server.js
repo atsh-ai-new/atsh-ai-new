@@ -637,6 +637,34 @@ app.post("/api/admin/login",rateLimit({windowMs:15*60*1000,limit:5,standardHeade
 app.post("/api/admin/logout",(_req,res)=>{res.clearCookie(cookie,cookieOptions);res.json({authenticated:false});});
 app.get("/api/admin/me",requireAdmin,(req,res)=>res.json({authenticated:true,email:req.admin.email,role:req.admin.role}));
 app.get("/api/admin/email-status",requireAdmin,(_req,res)=>res.json({configured:Boolean(process.env.BREVO_API_KEY),from:process.env.BREVO_SENDER_EMAIL||"info@atsh-ai.com",replyTo:process.env.BREVO_REPLY_TO||"sales@atsh-ai.com"}));
+app.get("/api/admin/integrations/status",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{
+  const [catalog,packages]=await Promise.all([
+    pool.query(`SELECT is_published,
+      CASE WHEN jsonb_typeof(content->'items')='array' THEN jsonb_array_length(content->'items') ELSE 0 END AS count,
+      (SELECT count(*)::int FROM jsonb_array_elements(CASE WHEN jsonb_typeof(content->'items')='array' THEN content->'items' ELSE '[]'::jsonb END) item
+       WHERE item->>'published'='true' AND coalesce(item->>'archived','false')!='true') AS published_count
+      FROM site_pages WHERE slug='catalog' AND locale='ar' LIMIT 1`),
+    pool.query("SELECT count(*)::int AS count FROM packages WHERE is_published=true")
+  ]);
+  const c=catalog.rows[0]??null;
+  const domainKeys=["NAMECHEAP_API_KEY","NAMECHEAP_API_USER","NAMECHEAP_USERNAME","NAMECHEAP_CLIENT_IP"];
+  const domainConfigured=domainKeys.every(key=>Boolean(process.env[key]));
+  const emailReady=Boolean(process.env.BREVO_API_KEY&&process.env.BREVO_SENDER_EMAIL&&process.env.PUBLIC_SITE_URL);
+  res.set("Cache-Control","private, no-store").json({
+    api:true,database:true,
+    catalog:{exists:!!c,published:Boolean(c?.is_published),total:Number(c?.count??0),visible:Number(c?.published_count??0)},
+    pricing:{publishedPackages:packages.rows[0]?.count??0},
+    gpt:{configured:Boolean(process.env.OPENAI_API_KEY&&process.env.OPENAI_MODEL)},
+    domains:{configured:domainConfigured,mode:domainConfigured?(process.env.NAMECHEAP_ENV==="production"?"production":"sandbox"):"inactive"},
+    registration:{ready:emailReady,emailDelivery:emailReady},
+    requiredSettings:{
+      gpt:["OPENAI_API_KEY","OPENAI_MODEL"],
+      domains:domainKeys.concat("NAMECHEAP_ENV=production"),
+      registration:["PUBLIC_SITE_URL","BREVO_API_KEY","BREVO_SENDER_EMAIL","ALLOWED_ORIGINS"]
+    }
+  });
+}));
+
 app.get("/api/admin/visitor-ai-usage",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{
  const result=await pool.query("SELECT day,requests,input_tokens,output_tokens FROM visitor_ai_daily_usage ORDER BY day DESC LIMIT 31");
  res.set("Cache-Control","private, no-store").json({days:result.rows});
