@@ -1,12 +1,12 @@
 // Browser-only guest preference handoff. Never store passwords, access codes or payment data here.
 export type CustomerWorkspace = {
   sectorSlug?:string; sectorName?:string; packageId?:string; businessName?:string;
-  businessDescription?:string; brandColor?:string; options?:string[];
+  businessDescription?:string; brandColor?:string; options?:string[]; sectorAddonCodes?:string[];
   deliveryMethod?:"managed"|"source-code"|"undecided"; domainName?:string;
   source?:"catalog"|"configurator"|"concierge"|"preview"|"account";
 };
 export const WORKSPACE_KEY="atsh_customer_workspace_v1";
-const allowed=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","brandColor","options","deliveryMethod","domainName","source"]);
+const allowed=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","brandColor","options","sectorAddonCodes","deliveryMethod","domainName","source"]);
 export function loadGuestWorkspace():CustomerWorkspace {
   if(typeof window==="undefined")return {};
   try{
