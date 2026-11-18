@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
-import { sectorTemplates, interactiveDemoPaths, interactiveDemoSlug, type SectorTemplate } from "@/lib/sector-catalog";
+import { sectorTemplates, interactiveDemoPaths, type SectorTemplate } from "@/lib/sector-catalog";
 import { normalizeCatalogSectors, defaultCatalogPlacements, resolvePlacement, validCatalogId, canRemoveSector, canRemoveSubcategory, type CatalogSector } from "@/lib/catalog-sectors";
 
 type PricedAddon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
