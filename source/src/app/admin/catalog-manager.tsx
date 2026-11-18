@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
-import { sectorTemplates, type SectorTemplate } from "@/lib/sector-catalog";
+import { sectorTemplates, interactiveDemoPaths, interactiveDemoSlug, type SectorTemplate } from "@/lib/sector-catalog";
 import { normalizeCatalogSectors, defaultCatalogPlacements, resolvePlacement, validCatalogId, canRemoveSector, canRemoveSubcategory, type CatalogSector } from "@/lib/catalog-sectors";
 
 type PricedAddon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
-type CatalogItem = SectorTemplate & {published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[];sectorId?:string;subcategoryId?:string};
-const seed = (): CatalogItem[] => sectorTemplates.map((s,i)=>({...s,published:true,archived:false,sortOrder:i*10,imageUrl:"",previewUrl:"",basePrice:null,addons:[],pricedAddons:[]}));
-const empty = (): CatalogItem => ({slug:"",name:"",category:"",icon:"📁",description:"",features:[],modules:["لوحة القيادة"],sampleStats:[],sampleRows:[],note:"معاينة تجريبية",published:false,archived:false,sortOrder:100,imageUrl:"",previewUrl:"",basePrice:null,addons:[],pricedAddons:[]});
+type CatalogItem = SectorTemplate & {published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; demoSlug?:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[];sectorId?:string;subcategoryId?:string};
+const seed = (): CatalogItem[] => sectorTemplates.map((s,i)=>({...s,published:true,archived:false,sortOrder:i*10,imageUrl:"",previewUrl:"",demoSlug:s.slug,basePrice:null,addons:[],pricedAddons:[]}));
+const empty = (): CatalogItem => ({slug:"",name:"",category:"",icon:"📁",description:"",features:[],modules:["لوحة القيادة"],sampleStats:[],sampleRows:[],note:"معاينة تجريبية",published:false,archived:false,sortOrder:100,imageUrl:"",previewUrl:"",demoSlug:"",basePrice:null,addons:[],pricedAddons:[]});
 const normalize = (v: unknown): CatalogItem[] => Array.isArray(v) ? v.filter(x=>x && typeof x==="object" && typeof x.slug==="string" && typeof x.name==="string").map(x=>({...empty(),...x,features:Array.isArray(x.features)?x.features:[],modules:Array.isArray(x.modules)?x.modules:[],sampleStats:Array.isArray(x.sampleStats)?x.sampleStats:[],sampleRows:Array.isArray(x.sampleRows)?x.sampleRows:[],addons:Array.isArray(x.addons)?x.addons:[],pricedAddons:Array.isArray(x.pricedAddons)?x.pricedAddons:[]})) : seed();
 export default function CatalogManager() {
   const [items,setItems]=useState<CatalogItem[]>([]);
@@ -253,6 +253,13 @@ export default function CatalogManager() {
         {field("الوصف",draft.description,v=>update("description",v),true)}
         {field("المزايا — كل ميزة بسطر",draft.features.join("\n"),v=>update("features",v.split("\n").map(x=>x.trim()).filter(Boolean)),true)}
         {field("أقسام المعاينة — كل قسم بسطر",draft.modules.join("\n"),v=>update("modules",v.split("\n").map(x=>x.trim()).filter(Boolean)),true)}
+        <label className="admin-field">محرك المعاينة التفاعلية الكاملة
+          <select value={draft.demoSlug??""} onChange={e=>update("demoSlug",e.target.value)}>
+            <option value="">معاينة عامة دون نظام قطاع جاهز</option>
+            {Object.keys(interactiveDemoPaths).map(slug=><option key={slug} value={slug}>{sectorTemplates.find(template=>template.slug===slug)?.name??slug}</option>)}
+          </select>
+          <small>يمكن استخدام المحرك نفسه لأكثر من كتالوج بهوية ومزايا وسعر مختلف. محرك المعاينة يعرض بيانات تجريبية منفصلة عن قاعدة بيانات العملاء.</small>
+        </label>
         {field("رابط الصورة HTTPS أو ملف مرفوع",draft.imageUrl,v=>update("imageUrl",v))}
         <label className="admin-field">رفع صورة البطاقة مباشرة (PNG أو JPG أو WebP، 5 ميجابايت)
           <input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy||uploading} onChange={e=>void uploadImage(e)} />
