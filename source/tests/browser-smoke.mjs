@@ -36,6 +36,13 @@ try{
  await account.goto(origin+"/account/login",{waitUntil:"domcontentloaded"});
  await account.getByRole("heading",{name:"تسجيل الدخول"}).waitFor();
  checked+=2;
+ const start=await browser.newPage({viewport:{width:390,height:844},locale:"ar-EG"});
+ await start.goto(origin+"/start",{waitUntil:"domcontentloaded"});
+ await start.getByRole("heading",{name:"ابدأ مشروعك بالطريقة المناسبة"}).waitFor();
+ await start.getByRole("button",{name:/مشروع بمواصفات خاصة/}).click();
+ await start.getByRole("button",{name:"التالي"}).click();
+ await start.getByRole("textbox",{name:"اسم المشروع / النشاط"}).fill("نظام اختبار");
+ checked++;
  console.log(`PASS: ${checked} browser checks across desktop and mobile`);
- await home.close();await account.close();
+ await home.close();await account.close();await start.close();
 }finally{await browser.close();}
