@@ -25,7 +25,7 @@ test("English project intake and catalog routes remain functional on mobile and 
  await expect(page.locator("html")).toHaveAttribute("dir","ltr");
  await expect(page.getByRole("heading",{name:/Start your project your way/})).toBeVisible();
  await page.getByRole("button",{name:/E-commerce store/}).click();
- await page.getByRole("button",{name:/Next/}).click();
+ await page.getByRole("button",{name:/^Next(?:\s|$)/}).click();
  await expect(page.getByText("Required features")).toBeVisible();
  await page.goto("/en/catalog");
  await expect(page.getByRole("heading",{name:/Explore digital solutions by industry/})).toBeVisible();
@@ -37,5 +37,5 @@ test("English client login is a translated account form with original API flow",
  await expect(page.locator("html")).toHaveAttribute("lang","en");
  await expect(page.getByRole("heading",{name:"Sign in"})).toBeVisible();
  await expect(page.getByText("Email address")).toBeVisible();
- await expect(page.getByText("Password")).toBeVisible();
+ await expect(page.getByText("Password",{exact:true})).toBeVisible();
 });
