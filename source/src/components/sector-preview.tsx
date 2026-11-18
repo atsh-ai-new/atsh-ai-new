@@ -90,7 +90,7 @@ export default function SectorPreview({template,demoSlug}: {template: SectorTemp
       <a href={interactiveDemoPaths[demoSlug]} target="_blank" rel="noopener noreferrer" style={{marginInlineStart:"auto",color:"#174e83",textDecoration:"underline"}}>فتح النظام في نافذة كاملة ↗</a>
     </section>}
     {demoSlug && interactiveDemoPaths[demoSlug] && previewMode==="full" ? <section aria-label="المعاينة التفاعلية الكاملة" style={{background:"white",border:"1px solid #e2e8f0",borderRadius:16,overflow:"hidden"}}>
-      <iframe title={`معاينة ${template.name} التفاعلية الكاملة`} src={interactiveDemoPaths[demoSlug]} loading="eager" referrerPolicy="no-referrer" sandbox="allow-scripts allow-forms allow-modals allow-same-origin" style={{width:"100%",minHeight:680,border:0,display:"block"}} />
+      <iframe title={`معاينة ${template.name} التفاعلية الكاملة`} src={interactiveDemoPaths[demoSlug]} loading="eager" referrerPolicy="no-referrer" sandbox="allow-scripts allow-forms allow-modals" style={{width:"100%",minHeight:680,border:0,display:"block"}} />
       <p style={{fontSize:12,padding:"8px 14px",color:"#64748b"}}>المعاينة تفاعلية وبياناتها تجريبية داخل المتصفح؛ ليست متصلة ببيانات العملاء أو بالفوترة الحقيقية.</p>
     </section> : <div className="sector-preview-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,230px) minmax(0,1fr)",gap:16}}> 
       <nav className="sector-preview-nav" aria-label="أقسام النموذج" style={{background:brand,color:"white",borderRadius:16,padding:14,alignSelf:"start"}}>
