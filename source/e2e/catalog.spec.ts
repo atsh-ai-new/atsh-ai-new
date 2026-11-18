@@ -49,7 +49,7 @@ test("clinic schedules and completes a fictional appointment",async({page})=>{
  await page.goto("/catalog/eyadaty");
  const modules=page.getByRole("navigation",{name:"أقسام النموذج"});
  await modules.getByRole("button",{name:"المواعيد"}).click();
- await page.getByRole("textbox",{name:"تاريخ الموعد"}).fill("2026-12-05T14:00");
+ await page.getByLabel("تاريخ الموعد").fill("2026-12-05T14:00");
  await page.getByRole("button",{name:"حجز موعد"}).click();
  await expect(page.getByRole("status").filter({hasText:"تم حجز موعد تجريبي"})).toBeVisible();
  await page.getByRole("button",{name:"اكتمال الكشف"}).last().click();
