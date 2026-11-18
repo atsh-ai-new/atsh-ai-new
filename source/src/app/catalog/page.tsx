@@ -37,7 +37,7 @@ export default function CatalogPage(){
  const choose=(item:Item)=>{const prior=loadGuestWorkspace();saveGuestWorkspace({sectorSlug:item.slug,sectorName:item.name,sectorAddonCodes:prior.sectorSlug===item.slug?prior.sectorAddonCodes??[]:[],source:"catalog"});};
  return <main dir="rtl" style={{maxWidth:1160,margin:"auto",padding:"22px 18px 70px",minHeight:"100vh"}}>
   <header style={{display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-   <Link href="/" style={{fontWeight:800,color:"#203958"}}>ATSH AI</Link>
+   <Link href="/" style={{fontWeight:800,color:"#203958"}}>ATSH AI</Link><Link href="/start" style={{color:"#203958",fontWeight:700}}>ابدأ مشروعك</Link>
    <Link href="/#configurator" style={{border:"1px solid #ccd1d6",padding:"10px 15px",borderRadius:10}}>الباقات ومحرك التسعير</Link>
   </header>
   <section style={{padding:"36px 0 20px"}}>
