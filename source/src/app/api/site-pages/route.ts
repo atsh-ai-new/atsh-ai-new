@@ -15,11 +15,13 @@ function apiOrigin() {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const origin = apiOrigin();
   if (!origin) return NextResponse.json({ message: "واجهة ATSH API غير مهيأة." }, { status: 503 });
   try {
-    const upstream = await fetch(new URL("/api/site-pages", origin), { cache: "no-store", signal: AbortSignal.timeout(12000) });
+    const target = new URL("/api/site-pages", origin);
+    target.searchParams.set("locale", new URL(request.url).searchParams.get("locale")==="en" ? "en" : "ar");
+    const upstream = await fetch(target, { cache: "no-store", signal: AbortSignal.timeout(12000) });
     const payload = await upstream.arrayBuffer();
     return new Response(payload, {
       status: upstream.status,
