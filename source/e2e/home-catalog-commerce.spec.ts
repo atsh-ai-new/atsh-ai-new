@@ -68,7 +68,7 @@ test("homepage shows a published admin-priced catalog addon and persists its sel
  await page.route("**/api/site-content/catalog",route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(catalog)}));
  await page.route("**/api/sector-price**",route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({subtotal:25750,monthly:0,yearly:750,needsCustomQuote:false,items:[{code:"sms-reminders",name:"رسائل تذكير بالمواعيد",price:750,pricingType:"yearly"}]})}));
  await page.goto("/");
- const section=page.getByRole("region",{name:"الكتالوجات والتطبيقات المتاحة"});
+ const section=page.locator('[aria-label="الكتالوجات والتطبيقات المتاحة"]');
  await expect(section.getByRole("heading",{name:"عيادتي"})).toBeVisible();
  await expect(section.getByRole("heading",{name:"أفوكاتو المخفي"})).toHaveCount(0);
  await section.getByRole("button",{name:/اختيار وإضافة تفاصيل/}).click();
@@ -92,6 +92,6 @@ test("private token review link opens contract and clears the URL secret from hi
  await page.goto(`/commercial/review?token=${secret}`);
  await expect(page.getByRole("heading",{name:"عرض السعر رقم 42"})).toBeVisible();
  expect(loaded).toBe(true);
- await expect(page).toHaveURL(/\\/commercial\\/review$/);
+ await expect(page).toHaveURL(url=>url.pathname==="/commercial/review"&&!url.searchParams.has("token"));
  await expect(page.getByText("بنود عقد تجريبي لمتجر إلكتروني")).toBeVisible();
 });
