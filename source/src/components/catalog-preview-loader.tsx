@@ -21,12 +21,17 @@ export default function CatalogPreviewLoader({slug}:{slug:string}) {
  },[slug]);
  if(!ready&&!item)return <main dir="rtl" style={{padding:30}}>جارٍ تحميل المعاينة…</main>;
  if(!item)return <main dir="rtl" style={{padding:30}}><h1>الكتالوج غير متاح</h1><Link href="/catalog">العودة إلى المعرض</Link></main>;
+ // A persisted catalog entry can contain an older, shortened module list.
+ // Keep every operational tab of the built-in interactive demos, then append
+ // admin-defined extra sections without overwriting the CMS entry or its pricing.
+ const builtIn=findSector(item.slug);
+ const modules=[...new Set([...(builtIn?.modules??[]),...(Array.isArray(item.modules)?item.modules:[])].filter((value):value is string=>typeof value==="string"&&value.trim().length>0))];
  return <>
   {item.previewUrl?.startsWith("https://")&&<div dir="rtl" style={{maxWidth:1280,margin:"12px auto 0",padding:"12px 18px",background:"#eef6ff",border:"1px solid #d6e4f4",borderRadius:12}}>
     <strong>نسخة تفاعلية إضافية منشورة لهذا الكتالوج</strong>
     <a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginInlineStart:14,color:"#174e83",fontWeight:700,textDecoration:"underline"}}>افتح النسخة الخارجية ↗</a>
     <small style={{display:"block",color:"#64748b",marginTop:5}}>الرابط يُدار من لوحة التحكم وقد يفتح موقعًا خارجيًا مستقلًا عن ATSH AI.</small>
   </div>}
-  <SectorPreview template={{...item,modules:item.modules?.length?item.modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} />
+  <SectorPreview template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} />
  </>;
 }
