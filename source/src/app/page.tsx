@@ -345,9 +345,9 @@ export default function HomePage() {
           <span><strong>ATSH <b>AI</b></strong><small>{copy("brandTagline")}</small></span>
         </a>
         <nav className="platform-nav" aria-label={copy("mainNavigationLabel")}>
-          <a href="#why">{copy("navWhy")}</a><a href="#packages">{copy("navPackages")}</a><a href="#how">{copy("navHow")}</a><a href="#faq">{copy("navFaq")}</a>{pageLinks.map((item) => <a key={item.slug} href={`/${item.slug}`}>{item.title}</a>)}
+          <a href="#why">{copy("navWhy")}</a><a href="#packages">{copy("navPackages")}</a><a href="/catalog">معرض الأنظمة</a><a href="/account/register">إنشاء حساب عميل</a><a href="/account/login">دخول العميل</a><a href="#how">{copy("navHow")}</a><a href="#faq">{copy("navFaq")}</a>{pageLinks.map((item) => <a key={item.slug} href={`/${item.slug}`}>{item.title}</a>)}
         </nav>
-        <div className="platform-header-actions"><a className="language-pill" href="#configurator">{copy("languageLabel")} <span>⌄</span></a><a className="button button-small" href="#configurator">{copy("navAction")} <span>←</span></a></div>
+        <div className="platform-header-actions"><a className="language-pill" href="/account/register">حساب جديد</a><a className="button button-small" href="#configurator">{copy("navAction")} <span>←</span></a></div>
       </header>
 
       <section className="build-hero" id="top">
