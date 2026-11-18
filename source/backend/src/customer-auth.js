@@ -143,7 +143,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  }).strict();
  // Multi-project drafts: customer ownership and optimistic revision are enforced server-side.
  router.get('/project-drafts',requireCustomer,safe(async(req,res)=>{
-  const result=await pool.query("SELECT id,title,draft,revision,updated_at,created_at FROM customer_project_drafts WHERE customer_id=$1 ORDER BY updated_at DESC LIMIT 100",[req.customer.id]);
+  const result=await pool.query("SELECT id,title,draft,revision,linked_journey_id,updated_at,created_at FROM customer_project_drafts WHERE customer_id=$1 ORDER BY updated_at DESC LIMIT 100",[req.customer.id]);
   res.set('Cache-Control','private, no-store').json({drafts:result.rows});
  }));
  router.post('/project-drafts',requireCustomer,safe(async(req,res)=>{
@@ -151,12 +151,12 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   if(!parsed.success)return res.status(400).json({error:'Invalid project draft'});
   const count=await pool.query("SELECT count(*)::int AS count FROM customer_project_drafts WHERE customer_id=$1",[req.customer.id]);
   if(count.rows[0].count>=100)return res.status(409).json({error:'Maximum number of drafts reached'});
-  const result=await pool.query("INSERT INTO customer_project_drafts(customer_id,title,draft) VALUES($1,$2,$3::jsonb) RETURNING id,title,draft,revision,updated_at",[req.customer.id,parsed.data.title,JSON.stringify(parsed.data.draft)]);
+  const result=await pool.query("INSERT INTO customer_project_drafts(customer_id,title,draft) VALUES($1,$2,$3::jsonb) RETURNING id,title,draft,revision,linked_journey_id,updated_at",[req.customer.id,parsed.data.title,JSON.stringify(parsed.data.draft)]);
   res.status(201).set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
  }));
  router.get('/project-drafts/:id',requireCustomer,safe(async(req,res)=>{
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Not found'});
-  const result=await pool.query("SELECT id,title,draft,revision,updated_at FROM customer_project_drafts WHERE id=$1 AND customer_id=$2",[req.params.id,req.customer.id]);
+  const result=await pool.query("SELECT id,title,draft,revision,linked_journey_id,updated_at FROM customer_project_drafts WHERE id=$1 AND customer_id=$2",[req.params.id,req.customer.id]);
   if(!result.rowCount)return res.status(404).json({error:'Not found'});
   res.set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
  }));
@@ -167,7 +167,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   const result=await pool.query(`UPDATE customer_project_drafts SET
     title=COALESCE($3,title),draft=draft||$4::jsonb,revision=revision+1,updated_at=now()
     WHERE id=$1 AND customer_id=$2 AND revision=$5
-    RETURNING id,title,draft,revision,updated_at`,
+    RETURNING id,title,draft,revision,linked_journey_id,updated_at`,
     [req.params.id,req.customer.id,parsed.data.title??null,JSON.stringify(parsed.data.patch??{}),parsed.data.expectedRevision]);
   if(!result.rowCount)return res.status(409).json({error:'Draft missing or changed on another device; reload before saving'});
   res.set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
