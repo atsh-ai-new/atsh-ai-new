@@ -2,6 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from "react";
 import {useParams,useSearchParams} from "next/navigation";
 import { syncCustomerWorkspace, loadGuestWorkspace, type CustomerWorkspace } from "@/lib/customer-workspace";
+import CustomerJourneyHub,{type HubTab} from "@/components/customer-journey-hub";
 
 type Order={id:string;reference:string;status:string;total:number;currency:string;project_id:string};
 type Quote={id:number;status:string;total_piasters:number;currency:string};
@@ -27,6 +28,7 @@ export default function CustomerAccount(){
  const [previewFeedback,setPreviewFeedback]=useState("");
  const [guestPending,setGuestPending]=useState(false);
  const [merging,setMerging]=useState(false);
+ const [hubTab,setHubTab]=useState<HubTab>("overview");
  useEffect(()=>{
    if(action!=="dashboard")return;
    let active=true;
@@ -43,6 +45,8 @@ export default function CustomerAccount(){
    if(!response.ok)throw Error();
    const body=await response.json();
    setProjectDrafts(body.drafts||[]);
+   setSelectedProjectDraft(previous=>previous||body.drafts?.[0]?.id||"");
+   if(body.drafts?.[0]?.id)void loadPreviews(body.drafts[0].id);
   }catch{setMessage("تعذر تحميل مسودات مشروعاتك");}
  },[]);
  const uploadProjectLogo=async(file?:File)=>{
@@ -124,7 +128,7 @@ export default function CustomerAccount(){
  useEffect(()=>{if(action==="verify"&&search.get("token"))void request("verify",{token:search.get("token")!});},[action,search,request]);
  useEffect(()=>{if(action==="dashboard"){void loadProjects();void loadDrafts();}},[action,loadProjects,loadDrafts]);
  useEffect(()=>{if(action!=="login"&&action!=="register")return;const clientId=process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;if(!clientId)return;let cancelled=false;const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=()=>{if(cancelled||!googleContainer.current||!window.google)return;window.google.accounts.id.initialize({client_id:clientId,callback:({credential})=>{void request("google",{credential});}});window.google.accounts.id.renderButton(googleContainer.current,{theme:"outline",size:"large",text:"continue_with",locale:"ar"});};document.head.appendChild(script);return()=>{cancelled=true;script.remove();};},[action,request]);
- return <main dir="rtl" style={{maxWidth:540,margin:"5rem auto",padding:24}}><h1>{({register:"إنشاء حساب",login:"تسجيل الدخول", "resend-verification":"إعادة إرسال تأكيد البريد",forgot:"استعادة كلمة المرور","reset-password":"تعيين كلمة مرور جديدة",verify:"تأكيد البريد",dashboard:"مشروعاتي"} as Record<string,string>)[action]||"حساب العميل"}</h1>
+ return <main dir="rtl" style={{maxWidth:action==="dashboard"?1120:540,margin:action==="dashboard"?"1rem auto":"5rem auto",padding:action==="dashboard"?"clamp(12px,3vw,24px)":24,background:action==="dashboard"?"#f6f8fb":undefined}}><h1>{({register:"إنشاء حساب",login:"تسجيل الدخول", "resend-verification":"إعادة إرسال تأكيد البريد",forgot:"استعادة كلمة المرور","reset-password":"تعيين كلمة مرور جديدة",verify:"تأكيد البريد",dashboard:"مشروعاتي"} as Record<string,string>)[action]||"حساب العميل"}</h1>
  {! ["verify","dashboard"].includes(action)&&<form onSubmit={e=>{e.preventDefault();const token=search.get("token")||"";
     const route=({register:"register",login:"login","resend-verification":"verification/resend",forgot:"password/forgot","reset-password":"password/reset"} as Record<string,string>)[action]||"login";
     const data:Record<string,string>={};
@@ -139,7 +143,11 @@ export default function CustomerAccount(){
  <button type="submit">متابعة</button></form>}
  {(action==="login"||action==="register")&&<><p><a href="/account/forgot">نسيت كلمة المرور؟</a> · <a href="/account/register">إنشاء حساب</a> · <a href="/account/resend-verification">إعادة إرسال التأكيد</a></p><div ref={googleContainer} aria-label="تسجيل الدخول باستخدام Google"/></>}
  {action==="dashboard"&&<>
- <section style={{border:"1px solid #d4e2ef",borderRadius:12,padding:16,background:"#f5faff",marginBottom:18}}>
+ <CustomerJourneyHub active={hubTab} onTab={setHubTab} draftCount={projectDrafts.length} projectCount={projects.length} orderCount={orders.length} quoteCount={quotes.length} contractCount={contracts.length} invoiceCount={invoices.length} deliveryCount={deliverables.length}
+  currentProject={selectedProjectDraft?(()=>{const project=projectDrafts.find(d=>d.id===selectedProjectDraft);return project?{title:project.title,sectorName:project.draft?.sectorName,id:project.id,revision:project.revision}:undefined})():undefined}
+  currentPreviewStatus={selectedProjectDraft&&previewVersions.length?previewVersions[0].approval_status:undefined}/>
+ {message&&<p role="status" aria-live="polite" style={{padding:12,borderRadius:10,background:"#eaf2ff",color:"#1f4166"}}>{message}</p>}
+ {hubTab==="settings"&&<section style={{border:"1px solid #d4e2ef",borderRadius:12,padding:16,background:"#f5faff",marginBottom:18}}>
    <h2>اختياراتي المحفوظة من جميع مسارات المنصة</h2>
    {guestPending&&<div style={{padding:12,background:"#fff4db",borderRadius:10,marginBottom:12}}>
      <p>هذا المتصفح يحتفظ باختيارات قبل تسجيل الدخول. لضمان عدم خلط بيانات زوار مختلفين، اختر نقلها إلى حسابك الحالي صراحةً.</p>
@@ -150,16 +158,25 @@ export default function CustomerAccount(){
     {workspace.sectorSlug&&<a href={`/catalog/${encodeURIComponent(workspace.sectorSlug)}`}>فتح النموذج المختار</a>}
     <p style={{fontSize:12,color:"#64748b"}}>هذا ملخص تفضيلات وليس عرض سعر أو عقدًا أو إثبات شراء.</p>
    </>:<p>لم تتوفر مسودة محفوظة بعد.</p>}
- </section>
- <section style={{border:"1px solid #cbd5e1",borderRadius:12,padding:16,marginBottom:18}}>
+ </section>}
+ {hubTab==="projects"&&<section style={{border:"1px solid #cbd5e1",borderRadius:12,padding:16,marginBottom:18,background:"white"}}>
   <h2>مسودات مشروعاتي المستقلة</h2>
   <p>كل مشروع له اختيارات منفصلة. اختر المسودة التي تريد استكمالها أو نقل اختيارات المتصفح إليها.</p>
   <label>اسم المشروع الجديد<input maxLength={120} value={draftTitle} onChange={e=>setDraftTitle(e.target.value)} placeholder="اسم مشروعك"/></label>
   <button type="button" onClick={()=>void createProjectDraft()}>إنشاء مسودة مشروع</button>
+  {projectDrafts.length===0&&<p style={{padding:12,background:"#f1f5fb",borderRadius:10}}>ليس لديك مشروع محفوظ بعد. أنشئ مسودة أو اختر نموذجًا من المعرض.</p>}
+  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,220px),1fr))",gap:10,margin:"12px 0"}}>
+   {projectDrafts.map(d=><button type="button" key={d.id} aria-pressed={selectedProjectDraft===d.id} onClick={()=>{setSelectedProjectDraft(d.id);void loadPreviews(d.id);}} style={{border:selectedProjectDraft===d.id?"2px solid #203958":"1px solid #d8e2ef",borderRadius:12,padding:15,background:selectedProjectDraft===d.id?"#eaf1fb":"white",textAlign:"right",cursor:"pointer"}}>
+      <strong style={{display:"block",color:"#203958",marginBottom:6}}>{d.title}</strong><span style={{display:"block",fontSize:13}}>{d.draft.sectorName||"مشروع جديد"} · إصدار {d.revision}</span><small style={{color:"#64748b"}}>آخر تعديل {new Date(d.updated_at).toLocaleDateString("ar-EG")}</small>
+   </button>)}
+  </div>
   <label>اختر المسودة<select value={selectedProjectDraft} onChange={e=>{setSelectedProjectDraft(e.target.value);void loadPreviews(e.target.value);}}>
    <option value="">اختر مشروعًا</option>{projectDrafts.map(d=><option key={d.id} value={d.id}>{d.title} — إصدار {d.revision}</option>)}
   </select></label>
-  {selectedProjectDraft&&<><h3>بيانات المشروع المحدد</h3><p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(projectDrafts.find(d=>d.id===selectedProjectDraft)?.draft??{},null,2)}</p>
+  {selectedProjectDraft&&<><h3>بيانات المشروع المحدد</h3>
+   {(()=>{const draft=projectDrafts.find(d=>d.id===selectedProjectDraft)?.draft;return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,190px),1fr))",gap:10,margin:"12px 0"}}>
+    {[["النموذج",draft?.sectorName||draft?.sectorSlug||"لم يُحدد"],["الباقة",draft?.packageId||"لم تُحدد"],["النشاط",draft?.businessName||"لم يُحدد"],["إضافات القطاع",draft?.sectorAddonCodes?.length?`${draft.sectorAddonCodes.length} إضافة مختارة`:"لا توجد إضافات مختارة"],["طريقة التسليم",draft?.deliveryMethod==="source-code"?"شراء/ترخيص الكود":draft?.deliveryMethod==="managed"?"خدمة مُدارة":"لم تُحدد"]].map(([label,value])=><div key={label} style={{padding:12,background:"#f4f7fb",borderRadius:10}}><small style={{color:"#566d85"}}>{label}</small><p style={{margin:"5px 0 0",fontWeight:700}}>{value}</p></div>)}
+   </div>})()}
    <a href={`/?draftId=${encodeURIComponent(selectedProjectDraft)}#configurator`} style={{display:"inline-block",margin:"12px 0",padding:"11px 15px",borderRadius:10,background:"#203958",color:"white"}}>استكمال الباقة والتسعير لهذا المشروع</a>
    <a href={`/account/project-preview/${encodeURIComponent(selectedProjectDraft)}`} style={{display:"inline-block",margin:"12px 8px",padding:"11px 15px",borderRadius:10,background:"#e6eef7",color:"#203958"}}>فتح المعاينة التفاعلية المحفوظة لهذا المشروع</a>
    <div style={{display:"grid",gap:9,margin:"12px 0",padding:12,border:"1px solid #cbd5e1",borderRadius:12}}>
@@ -176,11 +193,12 @@ export default function CustomerAccount(){
    </li>)}</ul>
   </>}
   {guestPending&&<button disabled={!selectedProjectDraft||merging} type="button" onClick={()=>void importGuestToProjectDraft()}>{merging?"جارٍ النقل…":"نقل اختيارات المتصفح إلى المشروع المحدد"}</button>}
- </section>
- <h2>مشروعاتي</h2><ul>{projects.map(p=><li key={p.id}>{p.customer_name} — {p.status} — {p.id}</li>)}</ul><h2>طلباتي المرتبطة بمشروعاتي</h2><ul>{orders.map(o=><li key={o.id}>{o.reference} — {o.status} — {o.total} {o.currency}</li>)}</ul>
- <h2>عروض الأسعار</h2><ul>{quotes.map(q=><li key={q.id}>عرض #{q.id} — {q.status} — {(q.total_piasters/100).toFixed(2)} {q.currency}</li>)}</ul>
- <h2>عقودي</h2><ul>{contracts.map(c=><li key={c.id}>عقد #{c.id} — {c.status} <button type="button" onClick={()=>{const w=window.open("","_blank","noopener,noreferrer");if(!w)return;const text=document.createElement("pre");text.textContent=c.body_snapshot;w.document.body.appendChild(text);w.print();}}>طباعة</button></li>)}</ul>
- <h2>الفواتير وسجل المدفوعات</h2><ul>{invoices.map(i=><li key={i.id}>فاتورة #{i.id} — {i.status} — الإجمالي {(Number(i.amount_piasters)/100).toFixed(2)} جنيه — المدفوع {(Number(i.verified_paid_piasters)/100).toFixed(2)} جنيه — المتبقي {((Number(i.amount_piasters)-Number(i.verified_paid_piasters))/100).toFixed(2)} جنيه <button type="button" onClick={async()=>{if(openInvoice===i.id){setOpenInvoice(null);return}try{const r=await fetch(`/api/customer/commercial/invoices/${i.id}/payments`,{credentials:'include',cache:'no-store'});if(!r.ok)throw Error();const data=await r.json();setInvoicePayments(x=>({...x,[i.id]:data.payments||[]}));setOpenInvoice(i.id)}catch{setMessage('تعذر تحميل سجل الدفعات')}}}>عرض الدفعات</button>{openInvoice===i.id&&<ul>{(invoicePayments[i.id]||[]).length?(invoicePayments[i.id]||[]).map(p=><li key={p.id}>{(Number(p.amount_piasters)/100).toFixed(2)} جنيه — {new Date(p.paid_at).toLocaleDateString('ar-EG')} — {p.provider}</li>):<li>لا توجد دفعات مؤكدة</li>}</ul>}</li>)}</ul>
- <h2>تسليماتي: الفيديوهات والهوية البصرية</h2><ul>{deliverables.map(d=><li key={d.id}><strong>{d.title}</strong> ({d.kind}) — {d.customer_decision} {d.has_private_file?<a href={`/api/customer/deliverables/${d.id}/file`} download>تحميل الملف الخاص</a>:d.asset_url?<a href={d.asset_url} target="_blank" rel="noopener noreferrer">مشاهدة / تحميل</a>:<span>لم يُرفق ملف بعد</span>}{d.customer_decision==="pending"&&<><input aria-label="ملاحظات التعديل" placeholder="ملاحظات التعديل" value={feedback[d.id]||""} onChange={e=>setFeedback(x=>({...x,[d.id]:e.target.value}))}/>{(["approved","revision_requested"] as const).map(decision=><button key={decision} type="button" onClick={async()=>{const r=await fetch(`/api/customer/deliverables/${d.id}/decision`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({decision,feedback:feedback[d.id]||""})});if(r.ok)setDeliverables(x=>x.map(item=>item.id===d.id?{...item,customer_decision:decision}:item));else setMessage("تعذر تسجيل القرار");}}>{decision==="approved"?"اعتماد":"طلب تعديل"}</button>)}</>}</li>)}</ul><h2>ربط مشروع سابق بحسابك</h2><form onSubmit={e=>{e.preventDefault();void request("projects/claim",{projectId,accessToken});}}><label>معرف المشروع<input required value={projectId} onChange={e=>setProjectId(e.target.value)} placeholder="UUID"/></label><label>رمز الوصول للمشروع<input required type="password" value={accessToken} onChange={e=>setAccessToken(e.target.value)} autoComplete="off"/></label><button type="submit">ربط المشروع</button></form><button onClick={()=>void request("logout")}>تسجيل الخروج</button></>}
- <p role="status" aria-live="polite">{message}</p></main>;
+ </section>}
+ {hubTab==="quotes"&&<section aria-label="الطلبات وعروض الأسعار" style={{padding:18,background:"white",border:"1px solid #dce4ef",borderRadius:14}}><h2>مشروعاتي</h2><ul>{projects.map(p=><li key={p.id}>{p.customer_name} — {p.status} — {p.id}</li>)}</ul><h2>طلباتي المرتبطة بمشروعاتي</h2><ul>{orders.map(o=><li key={o.id}>{o.reference} — {o.status} — {o.total} {o.currency}</li>)}</ul>
+ <h2>عروض الأسعار</h2><ul>{quotes.map(q=><li key={q.id}>عرض #{q.id} — {q.status} — {(q.total_piasters/100).toFixed(2)} {q.currency}</li>)}</ul></section>}
+ {hubTab==="contracts"&&<section aria-label="العقود" style={{padding:18,background:"white",border:"1px solid #dce4ef",borderRadius:14}}><h2>عقودي</h2><ul>{contracts.map(c=><li key={c.id}>عقد #{c.id} — {c.status} <button type="button" onClick={()=>{const w=window.open("","_blank","noopener,noreferrer");if(!w)return;const text=document.createElement("pre");text.textContent=c.body_snapshot;w.document.body.appendChild(text);w.print();}}>طباعة</button></li>)}</ul></section>}
+ {hubTab==="invoices"&&<section aria-label="الفواتير والمدفوعات" style={{padding:18,background:"white",border:"1px solid #dce4ef",borderRadius:14}}><h2>الفواتير وسجل المدفوعات</h2><ul>{invoices.map(i=><li key={i.id}>فاتورة #{i.id} — {i.status} — الإجمالي {(Number(i.amount_piasters)/100).toFixed(2)} جنيه — المدفوع {(Number(i.verified_paid_piasters)/100).toFixed(2)} جنيه — المتبقي {((Number(i.amount_piasters)-Number(i.verified_paid_piasters))/100).toFixed(2)} جنيه <button type="button" onClick={async()=>{if(openInvoice===i.id){setOpenInvoice(null);return}try{const r=await fetch(`/api/customer/commercial/invoices/${i.id}/payments`,{credentials:'include',cache:'no-store'});if(!r.ok)throw Error();const data=await r.json();setInvoicePayments(x=>({...x,[i.id]:data.payments||[]}));setOpenInvoice(i.id)}catch{setMessage('تعذر تحميل سجل الدفعات')}}}>عرض الدفعات</button>{openInvoice===i.id&&<ul>{(invoicePayments[i.id]||[]).length?(invoicePayments[i.id]||[]).map(p=><li key={p.id}>{(Number(p.amount_piasters)/100).toFixed(2)} جنيه — {new Date(p.paid_at).toLocaleDateString('ar-EG')} — {p.provider}</li>):<li>لا توجد دفعات مؤكدة</li>}</ul>}</li>)}</ul></section>}
+ {hubTab==="deliveries"&&<section aria-label="تسليمات ومراجعات العميل" style={{padding:18,background:"white",border:"1px solid #dce4ef",borderRadius:14}}><h2>تسليماتي: الفيديوهات والهوية البصرية</h2><ul>{deliverables.map(d=><li key={d.id}><strong>{d.title}</strong> ({d.kind}) — {d.customer_decision} {d.has_private_file?<a href={`/api/customer/deliverables/${d.id}/file`} download>تحميل الملف الخاص</a>:d.asset_url?<a href={d.asset_url} target="_blank" rel="noopener noreferrer">مشاهدة / تحميل</a>:<span>لم يُرفق ملف بعد</span>}{d.customer_decision==="pending"&&<><input aria-label="ملاحظات التعديل" placeholder="ملاحظات التعديل" value={feedback[d.id]||""} onChange={e=>setFeedback(x=>({...x,[d.id]:e.target.value}))}/>{(["approved","revision_requested"] as const).map(decision=><button key={decision} type="button" onClick={async()=>{const r=await fetch(`/api/customer/deliverables/${d.id}/decision`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({decision,feedback:feedback[d.id]||""})});if(r.ok)setDeliverables(x=>x.map(item=>item.id===d.id?{...item,customer_decision:decision}:item));else setMessage("تعذر تسجيل القرار");}}>{decision==="approved"?"اعتماد":"طلب تعديل"}</button>)}</>}</li>)}</ul></section>}
+ {hubTab==="settings"&&<section aria-label="إعدادات الحساب" style={{padding:18,background:"white",border:"1px solid #dce4ef",borderRadius:14}}><h2>ربط مشروع سابق بحسابك</h2><form onSubmit={e=>{e.preventDefault();void request("projects/claim",{projectId,accessToken});}}><label>معرف المشروع<input required value={projectId} onChange={e=>setProjectId(e.target.value)} placeholder="UUID"/></label><label>رمز الوصول للمشروع<input required type="password" value={accessToken} onChange={e=>setAccessToken(e.target.value)} autoComplete="off"/></label><button type="submit">ربط المشروع</button></form><button onClick={()=>void request("logout")}>تسجيل الخروج</button></section>}</>}
+ <p role="status" aria-live="polite">{action!=="dashboard"?message:""}</p></main>;
 }
