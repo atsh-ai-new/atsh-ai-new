@@ -1,7 +1,7 @@
 name: ATSH PostgreSQL API Integration
 on:
   push:
-    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1]
+    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1, catalog-commerce-payment-ready-v1]
     paths:
       - 'source/backend/**'
       - '.github/workflows/postgres-integration.yml'
