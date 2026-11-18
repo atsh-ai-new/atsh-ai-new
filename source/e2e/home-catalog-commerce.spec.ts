@@ -53,3 +53,45 @@ test("customer can review exact quote and contract, request changes, and accept 
  await expect(page.getByText("لم يتم تحصيل",{exact:false})).toHaveCount(0);
  await expect(page.getByText("بوابة الدفع الإلكتروني غير مفعّلة بعد",{exact:false})).toBeVisible();
 });
+
+
+test("homepage shows a published admin-priced catalog addon and persists its selection into official builder",async({page})=>{
+ const catalog={
+  page:{slug:"catalog",content:{
+   sectors:[{id:"health",name:"الصحة والرعاية الطبية",icon:"🩺",description:"أنظمة طبية",sortOrder:1,isPublished:true,subcategories:[{id:"clinics",name:"العيادات",sortOrder:1,isPublished:true}]}],
+   items:[
+    {slug:"eyadaty",name:"عيادتي",category:"العيادات",sectorId:"health",subcategoryId:"clinics",description:"نظام تجريبي للعيادات",icon:"🩺",features:["الحجوزات"],modules:["المواعيد"],sampleStats:[],sampleRows:[],note:"محاكاة فقط",published:true,archived:false,basePrice:25000,pricedAddons:[{code:"sms-reminders",name:"رسائل تذكير بالمواعيد",price:750,pricingType:"yearly"}]},
+    {slug:"avocato",name:"أفوكاتو المخفي",category:"العيادات",sectorId:"health",subcategoryId:"clinics",description:"غير منشور",icon:"⚖️",published:false,archived:false,basePrice:500,pricedAddons:[]}
+   ]
+  }}
+ };
+ await page.route("**/api/site-content/catalog",route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(catalog)}));
+ await page.route("**/api/sector-price**",route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({subtotal:25750,monthly:0,yearly:750,needsCustomQuote:false,items:[{code:"sms-reminders",name:"رسائل تذكير بالمواعيد",price:750,pricingType:"yearly"}]})}));
+ await page.goto("/");
+ const section=page.getByRole("region",{name:"الكتالوجات والتطبيقات المتاحة"});
+ await expect(section.getByRole("heading",{name:"عيادتي"})).toBeVisible();
+ await expect(section.getByRole("heading",{name:"أفوكاتو المخفي"})).toHaveCount(0);
+ await section.getByRole("button",{name:/اختيار وإضافة تفاصيل/}).click();
+ await expect(section.getByText("رسائل تذكير بالمواعيد")).toBeVisible();
+ await section.getByRole("checkbox",{name:/رسائل تذكير بالمواعيد/}).check();
+ const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem("atsh_customer_workspace_v1")||"{}"));
+ expect(stored).toMatchObject({sectorSlug:"eyadaty",sectorAddonCodes:["sms-reminders"]});
+ await section.getByRole("link",{name:/استكمال المواصفات وعرض السعر/}).click();
+ await expect(page.locator("#configurator")).toBeVisible();
+ await expect(page.getByRole("heading",{name:"إضافات خاصة بنظام عيادتي"})).toBeVisible();
+ await expect(page.getByRole("checkbox",{name:/رسائل تذكير بالمواعيد/}).first()).toBeChecked();
+});
+
+test("private token review link opens contract and clears the URL secret from history",async({page})=>{
+ const secret="A".repeat(43);
+ let loaded=false;
+ await page.route(`**/api/commercial/review/${secret}`,async route=>{
+  loaded=true;
+  await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({quote:{id:42,status:"issued",items:[{label:"متجر إلكتروني",quantity:1,unitPricePiasters:100000}],totalPiasters:100000,currency:"EGP",validUntil:null},contract:{id:4,body:"بنود عقد تجريبي لمتجر إلكتروني",status:"issued",signedAt:null}})});
+ });
+ await page.goto(`/commercial/review?token=${secret}`);
+ await expect(page.getByRole("heading",{name:"عرض السعر رقم 42"})).toBeVisible();
+ expect(loaded).toBe(true);
+ await expect(page).toHaveURL(/\\/commercial\\/review$/);
+ await expect(page.getByText("بنود عقد تجريبي لمتجر إلكتروني")).toBeVisible();
+});
