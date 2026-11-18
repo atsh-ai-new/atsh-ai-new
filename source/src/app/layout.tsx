@@ -1,12 +1,16 @@
-import type { Metadata } from "next";
+import type {Metadata} from "next";
+import {headers} from "next/headers";
+import LanguageSwitch from "@/components/language-switch";
 import "./globals.css";
-
-export const metadata: Metadata = {
-  title: "ATSH AI | ابنِ موقعك باختيارك",
-  description: "صمّم باقتك، اختر الإضافات، وشاهد التقدير بالجنيه المصري قبل إرسال طلبك إلى ATSH AI.",
-  applicationName: "ATSH AI"
-};
-
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="ar" dir="rtl"><body>{children}</body></html>;
+async function currentLocale() {return (await headers()).get("x-atsh-locale")==="en"?"en":"ar";}
+export async function generateMetadata():Promise<Metadata>{
+ const locale=await currentLocale();
+ const en=locale==="en";
+ const title=en?"ATSH AI | Digital solutions built for your business":"ATSH AI | حلول برمجية وذكاء اصطناعي لأعمالك";
+ const description=en?"Custom websites, mobile applications, business systems and AI solutions. Configure your project and request a clear quotation.":"تطوير المواقع والتطبيقات والأنظمة الذكية حسب احتياجاتك، مع تجربة طلب وتسعير واضحة.";
+ return {title,description,applicationName:"ATSH AI",alternates:{languages:{ar:"/",en:"/en"}},openGraph:{title,description,locale:en?"en_US":"ar_EG",type:"website"}};
+}
+export default async function RootLayout({children}:Readonly<{children:React.ReactNode}>){
+ const locale=await currentLocale();
+ return <html lang={locale} dir={locale==="en"?"ltr":"rtl"}><body><LanguageSwitch />{children}</body></html>;
 }

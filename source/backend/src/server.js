@@ -451,8 +451,9 @@ app.get("/api/site-content/:slug", route(async(req,res)=>{
   ]);
   res.json({page:page.rows[0]||null,theme:settings.rows[0]?.theme||null,vatRate:Number(settings.rows[0]?.vat_rate??14)});
 }));
-app.get("/api/site-pages",route(async(_req,res)=>{
-  const result=await pool.query("SELECT slug,content,updated_at FROM site_pages WHERE locale='ar' AND is_published=true ORDER BY slug");
+app.get("/api/site-pages",route(async(req,res)=>{
+  const locale=req.query.locale==="en"?"en":"ar";
+  const result=await pool.query("SELECT slug,content,updated_at FROM site_pages WHERE locale=$1 AND is_published=true ORDER BY slug",[locale]);
   res.json({pages:result.rows.map(page=>({slug:page.slug,title:typeof page.content?.title==='string'?page.content.title:page.slug,updatedAt:page.updated_at}))});
 }));
 app.get("/api/site-media/:id",route(async(req,res)=>{

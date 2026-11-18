@@ -3,8 +3,9 @@ import { useEffect, useState } from "react";
 import { findSector, interactiveDemoSlug, type SectorTemplate } from "@/lib/sector-catalog";
 import SectorPreview from "@/components/sector-preview";
 import Link from "next/link";
+import {englishTemplateLabel} from "@/lib/sector-en";
 type Item=SectorTemplate & {published?:boolean;archived?:boolean;previewUrl?:string;demoSlug?:string;pricedAddons?:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>;basePrice?:number|null};
-export default function CatalogPreviewLoader({slug}:{slug:string}) {
+export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;locale?:"ar"|"en"}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
  const [item,setItem]=useState<Item|undefined>(undefined);
  const [ready,setReady]=useState(false);
  useEffect(()=>{
@@ -19,19 +20,19 @@ export default function CatalogPreviewLoader({slug}:{slug:string}) {
    }).catch(()=>{if(active)setItem(undefined)}).finally(()=>{if(active)setReady(true)});
    return()=>{active=false};
  },[slug]);
- if(!ready&&!item)return <main dir="rtl" style={{padding:30}}>جارٍ تحميل المعاينة…</main>;
- if(!item)return <main dir="rtl" style={{padding:30}}><h1>الكتالوج غير متاح</h1><Link href="/catalog">العودة إلى المعرض</Link></main>;
+ if(!ready&&!item)return <main lang={locale} dir={en?"ltr":"rtl"} style={{padding:30}}>{t("جارٍ تحميل المعاينة…","Loading interactive demo…")}</main>;
+ if(!item)return <main lang={locale} dir={en?"ltr":"rtl"} style={{padding:30}}><h1>{t("الكتالوج غير متاح","Demo unavailable")}</h1><Link href={`${base}/catalog`}>{t("العودة إلى المعرض","Back to catalog")}</Link></main>;
  // A persisted catalog entry can contain an older, shortened module list.
  // Keep every operational tab of the built-in interactive demos, then append
  // admin-defined extra sections without overwriting the CMS entry or its pricing.
  const builtIn=findSector(interactiveDemoSlug(item.slug,item.demoSlug)??item.slug);
  const modules=[...new Set([...(builtIn?.modules??[]),...(Array.isArray(item.modules)?item.modules:[])].filter((value):value is string=>typeof value==="string"&&value.trim().length>0))];
  return <>
-  {item.previewUrl?.startsWith("https://")&&<div dir="rtl" style={{maxWidth:1280,margin:"12px auto 0",padding:"12px 18px",background:"#eef6ff",border:"1px solid #d6e4f4",borderRadius:12}}>
-    <strong>نسخة تفاعلية إضافية منشورة لهذا الكتالوج</strong>
-    <a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginInlineStart:14,color:"#174e83",fontWeight:700,textDecoration:"underline"}}>افتح النسخة الخارجية ↗</a>
-    <small style={{display:"block",color:"#64748b",marginTop:5}}>الرابط يُدار من لوحة التحكم وقد يفتح موقعًا خارجيًا مستقلًا عن ATSH AI.</small>
+  {item.previewUrl?.startsWith("https://")&&<div dir={en?"ltr":"rtl"} style={{maxWidth:1280,margin:"12px auto 0",padding:"12px 18px",background:"#eef6ff",border:"1px solid #d6e4f4",borderRadius:12}}>
+    <strong>{t("نسخة تفاعلية إضافية منشورة لهذا الكتالوج","An additional interactive demo is available")}</strong>
+    <a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginInlineStart:14,color:"#174e83",fontWeight:700,textDecoration:"underline"}}>{t("افتح النسخة الخارجية ↗","Open external demo ↗")}</a>
+    <small style={{display:"block",color:"#64748b",marginTop:5}}>{t("الرابط يُدار من لوحة التحكم وقد يفتح موقعًا خارجيًا مستقلًا عن ATSH AI.","The linked demo is managed by ATSH AI and may open an external website.")}</small>
   </div>}
-  <SectorPreview template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} demoSlug={interactiveDemoSlug(item.slug,item.demoSlug)} pricedAddons={item.pricedAddons??[]} basePrice={item.basePrice??null} />
+  <SectorPreview locale={locale} template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} demoSlug={interactiveDemoSlug(item.slug,item.demoSlug)} pricedAddons={item.pricedAddons??[]} basePrice={item.basePrice??null} />
  </>;
 }
