@@ -1233,7 +1233,10 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
  const token=req.params.token;if(!/^[A-Za-z0-9_-]{43}$/.test(token))return res.status(404).json({error:"Invalid link"});
  const client=await pool.connect();try{await client.query("BEGIN");const l=await client.query("SELECT quote_id FROM commercial_review_links WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>now() FOR UPDATE",[hashReviewToken(token)]);
  if(!l.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Link expired or used"})}
- const id=l.rows[0].quote_id;const q=await client.query("UPDATE commercial_quotes SET status='accepted',accepted_at=now() WHERE id=$1 AND status='issued' AND (valid_until IS NULL OR valid_until>now()) RETURNING id",[id]);
+ const id=l.rows[0].quote_id;
+ const pendingChanges=await client.query("SELECT 1 FROM commercial_quote_change_requests WHERE quote_id=$1 AND status='pending' LIMIT 1",[id]);
+ if(pendingChanges.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Unresolved quote change request must be reviewed first"});}
+ const q=await client.query("UPDATE commercial_quotes SET status='accepted',accepted_at=now() WHERE id=$1 AND status='issued' AND (valid_until IS NULL OR valid_until>now()) RETURNING id",[id]);
  if(!q.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Quote unavailable"})}
  const evidence={method:"typed_name_explicit_consent",ip:req.ip,userAgent:String(req.get("user-agent")||"").slice(0,250),consent:true};
  const c=await client.query("UPDATE customer_contracts SET status='signed',signer_name=$2,signed_at=now(),signature_evidence=$3::jsonb WHERE quote_id=$1 AND status='issued' RETURNING id,signed_at",[id,signerName.trim(),JSON.stringify(evidence)]);
