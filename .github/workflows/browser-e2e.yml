@@ -7,6 +7,7 @@ on:
       - 'source/playwright.config.ts'
       - 'source/src/app/catalog/**'
       - 'source/src/app/account/**'
+      - 'source/src/app/start/**'
       - 'source/src/app/page.tsx'
       - 'source/src/components/customer-journey-hub.tsx'
       - 'source/src/lib/customer-workspace.ts'
