@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { siteCopyDefaults } from "@/lib/site-copy";
+import { siteCopyEn } from "@/lib/site-copy-en";
 
 type PageRecord = { slug: string; locale: string; content: Record<string, unknown>; is_published: boolean; updated_at?: string };
 type CMSCard = { id: string; title: string; description: string; imageUrl: string; href: string; linkLabel: string; icon?: string };
@@ -34,6 +35,7 @@ async function adminApi(path: string, init?: RequestInit) {
 export default function ContentManager({ initialSlug = "home", onSaved }: { initialSlug?: string; onSaved?: () => Promise<unknown> | void }) {
   const [pages, setPages] = useState<PageRecord[]>([]);
   const [activeSlug, setActiveSlug] = useState("home");
+  const [activeLocale,setActiveLocale]=useState<"ar"|"en">("ar");
   const [draft, setDraft] = useState<PageRecord | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [newSlug, setNewSlug] = useState("");
@@ -42,12 +44,13 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
-  const load = async (preferredSlug = activeSlug) => {
+  const load = async (preferredSlug = activeSlug,preferredLocale:"ar"|"en"=activeLocale) => {
     const result = await adminApi("pages");
     const nextPages = (result.pages ?? []) as PageRecord[];
     setPages(nextPages);
-    const selected = nextPages.find((item) => item.slug === preferredSlug && item.locale === "ar") ?? nextPages.find((item) => item.slug === "home" && item.locale === "ar");
-    if (selected) { setActiveSlug(selected.slug); setDraft(selected); }
+    const selected=nextPages.find(item=>item.slug===preferredSlug&&item.locale===preferredLocale);
+    if(selected){setActiveSlug(selected.slug);setDraft(selected);}
+    else {setActiveSlug(preferredSlug);setDraft({slug:preferredSlug,locale:preferredLocale,content:preferredSlug==="home"?(preferredLocale==="en"?{...siteCopyEn}:{...siteCopyDefaults}):{title:"",description:"",sections:[]},is_published:false});}
   };
 
   useEffect(() => { setActiveSlug(initialSlug); load(initialSlug).catch((reason) => setError(reason instanceof Error ? reason.message : "تعذر تحميل الصفحات.")); }, [initialSlug]);
@@ -76,7 +79,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
     setBusy(true); setError(""); setNotice("");
     try {
       await adminApi(`pages/${draft.slug}`, { method: "PATCH", body: JSON.stringify({ locale: draft.locale || "ar", content: draft.content, isPublished: draft.is_published }) });
-      await load(draft.slug); await onSaved?.(); setNotice("تم حفظ الصفحة ونشر حالتها المحددة.");
+      await load(draft.slug,draft.locale==="en"?"en":"ar"); await onSaved?.(); setNotice("تم حفظ الصفحة ونشر حالتها المحددة.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر حفظ الصفحة."); }
     finally { setBusy(false); }
   };
@@ -88,8 +91,8 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
     setBusy(true); setError(""); setNotice("");
     try {
       const content = { title: newTitle.trim(), description: "", sections: [] };
-      await adminApi(`pages/${slug}`, { method: "PATCH", body: JSON.stringify({ locale: "ar", content, isPublished: false }) });
-      setNewTitle(""); setNewSlug(""); await load(slug); setNotice("تم إنشاء الصفحة كمسودة. أضف أقسامها ثم فعّل النشر.");
+      await adminApi(`pages/${slug}`, { method: "PATCH", body: JSON.stringify({ locale: activeLocale, content, isPublished: false }) });
+      setNewTitle(""); setNewSlug(""); await load(slug,activeLocale); setNotice("تم إنشاء الصفحة كمسودة. أضف أقسامها ثم فعّل النشر.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر إنشاء الصفحة."); }
     finally { setBusy(false); }
   };
@@ -123,7 +126,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
   };
   const removeProject = (id: string) => updateContent("projects", (Array.isArray(draft?.content.projects) ? draft.content.projects : []).map(normalizeProject).filter((item) => item.id !== id));
 
-  const homeCollection = (key: string, fallback: CMSCard[]): CMSCard[] => Array.isArray(draft?.content[key]) ? (draft?.content[key] as unknown[]).map(normalizeCard) : fallback;
+  const homeCollection=(key:string,fallback:CMSCard[]):CMSCard[]=>Array.isArray(draft?.content[key])?(draft?.content[key] as unknown[]).map(normalizeCard):activeLocale==="en"?fallback.map(item=>{const match=/^(benefit|step|faq|hero-trust|trust)-(\d+)$/.exec(item.id||"");if(!match)return item;const kind=match[1],num=match[2];const titleKey=kind==="faq"?"faq"+num+"Question":kind==="hero-trust"?"heroTrust"+num:kind==="trust"?"trust"+num:kind+num+"Title";const descriptionKey=kind==="faq"?"faq"+num+"Answer":kind+num+"Description";return {...item,title:siteCopyEn[titleKey]||item.title,description:siteCopyEn[descriptionKey]||item.description};}):fallback;
   const updateHomeCollection = (key: string, values: CMSCard[]) => updateContent(key, values);
 
   if (!draft) return <section className="admin-content-card"><p>جارٍ تحميل الصفحات…</p>{error && <p className="error-message">{error}</p>}</section>;
@@ -135,12 +138,13 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
     <section className="admin-content-card">
       <div className="admin-content-title"><div><h2>كل الصفحات والمحتوى المنظم</h2><p>الصفحة المحددة الآن: {selectedLabel}. كل تعديل يحفظ على قاعدة البيانات مع سجل تدقيق.</p></div></div>
       <div className="cms-toolbar">
-        <label className="admin-field">اختر الصفحة<select value={activeSlug} onChange={(event) => { const slug = event.target.value; setActiveSlug(slug); setDraft(pages.find((item) => item.slug === slug && item.locale === "ar") ?? null); setError(""); setNotice(""); }}>
-          {pages.filter((item) => item.locale === "ar").map((item) => <option key={item.slug} value={item.slug}>{item.slug === "home" ? "الرئيسية" : item.slug === "works" ? "سجل الأعمال" : `/${item.slug}`}{item.is_published ? " · منشورة" : " · مسودة"}</option>)}
+        <label className="admin-field">لغة المحتوى<select value={activeLocale} onChange={event=>{const next=event.target.value==="en"?"en":"ar";setActiveLocale(next);void load(activeSlug,next);setError("");setNotice("");}}><option value="ar">العربية · RTL</option><option value="en">English · LTR</option></select></label>
+        <label className="admin-field">اختر الصفحة<select value={activeSlug} onChange={(event) => { const slug = event.target.value; setActiveSlug(slug); void load(slug,activeLocale); setError(""); setNotice(""); }}>
+          {Array.from(new Set([...pages.map(item=>item.slug),"home"])).map(slug=>({slug,is_published:pages.some(item=>item.slug===slug&&item.locale===activeLocale&&item.is_published)})).map((item) => <option key={item.slug} value={item.slug}>{item.slug === "home" ? "الرئيسية" : item.slug === "works" ? "سجل الأعمال" : `/${item.slug}`}{item.is_published ? " · منشورة" : " · مسودة"}</option>)}
         </select></label>
         <label className="check-row"><input type="checkbox" checked={draft.is_published} onChange={(event) => setDraft({ ...draft, is_published: event.target.checked })} /> الصفحة منشورة للزوار</label>
         <button className="button button-small" disabled={busy} onClick={() => void savePage()}>حفظ الصفحة</button>
-        <a className="inline-add" href={activeSlug === "home" ? "/" : `/${activeSlug}`} target="_blank" rel="noreferrer">معاينة الصفحة ↗</a>
+        <a className="inline-add" href={activeSlug==="home"?(activeLocale==="en"?"/en":"/"):`${activeLocale==="en"?"/en":""}/${activeSlug}`} target="_blank" rel="noreferrer">معاينة الصفحة ↗</a>
       </div>
     </section>
 
