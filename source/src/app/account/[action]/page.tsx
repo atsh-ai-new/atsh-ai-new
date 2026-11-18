@@ -104,7 +104,9 @@ export default function CustomerAccount(){
   finally{setMerging(false);}
  };
  const loadProjects=useCallback(async()=>{try{const r=await fetch("/api/customer/auth/projects",{credentials:"include",cache:"no-store"});if(!r.ok)throw Error();const d=await r.json();setProjects(d.projects);}catch{setMessage("سجّل الدخول لعرض مشروعاتك");}},[]);
- const request=useCallback(async(path:string,data:Record<string,string>={})=>{setMessage("جارٍ التنفيذ...");try{const response=await fetch(`/api/customer/auth/${path}`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});const body=await response.json();setMessage(response.ok?body.message||"تم بنجاح":body.error||"تعذر إتمام الطلب");if(response.ok&&(path==="login"||path==="google"))location.href="/account/dashboard";if(response.ok&&path==="logout")location.href="/account/login";if(response.ok&&path==="projects/claim"){setAccessToken("");await loadProjects();}}catch{setMessage("تعذر الاتصال بالخدمة");}},[loadProjects]);
+ const request=useCallback(async(path:string,data:Record<string,string>={})=>{setMessage("جارٍ التنفيذ...");try{const response=await fetch(`/api/customer/auth/${path}`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});const body=await response.json();setMessage(response.ok&&(path==="register"||path==="verification/resend")
+  ?"لو البريد مؤهل، هتوصلك رسالة التأكيد. افتح الرابط المرسل ثم سجّل دخولك."
+  :response.ok?body.message||"تم بنجاح":body.error||"تعذر إتمام الطلب");if(response.ok&&(path==="login"||path==="google"))location.href="/account/dashboard";if(response.ok&&path==="logout")location.href="/account/login";if(response.ok&&path==="projects/claim"){setAccessToken("");await loadProjects();}}catch{setMessage("تعذر الاتصال بالخدمة");}},[loadProjects]);
  useEffect(()=>{if(action!=="dashboard")return;let cancelled=false;
   const resources=["orders","quotes","contracts","invoices","deliverables"] as const;
   void Promise.all(resources.map(async kind=>{
@@ -122,13 +124,16 @@ export default function CustomerAccount(){
  useEffect(()=>{if(action==="verify"&&search.get("token"))void request("verify",{token:search.get("token")!});},[action,search,request]);
  useEffect(()=>{if(action==="dashboard"){void loadProjects();void loadDrafts();}},[action,loadProjects,loadDrafts]);
  useEffect(()=>{if(action!=="login"&&action!=="register")return;const clientId=process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;if(!clientId)return;let cancelled=false;const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=()=>{if(cancelled||!googleContainer.current||!window.google)return;window.google.accounts.id.initialize({client_id:clientId,callback:({credential})=>{void request("google",{credential});}});window.google.accounts.id.renderButton(googleContainer.current,{theme:"outline",size:"large",text:"continue_with",locale:"ar"});};document.head.appendChild(script);return()=>{cancelled=true;script.remove();};},[action,request]);
- return <main dir="rtl" style={{maxWidth:540,margin:"5rem auto",padding:24}}><h1>{({register:"إنشاء حساب",login:"تسجيل الدخول",forgot:"استعادة كلمة المرور","reset-password":"تعيين كلمة مرور جديدة",verify:"تأكيد البريد",dashboard:"مشروعاتي"} as Record<string,string>)[action]||"حساب العميل"}</h1>
- {! ["verify","dashboard"].includes(action)&&<form onSubmit={e=>{e.preventDefault();const token=search.get("token")||"";void request(({register:"register",login:"login",forgot:"password/forgot","reset-password":"password/reset"} as Record<string,string>)[action]||"login",{email,name,password,token});}}>
+ return <main dir="rtl" style={{maxWidth:540,margin:"5rem auto",padding:24}}><h1>{({register:"إنشاء حساب",login:"تسجيل الدخول", "resend-verification":"إعادة إرسال تأكيد البريد",forgot:"استعادة كلمة المرور","reset-password":"تعيين كلمة مرور جديدة",verify:"تأكيد البريد",dashboard:"مشروعاتي"} as Record<string,string>)[action]||"حساب العميل"}</h1>
+ {! ["verify","dashboard"].includes(action)&&<form onSubmit={e=>{e.preventDefault();const token=search.get("token")||"";
+    const route=({register:"register",login:"login","resend-verification":"verification/resend",forgot:"password/forgot","reset-password":"password/reset"} as Record<string,string>)[action]||"login";
+    const data=action==="register"?{name,email,password}:action==="login"?{email,password}:action==="reset-password"?{password,token}:{email};
+    void request(route,data);}}>
  {action==="register"&&<label>الاسم<input required value={name} onChange={e=>setName(e.target.value)}/></label>}
  {action!=="reset-password"&&<label>البريد الإلكتروني<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label>}
- {action!=="forgot"&&<label>كلمة المرور<input type="password" minLength={action==="login"?1:12} required value={password} onChange={e=>setPassword(e.target.value)}/></label>}
+ {["register","login","reset-password"].includes(action)&&<label>كلمة المرور<input type="password" minLength={action==="login"?1:12} required value={password} onChange={e=>setPassword(e.target.value)}/></label>}
  <button type="submit">متابعة</button></form>}
- {(action==="login"||action==="register")&&<><p><a href="/account/forgot">نسيت كلمة المرور؟</a> · <a href="/account/register">إنشاء حساب</a></p><div ref={googleContainer} aria-label="تسجيل الدخول باستخدام Google"/></>}
+ {(action==="login"||action==="register")&&<><p><a href="/account/forgot">نسيت كلمة المرور؟</a> · <a href="/account/register">إنشاء حساب</a> · <a href="/account/resend-verification">إعادة إرسال التأكيد</a></p><div ref={googleContainer} aria-label="تسجيل الدخول باستخدام Google"/></>}
  {action==="dashboard"&&<>
  <section style={{border:"1px solid #d4e2ef",borderRadius:12,padding:16,background:"#f5faff",marginBottom:18}}>
    <h2>اختياراتي المحفوظة من جميع مسارات المنصة</h2>
