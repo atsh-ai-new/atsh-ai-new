@@ -15,6 +15,31 @@ async function req(path,{method="GET",cookie="",body}={}){
 try{
  const suffix=randomUUID().slice(0,8);
  const accountA=randomUUID(),accountB=randomUUID();
+ // Empty database bootstraps only clearly labeled demos, from the SAME persisted CMS table.
+ const starter=await req("/api/site-content/catalog");
+ assert.equal(starter.status,200);
+ assert.equal(starter.result.page?.slug,"catalog");
+ assert.equal(starter.result.page?.content?.items?.length,4);
+ assert.equal(starter.result.page?.content?.sectors?.length,3);
+ assert.ok(starter.result.page.content.items.every(x=>x.published===true&&x.basePrice===null));
+ const readiness=await req("/api/admin/integrations/status",{cookie:`atsh_admin=${ownerToken}`});
+ assert.equal(readiness.status,200,JSON.stringify(readiness));
+ assert.equal(readiness.result.catalog.total,4);
+ assert.equal(readiness.result.catalog.visible,4);
+ assert.equal(readiness.result.domains.configured,false);
+ assert.equal(readiness.result.gpt.configured,false);
+ assert.equal(readiness.result.registration.ready,false);
+ const unauthorizedStatus=await req("/api/admin/integrations/status");
+ assert.equal(unauthorizedStatus.status,401);
+ const badSignup=await req("/api/customer/auth/register",{method:"POST",body:{name:"CI Customer",email:`signup-${suffix}@example.test`,password:"password-long-ci-12345"}});
+ assert.equal(badSignup.status,503,"Registration requires an actual verified-email provider");
+ const unsent=await pool.query("SELECT count(*)::int AS n FROM customer_accounts WHERE email=$1",[`signup-${suffix}@example.test`]);
+ assert.equal(unsent.rows[0].n,0,"No unusable unverified account should be persisted when email provider is missing");
+ const resendUnavailable=await req("/api/customer/auth/verification/resend",{method:"POST",body:{email:`signup-${suffix}@example.test`}});
+ assert.equal(resendUnavailable.status,503);
+ const domainUnconfigured=await req("/api/domains/check?domain=example.com");
+ assert.equal(domainUnconfigured.status,503);
+
  await pool.query("INSERT INTO customer_accounts(id,name,email,password_hash,email_verified_at) VALUES($1,'Client A',$2,'ci-salted-not-for-login',now()),($3,'Client B',$4,'ci-salted-not-for-login',now())",[accountA,`first-${suffix}@example.test`,accountB,`second-${suffix}@example.test`]);
  const cookieFor=id=>`atsh_customer=${jwt.sign({sub:id,kind:"customer",ver:0},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-customer",expiresIn:"10m"})}`;
  const adminCookie=`atsh_admin=${ownerToken}`;
