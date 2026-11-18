@@ -59,12 +59,12 @@ export default function Concierge() {
      setMessages(prev=>[...prev,{who:"assistant",text:data.answer}]);
    }catch{
      setMessages(prev=>[...prev,answer(q,sectors)]);
-     setHint("تعذر الاتصال بـGPT الآن؛ الرد الحالي إرشاد بديل مبني على قواعد المنصة فقط.");
+     setHint("GPT غير متصل حاليًا أو وصلت الخدمة لحد الاستخدام؛ الرد المعروض توضيحي وليس إجابة من GPT.");
    }finally{setSending(false);}
  };
  return <div dir="rtl" style={{position:"fixed",bottom:18,left:18,zIndex:150,maxWidth:"calc(100vw - 36px)",fontFamily:"inherit"}}>
    {open&&<section role="dialog" aria-label="مساعد ATSH AI الإرشادي" style={{width:"min(370px,calc(100vw - 36px))",height:"min(560px,calc(100dvh - 100px))",background:"#fff",borderRadius:20,boxShadow:"0 18px 65px #0d244050",border:"1px solid #d7e1eb",display:"flex",flexDirection:"column",overflow:"hidden",marginBottom:12}}>
-     <header style={{padding:16,background:"#203958",color:"white",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><strong>مساعد ATSH AI</strong><small style={{display:"block",opacity:.8}}>GPT مدرّب بالتعليمات على خدماتنا وباقاتنا — مع إرشاد احتياطي</small></div><button aria-label="إغلاق المساعد" onClick={()=>setOpen(false)} style={{background:"transparent",border:0,color:"white",fontSize:25,cursor:"pointer"}}>×</button></header>
+     <header style={{padding:16,background:"#203958",color:"white",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><strong>مساعد ATSH AI</strong><small style={{display:"block",opacity:.8}}>مساعد GPT عند تفعيل الربط، وإرشاد بديل عند عدم توفره</small></div><button aria-label="إغلاق المساعد" onClick={()=>setOpen(false)} style={{background:"transparent",border:0,color:"white",fontSize:25,cursor:"pointer"}}>×</button></header>
      <div aria-live="polite" style={{flex:1,overflowY:"auto",padding:15,display:"flex",flexDirection:"column",gap:10}}>
        {messages.map((m,i)=><div key={i} style={{padding:"10px 12px",borderRadius:14,lineHeight:1.8,fontSize:13,maxWidth:"95%",alignSelf:m.who==="customer"?"flex-start":"flex-end",background:m.who==="customer"?"#e8f0fb":"#f3f5f8",color:"#203958"}}>{m.text}</div>)}
        {hint&&<small style={{color:"#96610e"}}>{hint}</small>}
