@@ -48,7 +48,7 @@ export default function IntegrationStatus(){
     status.domains.configured?`وضع المزود: ${status.domains.mode==="sandbox"?"تجريبي (ليس توافرًا حقيقيًا)":"إنتاجي"}. يلزم اختبار طلب حقيقي.`:"لم تُضبط بيانات Namecheap المعتمدة على الخادم.",status.requiredSettings.domains)}
    {row("تسجيل العملاء وتأكيد البريد",status.registration.ready,
     "الاشتراك بالبريد يتطلب عنوان الموقع العام وبريد إرسال موثقًا في Brevo، ثم اختبار وصول رسالة التأكيد.",status.requiredSettings.registration)}
-   <p style={{lineHeight:1.9}}اختبر بعد النشر: <a href="/catalog" target="_blank" rel="noreferrer">الكتالوجات</a> · <a href="/account/register" target="_blank" rel="noreferrer">تسجيل عميل</a> · <a href="/account/login" target="_blank" rel="noreferrer">دخول العميل</a>. لا تختبر كلمات المرور أو المفاتيح عبر المحادثات.</p>
+   <p style={{lineHeight:1.9}}>اختبر بعد النشر: <a href="/catalog" target="_blank" rel="noreferrer">الكتالوجات</a> · <a href="/account/register" target="_blank" rel="noreferrer">تسجيل عميل</a> · <a href="/account/login" target="_blank" rel="noreferrer">دخول العميل</a>. لا تختبر كلمات المرور أو المفاتيح عبر المحادثات.</p>
   </>}
  </section>;
 }
