@@ -110,7 +110,11 @@ try{
  assert.equal(customerSigned.status,200,JSON.stringify(customerSigned));
  const statusBefore=await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id]);
  assert.equal(statusBefore.rows[0].status,"payment_pending");
- const targetInvoice=await pool.query("INSERT INTO commercial_invoices(quote_id,amount_piasters) VALUES($1,114000) RETURNING id",[derived.result.quote.id]);
+ // Acceptance automatically issues the pending invoice. A duplicate would block full settlement.
+ const targetInvoice=await pool.query("SELECT id,amount_piasters,status FROM commercial_invoices WHERE quote_id=$1 ORDER BY id",[derived.result.quote.id]);
+ assert.equal(targetInvoice.rowCount,1,"Contract acceptance creates exactly one unpaid invoice");
+ assert.equal(Number(targetInvoice.rows[0].amount_piasters),114000);
+ assert.equal(targetInvoice.rows[0].status,"unpaid");
  const eventFor=(amountPiasters,reference)=>Buffer.from(JSON.stringify({invoiceId:Number(targetInvoice.rows[0].id),amountPiasters,providerReference:reference,paidAt:new Date().toISOString(),status:"settled"}));
  const bridge=async(raw)=>{
   const timestamp=Math.floor(Date.now()/1000).toString();
