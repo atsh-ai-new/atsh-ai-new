@@ -27,7 +27,8 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  router.use((req,res,next)=>{if(['POST','PUT','PATCH','DELETE'].includes(req.method)){const origin=req.get('origin');if(!origin||!allowedOrigins.includes(origin))return res.status(403).json({error:'Origin not allowed'});}next();});
  router.post('/register',safe(async(req,res)=>{
   const p=z.object({name:z.string().trim().min(2).max(120),email:emailSchema,password:passwordSchema}).safeParse(req.body);
-  if(!p.success)return res.status(400).json({error:'Invalid registration'});
+  if(!p.success)return res.status(400).json({error:'بيانات التسجيل غير صحيحة؛ راجع الاسم والبريد وكلمة المرور.'});
+  if(!publicUrl||!process.env.BREVO_API_KEY)return res.status(503).json({error:'إنشاء الحسابات بالبريد غير مفعّل بعد: يجب إعداد عنوان الموقع وخدمة إرسال رسائل التأكيد.'});
   const {name,email,password}=p.data;
   const client=await pool.connect();let token=null;
   try{await client.query('BEGIN');
@@ -36,6 +37,25 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    await client.query('COMMIT');
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
   res.status(202).json({message:'If eligible, a verification email has been sent'});
+ }));
+ // Resend without revealing whether an account exists. SMTP must be available, no unverified account is activated.
+ router.post('/verification/resend',safe(async(req,res)=>{
+  const parsed=z.object({email:emailSchema}).safeParse(req.body);
+  if(!parsed.success)return res.status(202).json({message:'لو البريد مسجل وغير مؤكد، هتوصلك رسالة تأكيد.'});
+  if(!publicUrl||!process.env.BREVO_API_KEY)return res.status(503).json({error:'إرسال تأكيد الحساب غير مفعّل بعد على الخادم.'});
+  const customer=await pool.query('SELECT id,name,email FROM customer_accounts WHERE email=$1 AND email_verified_at IS NULL AND is_active=true',[parsed.data.email]);
+  if(customer.rowCount){
+    const row=customer.rows[0];
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query("UPDATE customer_auth_tokens SET used_at=now() WHERE customer_id=$1 AND purpose='verify' AND used_at IS NULL",[row.id]);
+      const token=await issue(client,row.id,'verify');
+      await sendLink({email:row.email,name:row.name,token,purpose:'verify'});
+      await client.query('COMMIT');
+    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+  }
+  res.status(202).json({message:'لو البريد مسجل وغير مؤكد، هتوصلك رسالة تأكيد.'});
  }));
  router.post('/verify',safe(async(req,res)=>{
   const p=z.object({token:z.string().regex(/^[a-f0-9]{64}$/)}).safeParse(req.body);if(!p.success)return res.status(400).json({error:'Invalid token'});
