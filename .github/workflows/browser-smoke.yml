@@ -1,0 +1,45 @@
+name: ATSH Browser Smoke
+on:
+  push:
+    branches: [atsh-platform-rebuild, main]
+    paths:
+      - 'source/tests/browser-smoke.mjs'
+      - '.github/workflows/browser-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: source
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      BROWSER_BASE_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - run: npm ci
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Smoke test actual desktop and mobile browser behavior
+        run: |
+          set -euo pipefail
+          mkdir -p .next/standalone/.next
+          cp -a .next/static .next/standalone/.next/static
+          cp -a public .next/standalone/public
+          npm run start -- -p 3000 > /tmp/atsh-browser-web.log 2>&1 &
+          webpid=$!
+          trap 'kill "$webpid" 2>/dev/null || true; cat /tmp/atsh-browser-web.log' EXIT
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/catalog >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3000/catalog >/dev/null
+          node tests/browser-smoke.mjs

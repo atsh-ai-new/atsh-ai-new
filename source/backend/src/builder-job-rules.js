@@ -1,0 +1,6 @@
+import {createHmac,timingSafeEqual} from 'node:crypto';
+export const jobStatuses=new Set(['queued','dispatching','dispatched','running','succeeded','failed','cancelled']);
+export function canTransition(from,to){return ({queued:['dispatching','cancelled'],dispatching:['dispatched','failed','cancelled'],dispatched:['running','succeeded','failed','cancelled'],running:['succeeded','failed','cancelled'],failed:['queued','cancelled'],succeeded:[],cancelled:[]}[from]||[]).includes(to)}
+export function validJobResult(value){return value&&typeof value==='object'&&['running','succeeded','failed'].includes(value.status)&&(!value.previewUrl||isSafePreviewUrl(value.previewUrl))&&(!value.commitSha||/^[a-f0-9]{40}$/i.test(value.commitSha))&&(!value.error||typeof value.error==='string'&&value.error.length<=500)}
+export function isSafePreviewUrl(value){try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&!u.hash&&value.length<=2048}catch{return false}}
+export function verifyCallback(body,signature,secret){if(typeof signature!=='string'||!/^sha256=[a-f0-9]{64}$/i.test(signature)||!secret||secret.length<32)return false;const expected=createHmac('sha256',secret).update(body).digest();return timingSafeEqual(expected,Buffer.from(signature.slice(7),'hex'))}

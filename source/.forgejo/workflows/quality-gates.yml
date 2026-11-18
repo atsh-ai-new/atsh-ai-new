@@ -1,0 +1,77 @@
+name: ATSH website quality gates
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '31 3 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Typecheck, build, API syntax and dependency audit
+    runs-on: docker
+    container:
+      image: docker.io/library/node:22-bookworm
+      options: --cpus=2 --memory=4g --pids-limit=256
+    env:
+      FORGEJO_TOKEN: ''
+      GITHUB_TOKEN: ''
+    steps:
+      - name: Checkout from this Forgejo repository
+        uses: https://data.forgejo.org/actions/checkout@v6
+        with:
+          token: ${{ forgejo.token }}
+          persist-credentials: false
+          github-server-url: https://git.atsh-ai.com
+      - name: Verify Node and npm
+        run: node --version && npm --version
+      - name: Install frontend dependencies from lockfile
+        run: npm ci --no-audit --no-fund
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=high
+      - name: Typecheck the website and admin
+        run: npm run typecheck
+      - name: Build the website
+        run: npm run build
+      - name: Install website API dependencies
+        run: npm install --prefix backend --no-audit --no-fund
+      - name: Audit website API dependencies
+        run: npm audit --prefix backend --audit-level=high
+      - name: Check website API JavaScript syntax
+        run: npm run check --prefix backend
+
+  source-security:
+    name: Semgrep source security scan
+    runs-on: docker
+    container:
+      image: docker.io/semgrep/semgrep:1.162.0
+      options: --cpus=2 --memory=4g --pids-limit=256
+    env:
+      FORGEJO_TOKEN: ''
+      GITHUB_TOKEN: ''
+    steps:
+      - name: Fetch only the triggering commit from this Forgejo repository
+        env:
+          FORGEJO_TOKEN: ${{ forgejo.token }}
+          INTERNAL_FORGEJO_URL: https://git.atsh-ai.com
+        run: |
+          set -eu
+          git init .
+          git remote add internal "$INTERNAL_FORGEJO_URL/$FORGEJO_REPOSITORY.git"
+          auth_header=$(printf '%s:%s' "$FORGEJO_ACTOR" "$FORGEJO_TOKEN" | base64 | tr -d '\n')
+          GIT_CONFIG_COUNT=1 \
+          GIT_CONFIG_KEY_0="http.${INTERNAL_FORGEJO_URL}/.extraheader" \
+          GIT_CONFIG_VALUE_0="Authorization: Basic ${auth_header}" \
+          GIT_TERMINAL_PROMPT=0 \
+            git fetch --no-tags --depth=1 internal "$FORGEJO_SHA"
+          git checkout --detach FETCH_HEAD
+          git remote remove internal
+      - name: Scan source with Semgrep Community Edition
+        env:
+          FORGEJO_TOKEN: ''
+          GITHUB_TOKEN: ''
+        run: semgrep scan --config p/security-audit --config p/secrets --metrics=off --error .

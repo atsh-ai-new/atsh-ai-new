@@ -1,0 +1,2 @@
+export const sameVerifiedEmail=(accountEmail,quoteEmail)=>typeof accountEmail==='string'&&typeof quoteEmail==='string'&&accountEmail.trim().toLowerCase()===quoteEmail.trim().toLowerCase();
+export const canClaimQuote=({accountEmail,quoteEmail,existingOwner,accountId,linkActive})=>Boolean(linkActive&&sameVerifiedEmail(accountEmail,quoteEmail)&&(!existingOwner||String(existingOwner)===String(accountId)));

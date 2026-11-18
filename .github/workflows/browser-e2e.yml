@@ -1,0 +1,89 @@
+name: ATSH Browser E2E (Desktop + Mobile)
+on:
+  push:
+    branches: [atsh-platform-rebuild, main]
+    paths:
+      - 'source/e2e/**'
+      - 'source/playwright.config.ts'
+      - 'source/src/app/catalog/**'
+      - 'source/src/components/catalog-preview-loader.tsx'
+      - 'source/src/components/sector-preview.tsx'
+      - 'source/src/components/sector-interactive-demo.tsx'
+      - 'source/src/lib/sector-catalog.ts'
+      - 'source/backend/src/catalog-starter.js'
+      - '.github/workflows/browser-e2e.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  chromium-e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: atsh_test
+          POSTGRES_PASSWORD: atsh_test_password
+          POSTGRES_DB: atsh_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U atsh_test -d atsh_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      CI: 'true'
+      DATABASE_URL: postgresql://atsh_test:atsh_test_password@127.0.0.1:5432/atsh_test
+      DATABASE_SSL: 'false'
+      ADMIN_EMAIL: ci-owner@example.test
+      ADMIN_PASSWORD_HASH: '$2b$12$CwTycUXWue0Thq9StjUM0uJ8vdPuOuFqnP4bdzKyU9RTxDqB38zNO'
+      JWT_SECRET: local-ci-jwt-secret-not-valid-for-any-production-123456789
+      ALLOWED_ORIGINS: http://127.0.0.1:3001
+      COOKIE_SECURE: 'false'
+      PORT: '3017'
+      ATSH_API_BASE_URL: http://127.0.0.1:3017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - name: Install backend
+        working-directory: source/backend
+        run: npm install --no-audit --no-fund
+      - name: Install frontend and browser runner
+        working-directory: source
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false @playwright/test
+          npx playwright install --with-deps chromium
+      - name: Launch isolated app and API
+        working-directory: source
+        run: |
+          set -euo pipefail
+          node backend/src/server.js >/tmp/atsh-api-e2e.log 2>&1 &
+          npx next dev -p 3001 --hostname 127.0.0.1 >/tmp/atsh-next-e2e.log 2>&1 &
+          ready=0
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3017/api/health >/dev/null 2>&1 &&
+               curl -fsS http://127.0.0.1:3001/catalog >/dev/null 2>&1; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/atsh-api-e2e.log
+            cat /tmp/atsh-next-e2e.log
+            exit 1
+          fi
+      - name: Browser flow on desktop and mobile
+        working-directory: source
+        run: npx playwright test --config playwright.config.ts
+      - name: Export failing browser evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ats-hai-browser-e2e-debug
+          path: |
+            source/test-results/
+            source/playwright-report/
+          retention-days: 5

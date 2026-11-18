@@ -1,0 +1,12 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {quoteTotal,installments,canSignContract,canRequestPayment,canDeliver,validateDeliveryMethod,validateTicketTransition,estimateMargin} from '../src/commercial-rules.js';
+test('quotes calculate in integer piasters',()=>assert.equal(quoteTotal([{label:'Website',quantity:2,unitPricePiasters:125050}]),250100));
+test('quotes reject invalid items',()=>assert.throws(()=>quoteTotal([{label:'',quantity:1,unitPricePiasters:100}])));
+test('installments allocate all piasters',()=>assert.deepEqual(installments(10001,[40,30,30]),[4000,3000,3001]));
+test('installments reject invalid percentages',()=>assert.throws(()=>installments(100,[50,40])));
+test('contract requires accepted quote',()=>{assert.equal(canSignContract({quoteStatus:'draft',contractStatus:'issued'}),false);assert.equal(canSignContract({quoteStatus:'accepted',contractStatus:'issued'}),true)});
+test('payment requires signed contract',()=>{assert.equal(canRequestPayment({quoteStatus:'accepted',contractStatus:'issued'}),false);assert.equal(canRequestPayment({quoteStatus:'accepted',contractStatus:'signed'}),true)});
+test('delivery is blocked until three gates pass',()=>{assert.equal(canDeliver({paymentVerified:true,customerApproved:true,securityPassed:false}),false);assert.equal(canDeliver({paymentVerified:true,customerApproved:true,securityPassed:true}),true)});
+test('delivery methods restricted',()=>{assert.equal(validateDeliveryMethod('zip'),'zip');assert.throws(()=>validateDeliveryMethod('ftp'))});
+test('ticket transitions validated',()=>{assert.equal(validateTicketTransition('open','resolved'),false);assert.equal(validateTicketTransition('in_progress','resolved'),true)});
+test('profit includes costs',()=>assert.deepEqual(estimateMargin(10000,[3000,2500]),{revenuePiasters:10000,costPiasters:5500,profitPiasters:4500}));
