@@ -1388,6 +1388,66 @@ app.post("/api/admin/commercial/leads",requireAdmin,requireRole("owner","admin",
 app.get("/api/admin/commercial/leads",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
  const q=await pool.query("SELECT * FROM crm_leads ORDER BY created_at DESC LIMIT 100");res.json({leads:q.rows});
 }));
+// Individually reviewed custom-solution drafts. No fixed-package checkout
+// or client-submitted monetary price is invented for bespoke projects.
+app.get("/api/admin/commercial/project-drafts/eligible",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+ const r=await pool.query(`SELECT d.id,d.title,d.draft,d.updated_at,c.email,
+ p.approval_status AS latest_preview_status
+ FROM customer_project_drafts d JOIN customer_accounts c ON c.id=d.customer_id
+ LEFT JOIN LATERAL (SELECT approval_status FROM customer_preview_versions WHERE draft_id=d.id ORDER BY revision DESC LIMIT 1) p ON true
+ WHERE c.is_active=true AND c.email_verified_at IS NOT NULL
+ AND NOT EXISTS(SELECT 1 FROM commercial_custom_quote_links l WHERE l.draft_id=d.id AND l.is_current=true)
+ AND NOT EXISTS(SELECT 1 FROM commercial_order_quote_links l WHERE l.draft_id=d.id AND l.is_current=true)
+ ORDER BY d.updated_at DESC LIMIT 100`);
+ res.set("Cache-Control","no-store").json({drafts:r.rows});
+}));
+const customQuoteInput=z.object({items:z.array(z.object({
+ label:z.string().trim().min(3).max(250),quantity:z.number().int().min(1).max(100),
+ unitPricePiasters:z.number().int().min(0).max(100000000000),period:z.enum(["fixed","monthly","yearly"]).optional()
+}).strict()).min(1).max(60),validUntil:z.string().datetime({offset:true}).optional()}).strict();
+app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid draft id"});
+ const parsed=customQuoteInput.safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid priced line items"});
+ if(JSON.stringify(parsed.data.items).length>16000)return res.status(400).json({error:"Quote too large"});
+ let total;try{total=quoteTotal(parsed.data.items);}catch(e){return res.status(422).json({error:e.message});}
+ if(total<1)return res.status(422).json({error:"Custom projects require a reviewed nonzero price"});
+ if(parsed.data.validUntil&&new Date(parsed.data.validUntil).getTime()<=Date.now())return res.status(400).json({error:"Quote validity must be in the future"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const drafts=await client.query(`SELECT d.id,d.title,d.draft,d.linked_journey_id,
+   c.id AS account_id,c.email,c.name,c.email_verified_at,c.is_active
+   FROM customer_project_drafts d JOIN customer_accounts c ON c.id=d.customer_id
+   WHERE d.id=$1 FOR UPDATE OF d`,[req.params.id]);
+  const d=drafts.rows[0];
+  if(!d?.is_active||!d.email_verified_at){await client.query("ROLLBACK");return res.status(409).json({error:"Verified customer draft required"});}
+  const latest=await client.query("SELECT approval_status FROM customer_preview_versions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 1",[d.id]);
+  if(latest.rows[0]?.approval_status!=="approved"){await client.query("ROLLBACK");return res.status(409).json({error:"Latest preview must be approved before issuing a custom quote"});}
+  const active=await client.query(`SELECT 1 FROM commercial_custom_quote_links WHERE draft_id=$1 AND is_current=true
+   UNION ALL SELECT 1 FROM commercial_order_quote_links WHERE draft_id=$1 AND is_current=true LIMIT 1`,[d.id]);
+  if(active.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"An active quote already exists for this draft"});}
+  let projectId=d.linked_journey_id;
+  if(projectId){
+    const p=await client.query("SELECT id,status FROM customer_journey_projects WHERE id=$1 AND customer_account_id=$2 FOR UPDATE",[projectId,d.account_id]);
+    if(!p.rowCount||!["draft","configured","quoted"].includes(p.rows[0].status)){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage not open to custom quoting"});}
+    const priorOrder=await client.query("SELECT 1 FROM customer_journey_order_links WHERE project_id=$1",[projectId]);
+    if(priorOrder.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Use the existing verified order quotation path for this project"});}
+  }else{
+    const created=await client.query(`INSERT INTO customer_journey_projects(customer_name,customer_email,template_id,created_by,customer_account_id,status)
+      VALUES($1,$2,$3,$4,$5,'quoted') RETURNING id`,[d.name,d.email,d.draft?.sectorSlug||null,req.admin.email,d.account_id]);
+    projectId=created.rows[0].id;
+    await client.query("UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2 AND customer_id=$3",[projectId,d.id,d.account_id]);
+  }
+  const q=await client.query(`INSERT INTO commercial_quotes(customer_email,customer_account_id,items,total_piasters,currency,valid_until)
+   VALUES($1,$2,$3::jsonb,$4,'EGP',$5) RETURNING id,revision,status,total_piasters,valid_until`,
+   [d.email,d.account_id,JSON.stringify(parsed.data.items),total,parsed.data.validUntil||new Date(Date.now()+14*86400000).toISOString()]);
+  await client.query("INSERT INTO commercial_custom_quote_links(quote_id,draft_id,project_id,customer_account_id) VALUES($1,$2,$3,$4)",[q.rows[0].id,d.id,projectId,d.account_id]);
+  await client.query("UPDATE customer_journey_projects SET status='quoted',updated_at=now() WHERE id=$1 AND status IN ('draft','configured')",[projectId]);
+  await queueJourneyEvent(client,"quote.created",`quote.created:${q.rows[0].id}`,{quoteId:q.rows[0].id,projectId,custom:true,totalPiasters:total});
+  await client.query("COMMIT");res.status(201).json({quote:q.rows[0],projectId,requiresAdminIssue:true});
+ }catch(error){await client.query("ROLLBACK");if(error.code==="23505")return res.status(409).json({error:"Concurrent custom quote already exists"});throw error;}finally{client.release();}
+}));
 // Strict order → latest approved preview → draft commercial quote bridge.
 app.post("/api/admin/commercial/orders/:orderId/quote",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.orderId).success)return res.status(400).json({error:"Invalid order ID"});
