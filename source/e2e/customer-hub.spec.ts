@@ -48,3 +48,11 @@ test("mobile hub remains usable without horizontal page overflow",async({page})=
  const geometry=await page.evaluate(()=>({viewport:window.innerWidth,document:document.documentElement.scrollWidth}));
  expect(geometry.document).toBeLessThanOrEqual(geometry.viewport+2);
 });
+
+test("dashboard offers login instead of exposing a fake empty account when session is missing",async({page})=>{
+ await page.route("**/api/customer/auth/me",async route=>route.fulfill({status:401,contentType:"application/json",body:'{"error":"Unauthorized"}'}));
+ await page.goto("/account/dashboard");
+ await expect(page.getByRole("heading",{name:"سجل دخولك لعرض مشروعاتك"})).toBeVisible();
+ await expect(page.getByRole("navigation",{name:"أقسام حساب العميل"})).toHaveCount(0);
+ await expect(page.getByRole("link",{name:"تسجيل الدخول"})).toBeVisible();
+});
