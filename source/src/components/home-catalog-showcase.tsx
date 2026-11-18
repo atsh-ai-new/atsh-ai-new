@@ -34,12 +34,13 @@ export default function HomeCatalogShowcase({selectedSlug,selectedAddons,onSelec
  useEffect(()=>{
   const controller=new AbortController();
   fetch("/api/site-content/catalog",{signal:controller.signal,cache:"no-store"})
-   .then(async response=>{if(!response.ok)throw Error();return response.json()})
-   .then(data=>{
+   .then(async response=>{if(!response.ok)throw Error();const data=await response.json();const english=en?await fetch("/api/site-content/catalog?locale=en",{signal:controller.signal,cache:"no-store"}).then(async response=>response.ok?response.json():null).catch(()=>null):null;return {data,english};})
+   .then(({data,english})=>{
     const content=data?.page?.content;
     if(!Array.isArray(content?.items))throw Error("missing catalog");
-    setItems(content.items.filter((item:HomeCatalogItem)=>item&&typeof item.slug==="string"&&typeof item.name==="string"&&item.published!==false&&!item.archived));
-    setSectors(en?englishCatalogSectors(normalizeCatalogSectors(content.sectors)):normalizeCatalogSectors(content.sectors));
+    const localized=(Array.isArray(english?.page?.content?.items)?english.page.content.items:[]) as HomeCatalogItem[];
+    setItems(content.items.filter((item:HomeCatalogItem)=>item&&typeof item.slug==="string"&&typeof item.name==="string"&&item.published!==false&&!item.archived).map((item:HomeCatalogItem)=>{if(!en)return item;const translated=localized.find((entry)=>entry.slug===item.slug);return {...item,name:translated?.name||englishTemplateLabel(item.slug,item.slug),description:translated?.description||englishTemplateLabel(item.slug,"Custom digital solution. Contact ATSH AI for details.","description"),features:translated?.features||englishTemplateFeatures(item.slug,[])}}));
+    setSectors(en?(english?.page?.content?.sectors?normalizeCatalogSectors(english.page.content.sectors):englishCatalogSectors(normalizeCatalogSectors(content.sectors))):normalizeCatalogSectors(content.sectors));
    })
    .catch(error=>{if(error?.name!=="AbortError")setNotice(t("تعذر تحميل الكتالوج المنشور حاليًا. يمكنك فتح معرض النماذج كاملًا.","The live catalog is temporarily unavailable; open the full solutions gallery."))})
    .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
