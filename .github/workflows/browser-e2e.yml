@@ -14,6 +14,8 @@ on:
       - 'source/src/components/quote-revision-editor.tsx'
       - 'source/src/app/start/**'
       - 'source/src/app/page.tsx'
+      - 'source/src/proxy.ts'
+      - 'source/src/app/layout.tsx'
       - 'source/src/components/customer-journey-hub.tsx'
       - 'source/src/lib/customer-workspace.ts'
       - 'source/src/components/catalog-preview-loader.tsx'
