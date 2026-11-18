@@ -1182,6 +1182,11 @@ app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requireRole("own
  if(oldLink.rowCount){
    await client.query("INSERT INTO commercial_order_quote_links(order_id,quote_id,project_id,draft_id,is_current) VALUES($1,$2,$3,$4,true)",[oldLink.rows[0].order_id,newer.rows[0].id,oldLink.rows[0].project_id,oldLink.rows[0].draft_id]);
  }
+ const customLink=await client.query("UPDATE commercial_custom_quote_links SET is_current=false WHERE quote_id=$1 AND is_current=true RETURNING draft_id,project_id,customer_account_id",[x.id]);
+ if(customLink.rowCount){
+   const linked=customLink.rows[0];
+   await client.query("INSERT INTO commercial_custom_quote_links(quote_id,draft_id,project_id,customer_account_id,is_current) VALUES($1,$2,$3,$4,true)",[newer.rows[0].id,linked.draft_id,linked.project_id,linked.customer_account_id]);
+ }
  await client.query("UPDATE commercial_quotes SET status='superseded' WHERE id=$1",[x.id]);
  await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[x.id]);
  await client.query("UPDATE commercial_quote_change_requests SET status='resolved',resolved_at=now(),resolution_note='New quote version issued' WHERE quote_id=$1 AND status='pending'",[x.id]);
@@ -1236,7 +1241,10 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
  const quoteAmount=await client.query("SELECT total_piasters FROM commercial_quotes WHERE id=$1",[id]);
  const invoices=await ensureInvoiceScheduleOnAcceptance(client,{quoteId:Number(id),totalPiasters:quoteAmount.rows[0].total_piasters});
  await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[id]);await client.query(`UPDATE customer_journey_projects SET status='payment_pending',updated_at=now()
-  WHERE id IN (SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true) AND status='quoted'`,[id]);
+  WHERE id IN (
+    SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true
+    UNION ALL SELECT project_id FROM commercial_custom_quote_links WHERE quote_id=$1 AND is_current=true
+   ) AND status='quoted'`,[id]);
  await queueJourneyEvent(client,"contract.signed",`contract.signed:${c.rows[0].id}`,{contractId:c.rows[0].id,quoteId:id,signedAt:c.rows[0].signed_at});
  await client.query("COMMIT");res.json({accepted:true,quoteId:id,contractId:c.rows[0].id,signedAt:c.rows[0].signed_at,paymentStatus:"pending_gateway",invoices:invoices.invoices.map(x=>({id:x.id,status:x.status}))});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
@@ -1352,8 +1360,10 @@ app.post("/api/internal/verified-payments",rateLimit({windowMs:60*1000,limit:40,
 // Payments can unlock only a signed accepted quote with all invoices fully verified.
 async function advancePaidJourneyIfEligible(client,invoiceId){
  const linked=await client.query(`SELECT l.project_id,l.quote_id
-  FROM commercial_invoices i JOIN commercial_order_quote_links l
-  ON l.quote_id=i.quote_id AND l.is_current=true WHERE i.id=$1`,[invoiceId]);
+  FROM commercial_invoices i JOIN (
+    SELECT project_id,quote_id FROM commercial_order_quote_links WHERE is_current=true
+    UNION ALL SELECT project_id,quote_id FROM commercial_custom_quote_links WHERE is_current=true
+  ) l ON l.quote_id=i.quote_id WHERE i.id=$1`,[invoiceId]);
  if(!linked.rowCount)return null;
  const {project_id:projectId,quote_id:quoteId}=linked.rows[0];
  const project=await client.query("SELECT status FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[projectId]);
