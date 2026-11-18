@@ -29,6 +29,7 @@ export default function CustomerAccount(){
  const [guestPending,setGuestPending]=useState(false);
  const [merging,setMerging]=useState(false);
  const [hubTab,setHubTab]=useState<HubTab>("overview");
+ const previewRequestRef=useRef(0);
  useEffect(()=>{
    if(action!=="dashboard")return;
    let active=true;
@@ -46,7 +47,7 @@ export default function CustomerAccount(){
    const body=await response.json();
    setProjectDrafts(body.drafts||[]);
    setSelectedProjectDraft(previous=>previous||body.drafts?.[0]?.id||"");
-   if(body.drafts?.[0]?.id)void loadPreviews(body.drafts[0].id);
+
   }catch{setMessage("تعذر تحميل مسودات مشروعاتك");}
  },[]);
  const uploadProjectLogo=async(file?:File)=>{
@@ -62,12 +63,14 @@ export default function CustomerAccount(){
   }catch(e){setMessage(e instanceof Error?e.message:"تعذر رفع الشعار");}
  };
  const loadPreviews=async(id:string)=>{
-  if(!id){setPreviewVersions([]);return;}
+  const requestId=++previewRequestRef.current;
+  setPreviewVersions([]);
+  if(!id)return;
   try{
    const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(id)}/previews`,{credentials:"include",cache:"no-store"});
    if(!response.ok)throw Error();
-   const body=await response.json();setPreviewVersions(body.previews||[]);
-  }catch{setPreviewVersions([]);setMessage("تعذر تحميل إصدارات المعاينة");}
+   const body=await response.json();if(requestId===previewRequestRef.current)setPreviewVersions(body.previews||[]);
+  }catch{if(requestId===previewRequestRef.current){setPreviewVersions([]);setMessage("تعذر تحميل إصدارات المعاينة");}}
  };
  const savePreviewVersion=async()=>{
   if(!selectedProjectDraft)return;
@@ -130,6 +133,7 @@ export default function CustomerAccount(){
  },[action]);
  useEffect(()=>{if(action==="verify"&&search.get("token"))void request("verify",{token:search.get("token")!});},[action,search,request]);
  useEffect(()=>{if(action==="dashboard"){void loadProjects();void loadDrafts();}},[action,loadProjects,loadDrafts]);
+ useEffect(()=>{if(action==="dashboard"&&selectedProjectDraft)void loadPreviews(selectedProjectDraft);},[action,selectedProjectDraft]);
  useEffect(()=>{if(action!=="login"&&action!=="register")return;const clientId=process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;if(!clientId)return;let cancelled=false;const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=()=>{if(cancelled||!googleContainer.current||!window.google)return;window.google.accounts.id.initialize({client_id:clientId,callback:({credential})=>{void request("google",{credential});}});window.google.accounts.id.renderButton(googleContainer.current,{theme:"outline",size:"large",text:"continue_with",locale:"ar"});};document.head.appendChild(script);return()=>{cancelled=true;script.remove();};},[action,request]);
  return <main dir="rtl" style={{maxWidth:action==="dashboard"?1120:540,margin:action==="dashboard"?"1rem auto":"5rem auto",padding:action==="dashboard"?"clamp(12px,3vw,24px)":24,background:action==="dashboard"?"#f6f8fb":undefined}}><h1>{({register:"إنشاء حساب",login:"تسجيل الدخول", "resend-verification":"إعادة إرسال تأكيد البريد",forgot:"استعادة كلمة المرور","reset-password":"تعيين كلمة مرور جديدة",verify:"تأكيد البريد",dashboard:"مشروعاتي"} as Record<string,string>)[action]||"حساب العميل"}</h1>
  {! ["verify","dashboard"].includes(action)&&<form onSubmit={e=>{e.preventDefault();const token=search.get("token")||"";
@@ -170,11 +174,11 @@ export default function CustomerAccount(){
   {guestPending&&<button type="button" onClick={()=>void createProjectDraft(true)} style={{marginInlineStart:10,background:"#203958",color:"white",border:0,borderRadius:8,padding:"11px 13px",cursor:"pointer"}}>إنشاء مشروع جديد باختياراتي السابقة</button>
   {projectDrafts.length===0&&<p style={{padding:12,background:"#f1f5fb",borderRadius:10}}>ليس لديك مشروع محفوظ بعد. أنشئ مسودة أو اختر نموذجًا من المعرض.</p>}
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,220px),1fr))",gap:10,margin:"12px 0"}}>
-   {projectDrafts.map(d=><button type="button" key={d.id} aria-pressed={selectedProjectDraft===d.id} onClick={()=>{setSelectedProjectDraft(d.id);void loadPreviews(d.id);}} style={{border:selectedProjectDraft===d.id?"2px solid #203958":"1px solid #d8e2ef",borderRadius:12,padding:15,background:selectedProjectDraft===d.id?"#eaf1fb":"white",textAlign:"right",cursor:"pointer"}}>
+   {projectDrafts.map(d=><button type="button" key={d.id} aria-pressed={selectedProjectDraft===d.id} onClick={()=>setSelectedProjectDraft(d.id)} style={{border:selectedProjectDraft===d.id?"2px solid #203958":"1px solid #d8e2ef",borderRadius:12,padding:15,background:selectedProjectDraft===d.id?"#eaf1fb":"white",textAlign:"right",cursor:"pointer"}}>
       <strong style={{display:"block",color:"#203958",marginBottom:6}}>{d.title}</strong><span style={{display:"block",fontSize:13}}>{d.draft.sectorName||"مشروع جديد"} · إصدار {d.revision}</span><small style={{color:"#64748b"}}>آخر تعديل {new Date(d.updated_at).toLocaleDateString("ar-EG")}</small>
    </button>)}
   </div>
-  <label>اختر المسودة<select value={selectedProjectDraft} onChange={e=>{setSelectedProjectDraft(e.target.value);void loadPreviews(e.target.value);}}>
+  <label>اختر المسودة<select value={selectedProjectDraft} onChange={e=>setSelectedProjectDraft(e.target.value)}>
    <option value="">اختر مشروعًا</option>{projectDrafts.map(d=><option key={d.id} value={d.id}>{d.title} — إصدار {d.revision}</option>)}
   </select></label>
   {selectedProjectDraft&&<><h3>بيانات المشروع المحدد</h3>
