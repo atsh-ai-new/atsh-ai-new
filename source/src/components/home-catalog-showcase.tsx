@@ -27,6 +27,8 @@ export default function HomeCatalogShowcase({selectedSlug,selectedAddons,onSelec
  const [activeSector,setActiveSector]=useState("all");
  const [activeSub,setActiveSub]=useState("all");
  const [expanded,setExpanded]=useState(false);
+ const [mobile,setMobile]=useState(false);
+ useEffect(()=>{const query=window.matchMedia("(max-width:560px)");const sync=()=>setMobile(query.matches);sync();query.addEventListener("change",sync);return()=>query.removeEventListener("change",sync)},[]);
  useEffect(()=>{
   const controller=new AbortController();
   fetch("/api/site-content/catalog",{signal:controller.signal,cache:"no-store"})
@@ -49,7 +51,8 @@ export default function HomeCatalogShowcase({selectedSlug,selectedAddons,onSelec
    &&(activeSector==="all"||place.sector.id===activeSector)
    &&(activeSub==="all"||place.subcategory?.id===activeSub);
  }).sort((a,b)=>(a.sortOrder??0)-(b.sortOrder??0));
- const displayed=expanded?visible:visible.slice(0,6);
+ const pageSize=mobile?2:6;
+ const displayed=expanded?visible:visible.slice(0,pageSize);
  const selected=items.find(x=>x.slug===selectedSlug);
  const selectedPlace=selected?resolvePlacement(selected,sectors):null;
  const choose=(item:HomeCatalogItem)=>{onSelect(item)};
@@ -92,7 +95,7 @@ export default function HomeCatalogShowcase({selectedSlug,selectedAddons,onSelec
      <div className="hc-actions"><Link href={`/catalog/${encodeURIComponent(item.slug)}`}>جرّب النموذج ↗</Link><button type="button" onClick={()=>choose(item)}>اختيار وإضافة تفاصيل ←</button></div>
     </article>;
    })}</div>
-   {visible.length>6&&<button type="button" onClick={()=>setExpanded(x=>!x)} style={{padding:"11px 16px",border:"1px solid #cedaea",background:"white",borderRadius:11,color:"#203958",cursor:"pointer"}}>{expanded?"عرض مختصر":`عرض باقي النماذج (${visible.length-6})`}</button>}
+   {visible.length>pageSize&&<button type="button" onClick={()=>setExpanded(x=>!x)} style={{padding:"11px 16px",border:"1px solid #cedaea",background:"white",borderRadius:11,color:"#203958",cursor:"pointer"}}>{expanded?"عرض مختصر":`عرض باقي النماذج (${visible.length-pageSize})`}</button>}
    <div style={{marginTop:12}}><Link href={activeSector==="all"?"/catalog":`/catalog?sector=${encodeURIComponent(activeSector)}`} style={{color:"#203958",textDecoration:"underline",fontWeight:800}}>الانتقال لمعرض {active?.name||"القطاعات"} بجميع التفاصيل والمعاينات ←</Link></div>
    {selected&&selectedPlace?.sector?.isPublished&&selectedPlace?.subcategory?.isPublished!==false&&<section className="hc-active" aria-label="إضافات النموذج المختار">
      <div style={{display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap",alignItems:"center"}}><div><h4 style={{margin:"0 0 6px"}}>تخصيص {selected.name}</h4><small>اختيارات الإضافات هنا تنتقل إلى محرك السعر الرسمي أدناه. لا تُعد الأسعار ظاهرة كفاتورة أو طلب شراء.</small></div><Link href={`/catalog/${encodeURIComponent(selected.slug)}`} style={{color:"#203958",fontWeight:700}}>شرح ومشاهدة النموذج الكامل ↗</Link></div>
