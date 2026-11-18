@@ -65,7 +65,14 @@ export function deliveryAdminRouter({pool,operationsOnly=false}){
    res.status(201).json({stored:true,bytes});
   }catch(e){await unlink(filePath).catch(()=>{});throw e;}
  }));
- r.patch('/:id',wrap(async(req,res)=>{if(!uuid.safeParse(req.params.id).success)return res.status(400).json({error:'Invalid ID'});const d=z.object({status:z.enum(['draft','published','withdrawn'])}).strict().safeParse(req.body);if(!d.success)return res.status(400).json({error:'Invalid status'});const q=await pool.query(`UPDATE customer_deliverables SET status=$2,published_at=CASE WHEN $2='published' THEN now() ELSE published_at END,updated_at=now() WHERE id=$1 RETURNING *`,[req.params.id,d.data.status]);if(!q.rowCount)return res.status(404).json({error:'Not found'});await pool.query('INSERT INTO delivery_events(deliverable_id,actor_type,actor_id,event_type) VALUES($1,$2,$3,$4)',[req.params.id,'admin',req.admin.email||req.admin.userId||'owner',d.data.status]);res.json({deliverable:q.rows[0]});}));
+ r.patch('/:id',wrap(async(req,res)=>{if(!uuid.safeParse(req.params.id).success)return res.status(400).json({error:'Invalid ID'});const d=z.object({status:z.enum(['draft','published','withdrawn'])}).strict().safeParse(req.body);if(!d.success)return res.status(400).json({error:'Invalid status'});const q=await pool.query(`UPDATE customer_deliverables d
+   SET status=$2,published_at=CASE WHEN $2='published' THEN now() ELSE d.published_at END,updated_at=now()
+   FROM customer_journey_projects p
+   WHERE d.id=$1 AND p.id=d.project_id
+     AND ($2<>'published' OR (p.status IN ('paid','building','preview_ready','approved','delivered','support')
+       AND (d.asset_url<>'' OR EXISTS (SELECT 1 FROM customer_deliverable_files f WHERE f.deliverable_id=d.id))))
+   RETURNING d.*`,[req.params.id,d.data.status]);
+  if(!q.rowCount)return res.status(409).json({error:'Deliverable not found, no artifact is attached, or project payment has not been confirmed'});await pool.query('INSERT INTO delivery_events(deliverable_id,actor_type,actor_id,event_type) VALUES($1,$2,$3,$4)',[req.params.id,'admin',req.admin.email||req.admin.userId||'owner',d.data.status]);res.json({deliverable:q.rows[0]});}));
  return r;
 }
 export function deliveryCustomerRouter({pool,allowedOrigins=[]}){
