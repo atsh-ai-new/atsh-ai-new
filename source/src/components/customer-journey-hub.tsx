@@ -23,7 +23,7 @@ export default function CustomerJourneyHub(props:Props){
  const counts=[{title:"مسودات المشروعات",number:props.draftCount},{title:"مشروعات مرتبطة",number:props.projectCount},{title:"طلبات",number:props.orderCount},{title:"عروض أسعار",number:props.quoteCount}];
  const previewStatus=props.currentPreviewStatus;
  // Do not infer financial or delivery completion from an unrelated invoice or project.
- const completed=props.currentProject?(previewStatus==="approved"?3:2):0;
+ const completed=props.currentProject?(previewStatus==="approved"?3:previewStatus?2:1):0;
  return <div dir="rtl" style={{marginBottom:24}}>
   <style>{`.atsh-hub-nav{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.atsh-hub-tab{border:1px solid #d0dced;border-radius:11px;padding:11px 13px;cursor:pointer;background:white;color:#203958;font:inherit;font-size:14px}.atsh-hub-tab[aria-current="page"]{background:#203958;color:white;font-weight:800}.atsh-hub-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px}.atsh-hub-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}@media(max-width:600px){.atsh-hub-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.atsh-hub-tab{flex:1 1 130px}.atsh-hub-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}`}</style>
   <header style={{background:"linear-gradient(125deg,#203958,#2c5c87)",color:"white",padding:"22px 20px",borderRadius:19,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:14}}>
