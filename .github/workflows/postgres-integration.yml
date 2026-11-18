@@ -38,6 +38,7 @@ jobs:
       ALLOWED_ORIGINS: http://127.0.0.1:3017
       COOKIE_SECURE: 'false'
       PORT: '3017'
+      ATSH_CI_TEST_RATE_LIMIT: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
