@@ -27,12 +27,13 @@ export default function StartProject(){
  const [step,setStep]=useState(1),[kind,setKind]=useState<Kind>("website"),[mode,setMode]=useState<Mode>("ready");
  const [businessName,setBusinessName]=useState(""),[requirements,setRequirements]=useState(""),[options,setOptions]=useState<string[]>([]);
  const [saving,setSaving]=useState(false),[error,setError]=useState("");
- useEffect(()=>{const v=loadGuestWorkspace();if(v.solutionType)setKind(v.solutionType);if(v.projectMode)setMode(v.projectMode);if(v.businessName)setBusinessName(v.businessName);if(v.requirements)setRequirements(v.requirements);if(v.options)setOptions(v.options);},[]);
+ const [deliveryMethod,setDeliveryMethod]=useState<"undecided"|"managed"|"source-code">("undecided");
+ useEffect(()=>{const v=loadGuestWorkspace();if(v.solutionType)setKind(v.solutionType);if(v.projectMode)setMode(v.projectMode);if(v.businessName)setBusinessName(v.businessName);if(v.requirements)setRequirements(v.requirements);if(v.options)setOptions(v.options);if(v.deliveryMethod)setDeliveryMethod(v.deliveryMethod);},[]);
  const filtered=available.filter(x=>x.kinds.includes(kind));
  const changeKind=(value:Kind)=>{setKind(value);setOptions(old=>old.filter(code=>available.some(x=>x.code===code&&x.kinds.includes(value))));};
  const submit=async(event:FormEvent)=>{
   event.preventDefault();if(!businessName.trim()){setError("اكتب اسم مشروعك.");return}
-  const patch:CustomerWorkspace={projectMode:mode,solutionType:kind,businessName:businessName.trim(),requirements:requirements.trim(),options,source:"configurator"};
+  const patch:CustomerWorkspace={projectMode:mode,solutionType:kind,businessName:businessName.trim(),requirements:requirements.trim(),options,deliveryMethod,source:"configurator"};
   replaceGuestWorkspace(patch);
   if(mode==="ready"){window.location.assign("/catalog");return}
   setSaving(true);setError("");
@@ -69,6 +70,10 @@ export default function StartProject(){
      <label style={{display:"grid",gap:7,fontWeight:700}}>اسم المشروع / النشاط<input required maxLength={120} value={businessName} onChange={e=>setBusinessName(e.target.value)} placeholder="مثال: عيادتي" style={{border:"1px solid #b9c9dc",borderRadius:10,padding:13,fontSize:16}}/></label>
      <h3 style={{fontSize:17,marginTop:20}}>الخصائص المطلوبة</h3>
      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,185px),1fr))",gap:9}}>{filtered.map(x=><label key={x.code} style={{display:"flex",gap:9,alignItems:"center",padding:12,border:"1px solid #e0e6ed",borderRadius:11,cursor:"pointer"}}><input type="checkbox" checked={options.includes(x.code)} onChange={e=>setOptions(current=>e.target.checked?[...new Set([...current,x.code])]:current.filter(code=>code!==x.code))}/>{x.name}</label>)}</div>
+     <h3 style={{fontSize:17,marginTop:22}}>طريقة التسليم المفضلة</h3>
+     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,210px),1fr))",gap:8}}>
+       {[{id:"undecided" as const,label:"لم أحدد بعد",note:"نوضح الاختلاف قبل اعتماد العرض"},{id:"managed" as const,label:"خدمة مُدارة",note:"المنصة والاستضافة والمتابعة حسب العقد"},{id:"source-code" as const,label:"شراء/ترخيص الكود",note:"تسليم المصدر والحقوق وفق العقد"}].map(item=><button type="button" key={item.id} aria-pressed={deliveryMethod===item.id} onClick={()=>setDeliveryMethod(item.id)} style={chooseStyle(deliveryMethod===item.id)}><strong>{item.label}</strong><small style={{display:"block",marginTop:6,color:"#61758a"}}>{item.note}</small></button>)}
+     </div>
      <label style={{display:"grid",gap:8,fontWeight:700,marginTop:18}}>اشرح طلبك<textarea rows={3} maxLength={4000} value={requirements} onChange={e=>setRequirements(e.target.value)} placeholder="أهم التفاصيل أو المشاكل التي تريد حلها" style={{border:"1px solid #b9c9dc",borderRadius:10,padding:13,fontSize:16}}/></label>
      <p style={{fontSize:13,color:"#607187",lineHeight:1.8}}>{mode==="ready"?"سننتقل للمعرض وتجربة النماذج. الخصائص المختارة هنا مجرد وصف مبدئي؛ السعر يحسبه محرك التسعير فقط.":"سيُحفظ وصف مشروعك في حسابك كمسودة، وليس عقدًا أو طلب شراء. إن لم تكن مسجلًا، ستنتقل لإنشاء حساب ويمكنك نقل اختياراتك إليه."}</p>
      {error&&<p role="alert" style={{padding:12,background:"#fff0dc",borderRadius:10}}>{error}</p>}
