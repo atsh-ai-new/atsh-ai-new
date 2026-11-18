@@ -128,7 +128,7 @@ export default function CustomerAccount(){
  {! ["verify","dashboard"].includes(action)&&<form onSubmit={e=>{e.preventDefault();const token=search.get("token")||"";
     const route=({register:"register",login:"login","resend-verification":"verification/resend",forgot:"password/forgot","reset-password":"password/reset"} as Record<string,string>)[action]||"login";
     const data=action==="register"?{name,email,password}:action==="login"?{email,password}:action==="reset-password"?{password,token}:{email};
-    void request(route,data);}}>
+    void request(route,data as Record<string,string>);}}>
  {action==="register"&&<label>الاسم<input required value={name} onChange={e=>setName(e.target.value)}/></label>}
  {action!=="reset-password"&&<label>البريد الإلكتروني<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label>}
  {["register","login","reset-password"].includes(action)&&<label>كلمة المرور<input type="password" minLength={action==="login"?1:12} required value={password} onChange={e=>setPassword(e.target.value)}/></label>}
