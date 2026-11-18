@@ -1,7 +1,7 @@
 name: ATSH Source Validation
 on:
   push:
-    branches: [atsh-platform-rebuild]
+    branches: [atsh-platform-rebuild, main]
     paths:
       - 'source/**'
       - '.github/workflows/validate-source.yml'
