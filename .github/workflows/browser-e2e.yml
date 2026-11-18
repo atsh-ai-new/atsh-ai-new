@@ -1,7 +1,7 @@
 name: ATSH Browser E2E (Desktop + Mobile)
 on:
   push:
-    branches: [atsh-platform-rebuild]
+    branches: [atsh-platform-rebuild, main]
     paths:
       - 'source/e2e/**'
       - 'source/playwright.config.ts'
