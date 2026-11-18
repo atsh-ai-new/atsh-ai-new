@@ -2,7 +2,7 @@
 import {useEffect,useState,type FormEvent} from "react";
 import Link from "next/link";
 import {useParams} from "next/navigation";
-import {findSector,type SectorTemplate} from "@/lib/sector-catalog";
+import {interactiveDemoPaths,interactiveDemoSlug,type SectorTemplate} from "@/lib/sector-catalog";
 
 type Preferences={sectorSlug?:string;sectorName?:string;businessName?:string;businessDescription?:string;brandColor?:string;domainName?:string;packageId?:string};
 type Draft={id:string;title:string;draft:Preferences;revision:number|string;linked_journey_id?:string|null};
@@ -11,7 +11,7 @@ const box={background:"#fff",border:"1px solid #dae3ee",padding:18,borderRadius:
 export default function CustomerProjectPreview(){
  const params=useParams<{id:string}>(),id=params.id;
  const [entry,setEntry]=useState<Draft|null>(null);
- const [template,setTemplate]=useState<SectorTemplate|null>(null);
+ const [template,setTemplate]=useState<(SectorTemplate&{demoSlug?:string})|null>(null);
  const [versions,setVersions]=useState<Preview[]>([]);
  const [active,setActive]=useState("لوحة القيادة");
  const [notice,setNotice]=useState("");
@@ -34,13 +34,13 @@ export default function CustomerProjectPreview(){
    if(!draftResponse.ok)throw Error("المشروع غير متاح لحسابك. سجّل الدخول ثم افتحه من لوحة حسابك.");
    const data=await draftResponse.json(),draft=data.projectDraft as Draft;
    setEntry(draft);setForm(draft.draft||{});
-   let picked:SectorTemplate|undefined;
+   let picked:(SectorTemplate&{demoSlug?:string})|undefined;
    if(catalogResponse.ok){
     const catalog=await catalogResponse.json();
     const items=catalog?.page?.content?.items;
     if(Array.isArray(items))picked=items.find((item:SectorTemplate&{published?:boolean;archived?:boolean})=>item?.slug===draft.draft?.sectorSlug&&item.published!==false&&!item.archived);
    }
-   picked??=findSector(draft.draft?.sectorSlug||"");
+   // An unpublished/archived catalog must not reappear via a static fallback.
    setTemplate(picked||null);
    setLocalRows(picked?.sampleRows||[]);
    setActive(picked?.modules?.[0]||"لوحة القيادة");
@@ -94,6 +94,7 @@ export default function CustomerProjectPreview(){
  if(!entry)return <main dir="rtl" style={{padding:25}}><p role="alert">{notice}</p><Link href="/account/dashboard">العودة إلى حسابي</Link></main>;
  const brand=/^#[a-f0-9]{6}$/i.test(form.brandColor||"")?form.brandColor!:"#203958";
  const modules=template?.modules?.length?template.modules:["لوحة القيادة"];
+ const fullDemo=template?interactiveDemoSlug(template.slug,template.demoSlug):undefined;
  return <main dir="rtl" style={{maxWidth:1150,margin:"auto",padding:"20px",minHeight:"100vh",background:"#f6f8fb"}}>
   <header style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:15}}>
    <Link href="/account/dashboard">← مشروعاتي</Link>
@@ -118,7 +119,11 @@ export default function CustomerProjectPreview(){
     </div>
    </form>
   </section>
-  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,200px),1fr))",gap:14}}>
+  {fullDemo&&interactiveDemoPaths[fullDemo]&&<section aria-label="النموذج الكامل للمشروع" style={{...box,marginBottom:18}}>
+   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}><div><h2 style={{margin:"0 0 4px"}}>المعاينة التفاعلية الكاملة للنظام</h2><p style={{fontSize:13,color:"#64748b"}}>جرّب جميع أقسام النظام. البيانات داخله تجريبية ولا تمثل ملفات مشروعك المحفوظة، ولا تنشئ فواتير حقيقية.</p></div><a href={interactiveDemoPaths[fullDemo]} target="_blank" rel="noopener noreferrer">فتح في نافذة مستقلة ↗</a></div>
+   <iframe title={`معاينة ${template?.name} داخل مشروع العميل`} src={interactiveDemoPaths[fullDemo]} sandbox="allow-scripts allow-forms allow-modals" loading="lazy" referrerPolicy="no-referrer" style={{display:"block",width:"100%",minHeight:620,border:"1px solid #e2e8f0",borderRadius:12}} />
+  </section>}
+  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,200px),1fr))",gap:14}}> 
    <nav aria-label="أقسام المعاينة" style={{...box,alignSelf:"start",display:"flex",flexDirection:"column",gap:8}}>
     <strong>القوائم</strong>{modules.map(name=><button type="button" aria-pressed={active===name} key={name} onClick={()=>setActive(name)} style={{textAlign:"right",border:0,borderRadius:8,background:active===name?brand:"#eef3fa",color:active===name?"#fff":"#203958",padding:12}}>{name}</button>)}
    </nav>
