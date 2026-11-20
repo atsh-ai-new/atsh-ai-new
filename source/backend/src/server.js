@@ -39,6 +39,10 @@ for (const key of ["DATABASE_URL","ADMIN_EMAIL","ADMIN_PASSWORD_HASH","JWT_SECRE
 if (process.env.JWT_SECRET.length < 32) throw new Error("JWT_SECRET must be at least 32 characters");
 
 const app = express();
+// Traefik terminates public HTTPS and forwards to this API over one trusted
+// proxy hop. Express must recognize forwarded client IPs for rate limiting.
+// Keep the API service private; do not publish its container port directly.
+app.set("trust proxy", 1);
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: 10,
