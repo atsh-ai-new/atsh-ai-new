@@ -372,3 +372,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .build-hero .price-preview-total { padding: 7px 0 4px; }
   .build-hero + .trust-strip { margin-top: 0; }
 }
+
+/* Keep catalog extras after the selected website and before totals on every viewport. */
+.builder-layout>.catalog-optional-addons{grid-column:1/-1;min-width:0;margin:0!important;box-sizing:border-box}
+.builder-layout>.catalog-optional-addons label{min-width:0;flex-wrap:wrap;line-height:1.65}
+.builder-layout>.catalog-optional-addons label span{min-width:0;overflow-wrap:anywhere}
+.builder-layout>.quote-sidebar{min-width:0}
+@media(min-width:900px){.builder-layout>.catalog-optional-addons{width:100%}}
+@media(max-width:899px){.builder-layout>.catalog-optional-addons{padding:12px!important}.builder-layout>.catalog-optional-addons label{gap:8px!important}}
