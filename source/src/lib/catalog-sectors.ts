@@ -19,17 +19,22 @@ export type CatalogPlacement = {
   category?: string;
 };
 export const defaultCatalogSectors: CatalogSector[] = [
-  {id:"health",name:"الصحة والرعاية الطبية",icon:"🩺",description:"حلول العيادات والصيدليات والخدمات الطبية.",sortOrder:10,isPublished:true,subcategories:[
+  {id:"health",name:"الصحة",icon:"🩺",description:"العيادات والصيدليات والخدمات الطبية.",sortOrder:10,isPublished:true,subcategories:[
     {id:"clinics",name:"العيادات والمراكز الطبية",sortOrder:10,isPublished:true},
     {id:"pharmacies",name:"الصيدليات",sortOrder:20,isPublished:true}
   ]},
-  {id:"business",name:"التجارة وإدارة الأعمال",icon:"🛒",description:"البيع والمخزون والخدمات والعمليات التجارية.",sortOrder:20,isPublished:true,subcategories:[
+  {id:"education",name:"التعليم",icon:"🎓",description:"المدارس والجامعات ومنصات التعلم.",sortOrder:20,isPublished:true,subcategories:[
+    {id:"learning",name:"منصات التعليم",sortOrder:10,isPublished:true},
+    {id:"schools",name:"المدارس والجامعات",sortOrder:20,isPublished:true}
+  ]},
+  {id:"professional",name:"الإداريات",icon:"🗂️",description:"الإدارة والمكاتب والخدمات المهنية.",sortOrder:30,isPublished:true,subcategories:[
+    {id:"legal",name:"المحاماة والخدمات القانونية",sortOrder:10,isPublished:true},
+    {id:"consulting",name:"المكاتب والاستشارات",sortOrder:20,isPublished:true},
+    {id:"management",name:"الأنظمة الإدارية",sortOrder:30,isPublished:true}
+  ]},
+  {id:"business",name:"التجاري",icon:"🛒",description:"المتاجر والمخزون والمبيعات.",sortOrder:40,isPublished:true,subcategories:[
     {id:"retail",name:"التجزئة والمتاجر",sortOrder:10,isPublished:true},
     {id:"operations",name:"إدارة الأعمال",sortOrder:20,isPublished:true}
-  ]},
-  {id:"professional",name:"الخدمات المهنية",icon:"⚖️",description:"حلول المكاتب المهنية والإدارية.",sortOrder:30,isPublished:true,subcategories:[
-    {id:"legal",name:"المحاماة والخدمات القانونية",sortOrder:10,isPublished:true},
-    {id:"consulting",name:"المكاتب والاستشارات",sortOrder:20,isPublished:true}
   ]}
 ];
 export const defaultCatalogPlacements: Record<string,{sectorId:string;subcategoryId:string}> = {
@@ -63,6 +68,21 @@ export function normalizeCatalogSectors(input: unknown): CatalogSector[] {
     }
     result.push({id:row.id,name:row.name,icon:typeof row.icon==="string"?row.icon:"📁",description:typeof row.description==="string"?row.description:"",
       sortOrder:typeof row.sortOrder==="number"&&Number.isFinite(row.sortOrder)?row.sortOrder:result.length*10,isPublished:row.isPublished!==false,subcategories});
+  }
+  // Upgrade existing three-sector catalogs without dropping saved subcategories or placements.
+  // Preserve any additional sectors created by an administrator.
+  const legacyNames:Record<string,string>={health:"الصحة",professional:"الإداريات",business:"التجاري"};
+  const orders:Record<string,number>={health:10,education:20,professional:30,business:40};
+  for(const sector of result){
+    if(legacyNames[sector.id] && (
+      sector.name==="الصحة والرعاية الطبية" ||
+      sector.name==="الخدمات المهنية" ||
+      sector.name==="التجارة وإدارة الأعمال"
+    ))sector.name=legacyNames[sector.id];
+    if(sector.id in orders)sector.sortOrder=orders[sector.id];
+  }
+  for(const standard of defaultCatalogSectors){
+    if(!result.some(s=>s.id===standard.id))result.push({...standard,subcategories:standard.subcategories.map(c=>({...c}))});
   }
   return result;
 }
