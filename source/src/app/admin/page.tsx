@@ -154,7 +154,7 @@ export default function AdminPage() {
     // Preserve structured CMS sections/cards when the quick text editor publishes.
     const current = await api("pages");
     const home = (current.pages ?? []).find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar");
-    const textChanges = Object.fromEntries(siteCopyFields.map((field) => [field.key, page[field.key] ?? siteCopyDefaults[field.key] ?? ""]));
+    const textChanges = Object.fromEntries(siteCopyFields.map(([key]) => [key, page[key] ?? siteCopyDefaults[key] ?? ""]));
     const content = { ...(home?.content ?? {}), ...textChanges };
     await api("pages/home", { method: "PATCH", body: JSON.stringify({ locale: "ar", content, isPublished: true }) });
     const published = await fetch("/api/site-content/home?locale=ar", { cache: "no-store" });
