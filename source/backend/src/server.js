@@ -110,11 +110,11 @@ app.use(cookieParser());
 const isolatedCiRate=process.env.ATSH_CI_TEST_RATE_LIMIT==="true"&&process.env.NODE_ENV!=="production";
 // Keep CMS requests independent of public visitor traffic; cap login attempts separately.
 const publicApiLimiter = rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?600:120, standardHeaders: "draft-8", legacyHeaders: false });
-app.use("/api/admin/login", rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?600:20, standardHeaders: "draft-8", legacyHeaders: false }));
+// Login has a single failed-attempt limiter on its route (below), not stacked global limits.
 const adminWriteLimiter = rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?1200:600, standardHeaders: "draft-8", legacyHeaders: false });
 // Authenticated CMS reads must not exhaust a shared-IP quota during dashboard refreshes.
 // Keep the separate, stricter login limiter and protect state-changing admin requests.
-app.use("/api/admin", (req,res,next) => (req.method === "GET" || req.method === "HEAD") ? next() : adminWriteLimiter(req,res,next));
+app.use("/api/admin", (req,res,next) => (req.method === "GET" || req.method === "HEAD" || req.path === "/login") ? next() : adminWriteLimiter(req,res,next));
 app.use("/api", (req,res,next) => (req.path === "/admin" || req.path.startsWith("/admin/")) ? next() : publicApiLimiter(req,res,next));
 
 async function requireAdmin(req,res,next) {
@@ -631,7 +631,7 @@ app.post("/api/admin/password-reset/complete",rateLimit({windowMs:15*60*1000,lim
     res.json({message:"تم تغيير كلمة مرور المالك. سجّل الدخول بها الآن."});
   }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
-app.post("/api/admin/login",rateLimit({windowMs:15*60*1000,limit:5,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
+app.post("/api/admin/login",rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?600:30,skipSuccessfulRequests:true,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
   const parsed=z.object({email:z.string().email().max(254),password:z.string().min(1).max(200)}).safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"Invalid credentials"});
   const email=parsed.data.email.trim().toLowerCase();
