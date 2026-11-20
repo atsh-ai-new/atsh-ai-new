@@ -73,13 +73,15 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
    </div>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,245px),1fr))",gap:15}}>
     {records.map(item=>{const place=resolvePlacement(item,sectors);return <article key={item.slug} style={{background:"white",padding:20,borderRadius:16,border:"1px solid #e2e8f0",display:"flex",flexDirection:"column",gap:10,minWidth:0}}>
-     {(item.imageUrl?.startsWith("https://")||item.imageUrl?.startsWith("/api/site-media/"))?<img src={item.imageUrl} alt={en?englishTemplateLabel(item.slug,item.name):item.name} style={{width:"100%",height:145,objectFit:"cover",borderRadius:10}}/>:<CatalogCardPreview slug={item.slug} name={en?englishTemplateLabel(item.slug,item.name):item.name}/> }
+     <div style={{position:"relative",height:300,border:"1px solid #dce4ed",borderRadius:12,overflow:"hidden",background:"#f8fafc"}}>
+      <iframe title={t("معاينة تفاعلية: ","Interactive preview: ")+item.name} src={`${base}/catalog/${encodeURIComponent(item.slug)}?embedded=1`} loading="lazy" style={{width:"100%",height:"100%",border:0,background:"white"}} allowFullScreen />
+     </div>
      <small style={{color:"#4c78ae"}}>{place.subcategory?.name||sector.name}</small>
      {isInteractiveSector(item.slug)&&<small style={{fontWeight:700,color:"#127659"}}>{t("● نظام قابل للتجربة: كاشير / مواعيد / إدارة وقضايا حسب المجال","● Interactive demo: POS, appointments, or case management")}</small>}
      <h3 style={{margin:0,color:"#203958"}}>{en?englishTemplateLabel(item.slug,item.name):item.name}</h3>
      <p style={{lineHeight:1.8,color:"#64748b",flex:1}}>{en?englishTemplateLabel(item.slug,item.description,"description"):item.description}</p>
      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>{(en?englishTemplateFeatures(item.slug,item.features??[]):item.features??[]).slice(0,5).map(feature=><span key={feature} style={{borderRadius:99,background:"#edf3f8",padding:"5px 8px",fontSize:12}}>{feature}</span>)}</div>
-     <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("المعاينة التفاعلية ←","Interactive demo →")}</Link>
+     <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("افتح التجربة الحية بملء الشاشة ←","Open live full-screen demo →")}</Link>
      <Link onClick={()=>choose(item)} href={`${base}/?sector=${encodeURIComponent(item.slug)}#configurator`} style={{textAlign:"center",fontSize:13,color:"#203958",textDecoration:"underline"}}>{t("اطلب تسعير النموذج","Configure & get pricing")}</Link>
      {item.previewUrl?.startsWith("https://")&&<a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{textAlign:"center",fontSize:13,color:"#1e749b"}}>{t("افتح نسخة تجريبية منشورة خارجيًا ↗","Open external demo ↗")}</a>}
     </article>})}
