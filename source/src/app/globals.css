@@ -388,3 +388,18 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .builder-layout>.catalog-optional-addons{order:2;width:100%;min-width:0}
  .builder-layout>.quote-sidebar{order:3;width:100%;min-width:0}
 }
+
+/* Compact website package cards: consistent AR/EN and desktop/mobile spacing. */
+.packages-section{padding-block:34px 38px}
+.packages-section .section-heading{margin-bottom:16px}
+.package-grid{align-items:start;gap:12px}
+.package-card{min-height:0;padding:17px 16px 16px;gap:0}
+.package-card h3{margin:5px 0 4px;line-height:1.4}
+.package-card>p{min-height:0;margin:0;line-height:1.6}
+.package-card ul{margin:10px 0 12px;gap:5px}
+.package-card li{align-items:flex-start;line-height:1.55}
+.package-price{margin-top:0;padding:10px 0 9px;gap:2px}
+.package-cta{margin-top:0}
+.packages-section+.configurator-section{margin-top:0}
+@media(max-width:840px){.packages-section{padding-block:22px 26px}.package-grid{gap:12px}.package-card{padding:16px 15px 15px}.package-card ul{margin:9px 0 11px;gap:5px}}
+@media(max-width:620px){.packages-section{padding-block:16px 20px}.packages-section .section-heading{margin-bottom:12px}.package-grid{grid-template-columns:minmax(0,1fr);gap:12px}.package-card{min-height:0;padding:15px 15px 14px}.package-card>p{min-height:0}.package-card ul{margin:8px 0 10px;gap:4px}.package-price{padding:9px 0 8px}.package-recommended{transform:none}}
