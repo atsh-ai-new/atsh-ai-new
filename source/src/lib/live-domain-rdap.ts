@@ -18,7 +18,7 @@ let bootstrapCache: {services: BootstrapService[]; expiresAt: number} | null = n
 const resultsCache = new Map<string, {value: RegistryLookup; expiresAt: number}>();
 
 export function normalizeDomain(value: string): string | null {
-  if (typeof value !== "string" || value.length > 253 || /[\\/?#@:&\\s]/u.test(value)) return null;
+  if (typeof value !== "string" || value.length > 253 || /[\/\\?#@:&\s]/u.test(value.trim())) return null;
   const domain = domainToASCII(value.trim().toLowerCase().replace(/\.$/, ""));
   if (!domain || domain.length > 253 || domain.length < 4) return null;
   const labels = domain.split(".");
