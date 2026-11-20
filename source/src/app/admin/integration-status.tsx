@@ -6,9 +6,10 @@ type Status={
  catalog:{exists:boolean;published:boolean;total:number;visible:number};
  pricing:{publishedPackages:number};
  gpt:{configured:boolean};
+ n8n?:{eventOutboxConfigured:boolean;contentProductionConfigured:boolean};
  domains:{configured:boolean;mode:string};
  registration:{ready:boolean;emailDelivery:boolean};
- requiredSettings:{gpt:string[];domains:string[];registration:string[]};
+ requiredSettings:{gpt:string[];n8n?:string[];domains:string[];registration:string[]};
 };
 export default function IntegrationStatus(){
  const [status,setStatus]=useState<Status|null>(null);
@@ -44,6 +45,8 @@ export default function IntegrationStatus(){
     `المحفوظ: ${status.catalog.total} · بطاقات منشورة: ${status.catalog.visible} · صفحة المعرض: ${status.catalog.published?"منشورة":"مخفية"}.`)}
    {row("باقات التسعير",status.pricing.publishedPackages>0,`الباقات المنشورة: ${status.pricing.publishedPackages}.`)}
    {row("المساعد GPT",status.gpt.configured,"يحتاج مفتاح OpenAI واسم النموذج في إعدادات الـBackend؛ لا يكفي وجود واجهة الدردشة.",status.requiredSettings.gpt)}
+   {row("n8n — أحداث رحلة العميل",Boolean(status.n8n?.eventOutboxConfigured),
+    "يُظهر هذا الفحص صلاحية إعداد وجهة Webhook والرمز السري فقط؛ لا يثبت استقبال n8n للأحداث قبل إجراء اختبار تسليم فعلي.",status.requiredSettings.n8n)}
    {row("بحث الدومين من Namecheap",status.domains.configured&&status.domains.mode==="production",
     status.domains.configured?`وضع المزود: ${status.domains.mode==="sandbox"?"تجريبي (ليس توافرًا حقيقيًا)":"إنتاجي"}. يلزم اختبار طلب حقيقي.`:"لم تُضبط بيانات Namecheap المعتمدة على الخادم.",status.requiredSettings.domains)}
    {row("تسجيل العملاء وتأكيد البريد",status.registration.ready,
