@@ -88,7 +88,9 @@ export async function checkDomainLive(input, { env = process.env, fetchFn = fetc
   const registrarKeys = ["NAMECHEAP_API_KEY", "NAMECHEAP_API_USER", "NAMECHEAP_USERNAME", "NAMECHEAP_CLIENT_IP"];
   if (env.NAMECHEAP_ENV === "production" && registrarKeys.every(key => Boolean(env[key]))) {
     const result = await checkDomainWithNamecheap(domain, { env, fetchFn });
-    return { ...result, status: result.available ? "available" : "unavailable", verifiedRegistration: true };
+    if (result.configured && typeof result.available === "boolean") {
+      return { ...result, status: result.available ? "available" : "unavailable", verifiedRegistration: true };
+    }
   }
   return checkDomainWithRdap(domain, { fetchFn, services });
 }
