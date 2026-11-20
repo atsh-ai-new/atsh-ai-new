@@ -337,3 +337,38 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .build-hero .hero-price-card { bottom: -16px; }
   .build-hero + .trust-strip { margin-top: 0; }
 }
+
+/* Desktop/tablet parity with the compact mobile homepage.
+   Shared React content and admin fields remain identical at every breakpoint. */
+@media (min-width: 641px) {
+  .build-hero-copy .hero-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 18px;
+    max-width: 540px;
+  }
+  .build-hero-copy .hero-actions > * {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+    text-align: center;
+    box-sizing: border-box;
+  }
+  .build-hero.build-hero-compact {
+    padding-top: 16px;
+    min-height: 0;
+  }
+  .build-hero.build-hero-compact .hero-actions { margin-top: 0; }
+  .build-hero { padding-top: 28px; padding-bottom: 44px; min-height: 0; }
+  .build-hero-copy .hero-trust { margin-top: 16px; }
+  .build-hero .hero-price-card {
+    width: min(290px, 72%);
+    padding: 12px 14px;
+    bottom: -22px;
+  }
+  .build-hero .price-card-top { padding-bottom: 7px; }
+  .build-hero .price-preview-line { padding: 7px 0; }
+  .build-hero .price-preview-total { padding: 7px 0 4px; }
+  .build-hero + .trust-strip { margin-top: 0; }
+}
