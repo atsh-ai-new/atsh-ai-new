@@ -20,7 +20,7 @@ import { priceSectorSelection } from "./sector-pricing.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
 import {queueJourneyEvent,deliverJourneyEvents,eventDestination} from "./customer-event-outbox.js";
-import {checkDomainWithNamecheap} from "./domain-availability.js";
+import {checkDomainLive} from "./domain-registry-lookup.js";
 import {seedCatalogIfAbsent} from "./catalog-starter.js";
 import {deriveQuoteFromOrder} from "./order-quote.js";
 import {ensureInvoiceScheduleOnAcceptance} from "./customer-checkout.js";
@@ -464,13 +464,12 @@ app.get("/api/site-media/:id",route(async(req,res)=>{
 }));
 
 // Sector price is calculated using only published administrator-maintained catalog data.
-// Real registrar lookup when Namecheap credentials are configured; no reservation or purchase.
+// Live Namecheap production availability or authoritative registry RDAP fallback; never purchases/reserves.
 app.get("/api/domains/check",rateLimit({windowMs:60*1000,limit:10,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
  const domain=req.query.domain;
  if(typeof domain!=="string")return res.status(400).json({error:"Invalid domain"});
  try{
-  const result=await checkDomainWithNamecheap(domain);
-  if(!result.configured)return res.status(503).json({error:"Domain registrar is not configured"});
+  const result=await checkDomainLive(domain);
   res.set("Cache-Control","no-store").json(result);
  }catch(e){
   const invalid=e?.message==="Invalid domain";
@@ -654,17 +653,18 @@ app.get("/api/admin/integrations/status",requireAdmin,requireRole("owner","admin
   const c=catalog.rows[0]??null;
   const domainKeys=["NAMECHEAP_API_KEY","NAMECHEAP_API_USER","NAMECHEAP_USERNAME","NAMECHEAP_CLIENT_IP"];
   const domainConfigured=domainKeys.every(key=>Boolean(process.env[key]));
+  const registrarLive=domainConfigured&&process.env.NAMECHEAP_ENV==="production";
   const emailReady=Boolean(process.env.BREVO_API_KEY&&process.env.BREVO_SENDER_EMAIL&&process.env.PUBLIC_SITE_URL);
   res.set("Cache-Control","private, no-store").json({
     api:true,database:true,
     catalog:{exists:!!c,published:Boolean(c?.is_published),total:Number(c?.count??0),visible:Number(c?.published_count??0)},
     pricing:{publishedPackages:packages.rows[0]?.count??0},
     gpt:{configured:Boolean(process.env.OPENAI_API_KEY&&process.env.OPENAI_MODEL)},
-    domains:{configured:domainConfigured,mode:domainConfigured?(process.env.NAMECHEAP_ENV==="production"?"production":"sandbox"):"inactive"},
+    domains:{configured:true,mode:registrarLive?"namecheap-production":"rdap-registry",registrarLive},
     registration:{ready:emailReady,emailDelivery:emailReady},
     requiredSettings:{
       gpt:["OPENAI_API_KEY","OPENAI_MODEL"],
-      domains:domainKeys.concat("NAMECHEAP_ENV=production"),
+      domains:registrarLive?[]:domainKeys.concat("NAMECHEAP_ENV=production (optional for registrar-confirmed availability)"),
       registration:["PUBLIC_SITE_URL","BREVO_API_KEY","BREVO_SENDER_EMAIL","ALLOWED_ORIGINS"]
     }
   });
