@@ -1,4 +1,5 @@
 import { canonicalDomain, checkDomainWithNamecheap } from "./domain-availability.js";
+import { isIP } from "node:net";
 
 // IANA's authoritative RDAP bootstrap. This provides REAL registration records,
 // not a registrar quote and never a guarantee that an unregistered name is purchasable.
@@ -12,7 +13,8 @@ function safeRegistryBase(value) {
     const url = new URL(value);
     if (url.protocol !== "https:" || url.username || url.password || url.port || url.search || url.hash) return null;
     if (!/^[a-z0-9.-]+$/i.test(url.hostname) || !url.hostname.includes(".") ||
-        url.hostname === "localhost" || url.hostname.endsWith(".localhost")) return null;
+        url.hostname === "localhost" || url.hostname.endsWith(".localhost") ||
+        url.hostname.endsWith(".local") || url.hostname.endsWith(".internal") || isIP(url.hostname)) return null;
     return url;
   } catch { return null; }
 }
