@@ -404,17 +404,17 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
 
       {activeCustomSections(contentData.sections).map((section) => <CustomSection key={section.id} section={section} />)}
 
-      <section className="why-section" id="why">
+      {benefitCards.length > 0 && <section className="why-section" id="why">
         <div className="section-heading"><div><span className="section-kicker">{copy("whyKicker")}</span><h2>{copy("whyTitle")}</h2></div><p>{copy("whyDescription")}</p></div>
         {benefitCards.length > 0 && <div className="benefit-grid">
           {benefitCards.map((item, index) => <article key={item.id ?? index}><span className="benefit-icon">{item.icon || String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.description}</p></article>)}
         </div>}
-      </section>
+      </section>}
 
-      <section className="how-section" id="how">
+      {processCards.length > 0 && <section className="how-section" id="how">
         <div className="section-heading"><div><span className="section-kicker">{copy("howKicker")}</span><h2>{copy("howTitle")}</h2></div><p>{copy("howDescription")}</p></div>
         {processCards.length > 0 && <div className="how-grid">{processCards.map((item, index) => <article key={item.id ?? index}><span>{item.icon || String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.description}</p></article>)}</div>}
-      </section>
+      </section>}
 
       <section className="packages-section" id="packages">
         <div className="section-heading"><div><span className="section-kicker">{copy("packagesKicker")}</span><h2>{copy("packagesTitle")}</h2></div><p>{copy("packagesDescription")}</p></div>
