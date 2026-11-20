@@ -435,13 +435,6 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
           <summary style={{cursor:"pointer",fontWeight:700}}>{t("فحص توافر الدومين الحقيقي قبل الشراء","Check domain availability before purchase")}</summary>
           <DomainLookup locale={locale} onDomainChange={setRequestedDomainName}/>
         </details>
-        {selectedSector && sectorPricedAddons.length>0 && <section style={{border:"1px solid #d5e1ef",background:"#fff",padding:16,borderRadius:12,marginBottom:14}}>
-          <h3>{t("إضافات خاصة بنظام","Additional features for")} {isEnglish?selectedSector.slug:selectedSector.name}</h3>
-          {sectorPricedAddons.map(option=><label key={option.code} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"9px 0"}}>
-            <span><input type="checkbox" checked={sectorAddonCodes.includes(option.code)} onChange={event=>setSectorAddonCodes(current=>{const next=event.target.checked?[...new Set([...current,option.code])]:current.filter(x=>x!==option.code);saveGuestWorkspace({sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes:next,source:"configurator"});return next;})}/> {localizeOption(option.code,option.name)}</span>
-            <b>{money(option.price)} {option.pricingType==="monthly"?t("/ شهري","/ month"):option.pricingType==="yearly"?t("/ سنوي","/ year"):""}</b>
-          </label>)}
-        </section>}
         {selectedProjectDraftId&&<div role="group" aria-label={t("حفظ اختيارات المشروع","Save project selections")} style={{background:"#eaf8ee",color:"#166534",padding:12,borderRadius:10,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}><span>{t("أنت تستكمل مسودة مشروع محفوظة في حسابك. سيتم ربط الطلب النهائي بهذه المسودة فقط.","You are editing a saved project draft in your account. The final request will be linked only to this draft.")}</span><button type="button" onClick={()=>void saveProjectChoices()} style={{background:"#203958",color:"white",border:0,borderRadius:9,padding:"10px 13px",cursor:"pointer"}}>حفظ الاختيارات والإضافات في مشروعي</button></div>}
         <div className="section-heading configurator-title"><div><span className="section-kicker">{copy("configuratorKicker")}</span><h2>{copy("configuratorTitle")}</h2></div><p>{copy("configuratorDescription")}</p></div>
         <div className="builder-layout">
@@ -518,6 +511,13 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
               <div className="builder-controls"><button type="button" className="button button-outline" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0}>{copy("previousStep")}</button><span>{step + 1} / {steps.length}</span>{step < steps.length - 1 ? <button type="button" className="button" onClick={() => { if (step === 0 && !packageId) return; if (step === 5 && (!customer.name || !customer.email || !customer.phone)) return; setStep((current) => Math.min(steps.length - 1, current + 1)); }} disabled={(step === 0 && !packageId) || (step === 5 && (!customer.name || !customer.email || !customer.phone))}>{copy("nextStep")} <span>←</span></button> : <button type="button" className="button button-outline" onClick={() => setStep(0)}>{copy("editChoices")}</button>}</div>
             </form>
           </div>
+        {selectedSector && sectorPricedAddons.length>0 && <section style={{border:"1px solid #d5e1ef",background:"#fff",padding:16,borderRadius:12,marginBottom:14}}>
+          <h3>{t("الإضافات الاختيارية","Optional add-ons")}</h3>
+          {sectorPricedAddons.map(option=><label key={option.code} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"9px 0"}}>
+            <span><input type="checkbox" checked={sectorAddonCodes.includes(option.code)} onChange={event=>setSectorAddonCodes(current=>{const next=event.target.checked?[...new Set([...current,option.code])]:current.filter(x=>x!==option.code);saveGuestWorkspace({sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes:next,source:"configurator"});return next;})}/> {localizeOption(option.code,option.name)}</span>
+            <b>{money(option.price)} {option.pricingType==="monthly"?t("/ شهري","/ month"):option.pricingType==="yearly"?t("/ سنوي","/ year"):""}</b>
+          </label>)}
+        </section>}
           <aside className="quote-sidebar">
             <div className="quote-summary-card">
               <div className="summary-heading"><div><span className="section-kicker">{copy("quoteSummaryKicker")}</span><h3>{copy("quoteSummaryTitle")}</h3></div><span className="summary-status">{packageId ? copy("quoteConfiguring") : copy("quoteStartSelecting")}</span></div>
