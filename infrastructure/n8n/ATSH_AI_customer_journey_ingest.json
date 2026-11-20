@@ -1,0 +1,113 @@
+{
+  "name": "ATSH AI | Customer Journey Event Ingest (authenticated + deduplicated)",
+  "nodes": [
+    {
+      "id": "atsh-webhook",
+      "name": "ATSH Signed Header Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        260,
+        280
+      ],
+      "webhookId": "atsh-customer-journey",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "atsh-journey",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "atsh-validate",
+      "name": "Validate ATSH Envelope",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        280
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const raw = $json.body;\nif (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid ATSH event payload');\nconst id = String(raw.id ?? '');\nconst type = raw.type;\nconst key = raw.key;\nconst payload = raw.payload;\nif (!id || id.length > 128 || !/^[a-z]+(?:[._][a-z]+)+$/.test(type || '') || typeof key !== 'string' || !key || key.length > 180 || !payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('Invalid ATSH event envelope');\nif ($json.headers?.['x-atsh-idempotency-key'] !== key || String($json.headers?.['x-atsh-event-id'] ?? '') !== id) throw new Error('ATSH event headers do not match payload');\nreturn {json:{event_id:id,event_type:type,idempotency_key:key,payload}};"
+      }
+    },
+    {
+      "id": "atsh-pg",
+      "name": "Store Once in n8n Postgres",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        740,
+        280
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH inserted AS (\n INSERT INTO public.atsh_inbound_events (event_id,idempotency_key,event_type,payload)\n VALUES ($1::text,$2::text,$3::text,$4::jsonb)\n ON CONFLICT (idempotency_key) DO NOTHING\n RETURNING event_id\n)\nSELECT $1::text AS event_id, EXISTS(SELECT 1 FROM inserted) AS inserted;",
+        "options": {
+          "queryReplacement": "={{ [$json.event_id, $json.idempotency_key, $json.event_type, JSON.stringify($json.payload)] }}",
+          "queryBatching": "single"
+        }
+      }
+    },
+    {
+      "id": "atsh-response",
+      "name": "Respond Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        980,
+        280
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ accepted: true, eventId: $json.event_id, inserted: $json.inserted }) }}",
+        "options": {
+          "responseCode": 202
+        }
+      }
+    }
+  ],
+  "connections": {
+    "ATSH Signed Header Intake": {
+      "main": [
+        [
+          {
+            "node": "Validate ATSH Envelope",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate ATSH Envelope": {
+      "main": [
+        [
+          {
+            "node": "Store Once in n8n Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Once in n8n Postgres": {
+      "main": [
+        [
+          {
+            "node": "Respond Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}
