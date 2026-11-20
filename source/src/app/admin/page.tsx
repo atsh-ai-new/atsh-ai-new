@@ -150,7 +150,20 @@ export default function AdminPage() {
   const changeOption = <K extends keyof Option,>(id: string, key: K, value: Option[K]) => setOptions((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
   const savePackage = (item: Package) => save(() => api(`packages/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, tagline: item.tagline, description: item.description, price: item.is_custom_quote ? 0 : Number(item.price), currency: "EGP", features: item.features, isFeatured: item.is_featured, isCustomQuote: item.is_custom_quote, isPublished: item.is_published, sortOrder: item.sort_order }) }), "تم حفظ البطاقة وتحديثها للعملاء.");
   const saveOption = (item: Option) => save(() => api(`options/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, description: item.description, price: Number(item.price), pricingType: item.pricing_type, unitLabel: item.unit_label, isRequired: item.is_required, isActive: item.is_active, sortOrder: item.sort_order }) }), "تم حفظ الإضافة في قاعدة البيانات.");
-  const savePage = () => save(() => api("pages/home", { method: "PATCH", body: JSON.stringify({ locale: "ar", content: page, isPublished: true }) }), "تم نشر محتوى الصفحة الرئيسية.");
+  const savePage = () => save(async () => {
+    // Preserve structured CMS sections/cards when the quick text editor publishes.
+    const current = await api("pages");
+    const home = (current.pages ?? []).find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar");
+    const textChanges = Object.fromEntries(siteCopyFields.map((field) => [field.key, page[field.key] ?? siteCopyDefaults[field.key] ?? ""]));
+    const content = { ...(home?.content ?? {}), ...textChanges };
+    await api("pages/home", { method: "PATCH", body: JSON.stringify({ locale: "ar", content, isPublished: true }) });
+    const published = await fetch("/api/site-content/home?locale=ar", { cache: "no-store" });
+    if (!published.ok) throw new Error("تم الحفظ، لكن تعذر التحقق من نشر الصفحة الرئيسية.");
+    const result = await published.json();
+    if (!result.page || Object.entries(textChanges).some(([key, value]) => result.page.content?.[key] !== value)) {
+      throw new Error("تم إرسال التعديلات لكن المحتوى المنشور لا يطابقها. تحقق من اتصال الواجهة والـ API بنفس قاعدة البيانات.");
+    }
+  }, "تم حفظ النصوص والتحقق من ظهورها في واجهة المحتوى المنشور.");
   const saveTheme = () => save(() => api("settings", { method: "PATCH", body: JSON.stringify({ vatRate: Number(vatRate), theme }) }), "تم حفظ الألوان والخط والصور والضريبة.");
   const uploadThemeImage = async (event: ChangeEvent<HTMLInputElement>, key: "logoUrl" | "heroImageUrl" | "backgroundImageUrl") => {
     const file = event.target.files?.[0]; if (!file) return;
