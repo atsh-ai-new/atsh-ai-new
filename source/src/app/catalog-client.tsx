@@ -7,7 +7,7 @@ import {loadGuestWorkspace,saveGuestWorkspace} from "@/lib/customer-workspace";
 import CatalogCardPreview from "@/components/catalog-card-preview";
 import {englishCatalogSectors,englishTemplateLabel,englishTemplateFeatures} from "@/lib/sector-en";
 import {isInteractiveSector} from "@/components/sector-interactive-demo";
-type Item=SectorTemplate&{published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;previewUrl?:string;sectorId?:string;subcategoryId?:string};
+type Item=SectorTemplate&{published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;previewUrl?:string;sectorId?:string;subcategoryId?:string;basePrice?:number|null};
 const defaults:Item[]=sectorTemplates.map((s,i)=>({...s,published:true,sortOrder:i*10}));
 export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
  const [items,setItems]=useState<Item[]>(defaults);
@@ -78,7 +78,10 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
      </div>
      <h3 style={{margin:"2px 0",color:"#203958"}}>{en?englishTemplateLabel(item.slug,item.name):item.name}</h3>
      <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("جرّب النظام بملء الشاشة ←","Try full-screen demo →")}</Link>
-     <Link onClick={()=>choose(item)} href={`${base}/?sector=${encodeURIComponent(item.slug)}#configurator`} style={{textAlign:"center",fontSize:13,color:"#203958",textDecoration:"underline"}}>{t("اختر النظام وخصص طلبك","Choose & customize this solution")}</Link>
+     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",borderTop:"1px solid #e2e8f0",paddingTop:12}}>
+      <span style={{fontWeight:800,color:"#203958"}}>{typeof item.basePrice==="number"&&Number.isFinite(item.basePrice)&&item.basePrice>=0? t("السعر الأساسي: ","Base price: ")+item.basePrice.toLocaleString(en?"en-EG":"ar-EG")+t(" ج.م"," EGP"):t("السعر يُحدد من لوحة الإدارة","Price pending admin setup")}</span>
+      <Link onClick={()=>choose(item)} href={`${base}/?sector=${encodeURIComponent(item.slug)}#configurator`} style={{fontSize:13,color:"#203958",textDecoration:"underline",fontWeight:700}}>{t("أضف المواصفات واحسب الإجمالي ←","Add options & calculate total →")}</Link>
+     </div>
      {item.previewUrl?.startsWith("https://")&&<a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{textAlign:"center",fontSize:13,color:"#1e749b"}}>{t("افتح نسخة تجريبية منشورة خارجيًا ↗","Open external demo ↗")}</a>}
     </article>})}
    </div>
