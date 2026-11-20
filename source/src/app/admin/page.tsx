@@ -161,189 +161,24 @@ export default function AdminPage() {
     const home = (current.pages ?? []).find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar");
     const textChanges = Object.fromEntries(siteCopyFields.map(([key]) => [key, page[key] ?? siteCopyDefaults[key] ?? ""]));
     const content: Record<string, unknown> = { ...(home?.content ?? {}), ...textChanges };
-    // Keep legacy quick-text fields and structured homepage cards in sync.
-    // Only update the built-in cards by their stable IDs; preserve custom cards and their metadata.
-    const synchronizeCards = (collection: string, prefix: string, count: number) => {
-      const existing = content[collection];
-      if (!Array.isArray(existing)) return;
-      content[collection] = existing.map((card: unknown) => {
-        if (!card || typeof card !== "object" || Array.isArray(card)) return card;
-        const item = card as Record<string, unknown>;
-        const match = typeof item.id === "string" ? new RegExp(`^${prefix}-(\\d+)"use client";
-
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
-import { formatEgp } from "@/lib/catalog";
-import { siteCopyDefaults, siteCopyFields } from "@/lib/site-copy";
-import ContentManager from "./content-manager";
-import CatalogManager from "./catalog-manager";
-import AssistantKnowledge from "./assistant-knowledge";
-import IntegrationStatus from "./integration-status";
-import ContentStudio from "./content-studio";
-import JourneyManager from "./journey-manager";
-import CommercialManager from "./commercial-manager";
-
-type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
-type View = "overview" | "integrations" | "catalogs" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "packages" | "options" | "theme" | "inbox" | "team" | "audit";
-type Package = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number };
-type Option = { id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number };
-type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
-type Member = { id: string; email: string; display_name: string; role: Exclude<Role, "owner">; is_active: boolean; created_at: string };
-type Theme = { navy: string; blue: string; gold: string; page: string; logoUrl: string; heroImageUrl: string; backgroundImageUrl: string; fontFamily: "IBM Plex Sans Arabic" | "Cairo" | "Tajawal"; cardRadius: number };
-type Audit = { id: number; actor: string; action: string; entity_type: string; created_at: string };
-type AdminUser = { email: string; role: Role };
-type EmailStatus = { configured: boolean; from: string; replyTo: string };
-type PageContent = Record<string, string>;
-type ApiPayload = Record<string, any>;
-type PackageDraft = { name: string; tagline: string; description: string; price: string; features: string; copyFromPackageId: string; isFeatured: boolean; isCustomQuote: boolean; isPublished: boolean };
-type OptionDraft = { packageId: string; code: string; name: string; description: string; price: string; pricingType: Option["pricing_type"]; unitLabel: string; isRequired: boolean; isActive: boolean };
-
-const nav: Array<{ id: View; label: string; icon: string }> = [
-  { id: "overview", label: "نظرة عامة", icon: "◫" }, { id: "integrations", label: "حالة الربط", icon: "🔌" }, { id: "catalogs", label: "إدارة الكتالوجات", icon: "▦" }, { id:"assistant-knowledge",label:"معرفة مساعد GPT",icon:"✦" }, { id: "content", label: "نصوص الرئيسية", icon: "▤" },
-  { id: "pages", label: "تحرير الصفحات والبطاقات", icon: "▧" }, { id: "works", label: "سجل الأعمال السابقة", icon: "▣" },
-  { id: "content-studio", label: "منشئ المحتوى", icon: "✦" },
-  { id: "journey", label: "توجيه العملاء", icon: "◎" },
-  { id: "commercial", label: "العروض والعقود", icon: "▤" },
-  { id: "packages", label: "الباقات", icon: "◇" }, { id: "options", label: "الإضافات", icon: "＋" },
-  { id: "theme", label: "الألوان والضريبة", icon: "◉" }, { id: "inbox", label: "طلبات العملاء", icon: "✉" },
-  { id: "team", label: "فريق الإدارة", icon: "♙" }, { id: "audit", label: "سجل التغييرات", icon: "≡" }
-];
-const defaultTheme: Theme = { navy: "#203958", blue: "#4c78ae", gold: "#b59a6b", page: "#faf9f5", logoUrl: "/images/atsh-logo.jpg", heroImageUrl: "/images/atsh-hero.jpg", backgroundImageUrl: "", fontFamily: "IBM Plex Sans Arabic", cardRadius: 16 };
-const statuses = ["new", "reviewing", "quoted", "approved", "in_progress", "completed", "cancelled"] as const;
-const statusLabels: Record<string, string> = { new: "جديد", reviewing: "قيد المراجعة", quoted: "تم إرسال عرض", approved: "موافق عليه", in_progress: "قيد التنفيذ", completed: "مكتمل", cancelled: "ملغي" };
-const roleLabels: Record<Role, string> = { owner: "مالك المنصة", admin: "مدير", editor: "محرر محتوى", sales: "متابعة العملاء", viewer: "مشاهدة فقط" };
-
-async function api(path: string, init?: RequestInit): Promise<ApiPayload> {
-  const response = await fetch(`/api/admin/${path}`, { ...init, credentials: "include", cache: "no-store", headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers } });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || data.error || "تعذر تنفيذ العملية.");
-  return data;
-}
-
-export default function AdminPage() {
-  const [user, setUser] = useState<AdminUser | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [view, setView] = useState<View>("overview");
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [recoveryMode, setRecoveryMode] = useState(false);
-  const [recoveryCode, setRecoveryCode] = useState("");
-  const [newOwnerPassword, setNewOwnerPassword] = useState("");
-  const [recoveryMessage, setRecoveryMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [packages, setPackages] = useState<Package[]>([]);
-  const [options, setOptions] = useState<Option[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [emailStatus, setEmailStatus] = useState<EmailStatus>({ configured: false, from: "info@atsh-ai.com", replyTo: "sales@atsh-ai.com" });
-  const [members, setMembers] = useState<Member[]>([]);
-  const [audit, setAudit] = useState<Audit[]>([]);
-  const [page, setPage] = useState<PageContent>(siteCopyDefaults);
-  const [theme, setTheme] = useState<Theme>(defaultTheme);
-  const [vatRate, setVatRate] = useState(14);
-  const [memberName, setMemberName] = useState("");
-  const [memberEmail, setMemberEmail] = useState("");
-  const [memberPassword, setMemberPassword] = useState("");
-  const [memberRole, setMemberRole] = useState<Member["role"]>("sales");
-  const [packageDraft, setPackageDraft] = useState<PackageDraft>({ name: "", tagline: "", description: "", price: "", features: "", copyFromPackageId: "", isFeatured: false, isCustomQuote: false, isPublished: false });
-  const [optionDraft, setOptionDraft] = useState<OptionDraft>({ packageId: "", code: "", name: "", description: "", price: "", pricingType: "fixed", unitLabel: "", isRequired: false, isActive: true });
-
-  const loadData = useCallback(async () => {
-    const [catalog, inbox, settings, pages, team, changes, email] = await Promise.all([
-      api("packages"), api("orders"), api("settings"), api("pages"), api("team"), api("audit"), api("email-status")
-    ]);
-    setPackages(catalog.packages ?? []); setOptions(catalog.options ?? []); setOrders(inbox.orders ?? []);
-    setVatRate(Number(settings.settings?.vat_rate ?? 14)); setTheme({ ...defaultTheme, ...(settings.settings?.theme ?? {}) });
-    setPage({ ...siteCopyDefaults, ...(pages.pages?.find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar")?.content ?? {}) });
-    setMembers(team.members ?? []); setAudit(changes.logs ?? []);
-    setEmailStatus({
-      configured: Boolean(email.configured),
-      from: typeof email.from === "string" ? email.from : "info@atsh-ai.com",
-      replyTo: typeof email.replyTo === "string" ? email.replyTo : "sales@atsh-ai.com",
-    });
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    api("me").then((data) => { if (!active) return; setUser({ email: data.email, role: data.role }); return loadData(); })
-      .catch(() => undefined).finally(() => { if (active) setAuthChecked(true); });
-    return () => { active = false; };
-  }, [loadData]);
-
-  const canEditCatalog = user?.role === "owner" || user?.role === "admin";
-  const canEditContent = canEditCatalog || user?.role === "editor";
-  const canEditOrders = canEditCatalog || user?.role === "sales";
-  const canManageTeam = user?.role === "owner";
-  const visibleNav = nav.filter((item) => (item.id !== "integrations" || canEditCatalog) && (item.id !== "catalogs" || canEditCatalog) && (item.id !== "assistant-knowledge" || canEditContent) && (item.id !== "team" || canManageTeam) && (item.id !== "options" && item.id !== "packages" && item.id !== "theme" ? true : canEditCatalog) && (item.id !== "content" && item.id !== "pages" && item.id !== "works" && item.id !== "content-studio" || canEditContent));
-  const newOrders = useMemo(() => orders.filter((order) => order.status === "new").length, [orders]);
-  const title = nav.find((item) => item.id === view)?.label ?? "إدارة المنصة";
-
-  const login = async (event: FormEvent) => {
-    event.preventDefault(); setBusy(true); setError("");
-    try {
-      const result = await api("login", { method: "POST", body: JSON.stringify({ email: loginEmail, password: loginPassword }) });
-      setUser({ email: result.email, role: result.role }); setLoginPassword(""); await loadData();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر تسجيل الدخول."); }
-    finally { setBusy(false); }
-  };
-
-  const requestOwnerPasswordReset = async () => {
-    if (!loginEmail.trim()) { setError("أدخل البريد الإلكتروني لحساب المالك أولًا."); return; }
-    setBusy(true); setError(""); setRecoveryMessage("");
-    try {
-      const result = await api("password-reset/request", { method: "POST", body: JSON.stringify({ email: loginEmail }) });
-      setRecoveryMessage(result.message || "إذا كان البريد يخص مالك المنصة، تحقق من سجلات خدمة API في Coolify.");
-      setRecoveryMode(true);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر طلب استعادة كلمة المرور."); }
-    finally { setBusy(false); }
-  };
-
-  const completeOwnerPasswordReset = async (event: FormEvent) => {
-    event.preventDefault(); setBusy(true); setError("");
-    try {
-      const result = await api("password-reset/complete", { method: "POST", body: JSON.stringify({ token: recoveryCode, password: newOwnerPassword }) });
-      setRecoveryCode(""); setNewOwnerPassword(""); setRecoveryMode(false);
-      setRecoveryMessage(result.message || "تم تغيير كلمة مرور المالك. سجّل الدخول بها الآن.");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر تغيير كلمة المرور."); }
-    finally { setBusy(false); }
-  };
-
-  const save = async (action: () => Promise<unknown>, success: string) => {
-    setBusy(true); setError(""); setNotice("");
-    try {
-      await action();
-      setNotice(success);
-      // A secondary dashboard refresh must not report a successful publish as failed.
-      try { await loadData(); }
-      catch { setNotice(`${success} تعذر تحديث بعض بيانات لوحة الإدارة؛ أعد فتحها لاحقًا.`); }
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر حفظ التغييرات."); }
-    finally { setBusy(false); }
-  };
-
-  const logout = async () => { await api("logout", { method: "POST" }).catch(() => undefined); setUser(null); setPackages([]); setOrders([]); };
-
-  const changePackage = <K extends keyof Package,>(id: string, key: K, value: Package[K]) => setPackages((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
-  const changeOption = <K extends keyof Option,>(id: string, key: K, value: Option[K]) => setOptions((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
-  const savePackage = (item: Package) => save(() => api(`packages/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, tagline: item.tagline, description: item.description, price: item.is_custom_quote ? 0 : Number(item.price), currency: "EGP", features: item.features, isFeatured: item.is_featured, isCustomQuote: item.is_custom_quote, isPublished: item.is_published, sortOrder: item.sort_order }) }), "تم حفظ البطاقة وتحديثها للعملاء.");
-  const saveOption = (item: Option) => save(() => api(`options/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, description: item.description, price: Number(item.price), pricingType: item.pricing_type, unitLabel: item.unit_label, isRequired: item.is_required, isActive: item.is_active, sortOrder: item.sort_order }) }), "تم حفظ الإضافة في قاعدة البيانات.");
-  const savePage = () => save(async () => {
-    // Preserve structured CMS sections/cards when the quick text editor publishes.
-    const current = await api("pages");
-    const home = (current.pages ?? []).find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar");
-    const textChanges = Object.fromEntries(siteCopyFields.map(([key]) => [key, page[key] ?? siteCopyDefaults[key] ?? ""]));
-).exec(item.id) : null;
-        if (!match || Number(match[1]) < 1 || Number(match[1]) > count) return card;
+    // Synchronize only built-in cards, preserving custom cards and metadata.
+    const sync = (key: string, prefix: string, count: number) => {
+      if (!Array.isArray(content[key])) return;
+      content[key] = (content[key] as Array<Record<string, unknown>>).map(item => {
+        if (!item || typeof item !== "object" || typeof item.id !== "string") return item;
+        const match = item.id.match(new RegExp("^" + prefix + "-([0-9]+)$"));
+        if (!match || Number(match[1]) < 1 || Number(match[1]) > count) return item;
         const n = Number(match[1]);
-        const titleKey = prefix === "faq" ? `faq${n}Question` : prefix === "trust" ? `trust${n}` : `${prefix}${n}Title`;
-        const descriptionKey = prefix === "faq" ? `faq${n}Answer` : `${prefix}${n}Description`;
+        const titleKey = prefix === "faq" ? "faq" + n + "Question" : prefix === "trust" ? "trust" + n : prefix + n + "Title";
+        const descriptionKey = prefix === "faq" ? "faq" + n + "Answer" : prefix + n + "Description";
         return { ...item, title: textChanges[titleKey] ?? item.title,
           ...(prefix === "trust" ? {} : { description: textChanges[descriptionKey] ?? item.description }) };
       });
     };
-    synchronizeCards("benefitCards", "benefit", 4);
-    synchronizeCards("processCards", "step", 3);
-    synchronizeCards("faqEntries", "faq", 5);
-    synchronizeCards("trustItems", "trust", 4);
+    sync("benefitCards", "benefit", 4);
+    sync("processCards", "step", 3);
+    sync("faqEntries", "faq", 5);
+    sync("trustItems", "trust", 4);
     await api("pages/home", { method: "PATCH", body: JSON.stringify({ locale: "ar", content, isPublished: true }) });
     const published = await fetch("/api/site-content/home?locale=ar", { cache: "no-store" });
     if (!published.ok) throw new Error("تم الحفظ، لكن تعذر التحقق من نشر الصفحة الرئيسية.");
