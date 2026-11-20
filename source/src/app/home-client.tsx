@@ -427,9 +427,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
             <button className={item.recommended ? "button package-cta" : "button button-outline package-cta"} onClick={() => begin(item.id as PackageId)}>{item.price === null ? copy("customQuoteButton") : copy("packageButton")} <span>←</span></button>
           </article>)}
         </div>
-        <div className="comparison-wrap"><h3>{copy("comparisonTitle")}</h3><div className="comparison-scroll"><table className="comparison-table"><thead><tr><th>{copy("comparisonFeatureTitle")}</th>{visiblePackages.map((item) => <th key={item.id}>{item.name}</th>)}</tr></thead><tbody>
-          {[...new Set(visiblePackages.flatMap((item) => item.features))].map((feature) => <tr key={feature}><th>{feature}</th>{visiblePackages.map((item) => <td key={item.id}>{item.features.includes(feature) ? "✓" : "—"}</td>)}</tr>)}
-        </tbody></table></div></div>
+
       </section>
 
       <section className="configurator-section" id="configurator">
