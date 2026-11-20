@@ -10,7 +10,16 @@ export async function POST(request:Request) {
     const expectedOrigin=process.env.NODE_ENV==="production"
       ? new URL(process.env.ATSH_SITE_ORIGIN??"https://atsh-ai.com").origin
       : new URL(request.url).origin;
-    allowedOrigin=originHeader!==null&&new URL(originHeader).origin===expectedOrigin;
+    // Mobile browsers may open the site via www while desktop uses the apex.
+    // Accept only the canonical site and its www alias; forward the canonical
+    // origin upstream because the API allowlist may contain only the apex.
+    const requestedOrigin=originHeader===null?null:new URL(originHeader);
+    const canonical=new URL(expectedOrigin);
+    allowedOrigin=requestedOrigin!==null && requestedOrigin.protocol===canonical.protocol &&
+      (requestedOrigin.host===canonical.host ||
+       (canonical.hostname.startsWith("www.")
+         ? requestedOrigin.host===canonical.host.slice(4)
+         : requestedOrigin.host===`www.${canonical.host}`));
   }catch{/* Reject missing or malformed origins. */}
   if(!allowedOrigin||!originHeader)return NextResponse.json({error:"Origin not allowed"},{status:403});
   const raw=await request.text();
@@ -24,7 +33,7 @@ export async function POST(request:Request) {
   }catch{return NextResponse.json({error:"API unavailable"},{status:503});}
   try{
     const upstream=await fetch(new URL("/api/visitor/assistant",base),{
-      method:"POST",headers:{"Content-Type":"application/json","Origin":originHeader},body:raw,
+      method:"POST",headers:{"Content-Type":"application/json","Origin":process.env.NODE_ENV==="production" ? new URL(process.env.ATSH_SITE_ORIGIN??"https://atsh-ai.com").origin : originHeader},body:raw,
       cache:"no-store",redirect:"manual",signal:AbortSignal.timeout(30000)
     });
     const contentType=upstream.headers.get("content-type");
