@@ -327,3 +327,13 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .build-hero .price-preview-total strong { font-size: 12px; }
   .build-hero .hero-price-card small { font-size: 8px; }
 }
+
+/* Mobile homepage: tighten the three marked gaps around hero actions, image and next section. */
+@media (max-width: 640px) {
+  .build-hero { gap: 12px; padding-top: 8px; padding-bottom: 30px; }
+  .build-hero-copy .hero-actions { margin-top: 0; }
+  .build-hero-copy .hero-trust { margin-top: 12px; margin-bottom: 0; }
+  .build-hero-art { margin-top: 0; }
+  .build-hero .hero-price-card { bottom: -16px; }
+  .build-hero + .trust-strip { margin-top: 0; }
+}
