@@ -317,3 +317,13 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .build-hero.build-hero-compact { padding-top: 8px; }
   .build-hero.build-hero-compact .hero-actions { margin-top: 0; }
 }
+
+/* Mobile hero estimate: compact floating card instead of the oversized overlay. */
+@media (max-width: 640px) {
+  .build-hero .hero-price-card { width: min(230px, 64%); padding: 9px 11px; border-radius: 13px; inset-inline-start: -4px; bottom: -22px; }
+  .build-hero .price-card-top { font-size: 9px; padding-bottom: 6px; }
+  .build-hero .price-preview-line { font-size: 9px; gap: 6px; padding: 5px 0; }
+  .build-hero .price-preview-total { font-size: 9px; gap: 6px; padding: 6px 0 4px; }
+  .build-hero .price-preview-total strong { font-size: 12px; }
+  .build-hero .hero-price-card small { font-size: 8px; }
+}
