@@ -104,7 +104,7 @@ export default function SectorPreview({template,demoSlug,pricedAddons=[],basePri
         </>}
       </section>
     </div>}
-    {!embedded && <details style={{marginTop:24,background:"#f8fafc",border:"1px solid #dce5f0",borderRadius:14,padding:14}}>
+    {!embedded && <details id="customize" style={{marginTop:24,background:"#f8fafc",border:"1px solid #dce5f0",borderRadius:14,padding:14}}>
       <summary style={{cursor:"pointer",fontWeight:800,color:"#203958",padding:10}}>{t("اختر هذا النظام وخصص طلبك: الشعار والاسم والألوان والإضافات","Select and customize: logo, name, colors and add-ons")}</summary>
       <div style={{marginTop:18}}>
     <section style={{background:"white",borderRadius:18,border:"1px solid #e2e8f0",padding:20,marginBottom:18}}>
@@ -130,7 +130,15 @@ export default function SectorPreview({template,demoSlug,pricedAddons=[],basePri
          <span style={{flex:"1 1 120px"}}>{addon.name}</span><strong style={{fontSize:13}}>{addon.price.toLocaleString(en?"en-EG":"ar-EG")} {t("ج.م","EGP")}{addon.pricingType==="monthly"?t("/ شهر","/ month"):addon.pricingType==="yearly"?t("/ سنة","/ year"):""}</strong>
        </label>)}
       </div>:<p style={{fontSize:13,color:"#60728a"}}>{t("لا توجد إضافات قطاعية محددة الأسعار لهذا النموذج حاليًا.","No priced sector add-ons have been published for this demo.")}</p>}
-      <Link href={`${base}/?sector=${encodeURIComponent(template.slug)}#configurator`} style={{display:"inline-block",background:brand,color:"white",borderRadius:10,padding:"11px 15px",textDecoration:"none",fontWeight:700}}>{t("متابعة الطلب والتسعير مع الإضافات","Continue with selected add-ons")} المحددة ←</Link>
+      <div role="status" style={{background:"#f1f5f9",padding:16,borderRadius:12,display:"grid",gap:8}}>
+        <strong>{t("ملخص سعر النظام الجاهز وإضافاته","Ready-made system and add-on pricing")}</strong>
+        <div>{t("سعر الكتالوج الأساسي","Catalog base price")}: {basePrice===null?t("لم يحدده المسؤول بعد","Not set by admin yet"):`${basePrice.toLocaleString(en?"en-EG":"ar-EG")} ${t("ج.م","EGP")}`}</div>
+        <div>{t("الإضافات لمرة واحدة","One-time add-ons")}: {pricedAddons.filter(a=>selectedAddons.includes(a.code)&&a.pricingType==="fixed").reduce((sum,a)=>sum+a.price,0).toLocaleString(en?"en-EG":"ar-EG")} {t("ج.م","EGP")}</div>
+        <strong>{t("الإجمالي المبدئي لمرة واحدة","Estimated one-time total")}: {basePrice===null?t("بانتظار سعر الكتالوج","Awaiting catalog price"):`${(basePrice+pricedAddons.filter(a=>selectedAddons.includes(a.code)&&a.pricingType==="fixed").reduce((sum,a)=>sum+a.price,0)).toLocaleString(en?"en-EG":"ar-EG")} ${t("ج.م","EGP")}`}</strong>
+        <div>{t("إضافات شهرية","Monthly add-ons")}: {pricedAddons.filter(a=>selectedAddons.includes(a.code)&&a.pricingType==="monthly").reduce((sum,a)=>sum+a.price,0).toLocaleString(en?"en-EG":"ar-EG")} {t("ج.م/شهر","EGP/month")}</div>
+        <div>{t("إضافات سنوية","Yearly add-ons")}: {pricedAddons.filter(a=>selectedAddons.includes(a.code)&&a.pricingType==="yearly").reduce((sum,a)=>sum+a.price,0).toLocaleString(en?"en-EG":"ar-EG")} {t("ج.م/سنة","EGP/year")}</div>
+        <small>{t("أضف من لوحة الإدارة أسعار الصفحات الإضافية والشعار والهوية والدومين والاستضافة كبنود مستقلة؛ لن نعيد تسعير باقة موقع جديدة.","Set prices for extra pages, logo, identity, domain and hosting as catalog add-ons in admin; no new website package is selected.")}</small>
+      </div>
     </section>
 
     {demoSlug && interactiveDemoPaths[demoSlug] && <section aria-label={t("نوع المعاينة","Demo type")} style={{background:"#fff",border:"1px solid #dce5f0",borderRadius:14,padding:12,marginBottom:16,display:"flex",gap:9,flexWrap:"wrap",alignItems:"center"}}>
