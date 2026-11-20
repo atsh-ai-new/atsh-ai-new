@@ -305,3 +305,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .build-hero-copy h1 { margin-top: 0; }
   .build-hero-copy h1:empty { display: none; }
 }
+
+/* Tighten the transition between the configurator and FAQ on small screens. */
+@media (max-width: 640px) {
+  .configurator-section { padding-bottom: 24px; }
+  .faq-section { padding-top: 24px; }
+}
