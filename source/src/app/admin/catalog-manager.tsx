@@ -5,9 +5,17 @@ import { normalizeCatalogSectors, defaultCatalogPlacements, resolvePlacement, va
 
 type PricedAddon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
 type CatalogItem = SectorTemplate & {published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; demoSlug?:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[];sectorId?:string;subcategoryId?:string};
-const seed = (): CatalogItem[] => sectorTemplates.map((s,i)=>({...s,published:true,archived:false,sortOrder:i*10,imageUrl:"",previewUrl:"",demoSlug:s.slug,basePrice:null,addons:[],pricedAddons:[]}));
-const empty = (): CatalogItem => ({slug:"",name:"",category:"",icon:"📁",description:"",features:[],modules:["لوحة القيادة"],sampleStats:[],sampleRows:[],note:"معاينة تجريبية",published:false,archived:false,sortOrder:100,imageUrl:"",previewUrl:"",demoSlug:"",basePrice:null,addons:[],pricedAddons:[]});
-const normalize = (v: unknown): CatalogItem[] => Array.isArray(v) ? v.filter(x=>x && typeof x==="object" && typeof x.slug==="string" && typeof x.name==="string").map(x=>({...empty(),...x,features:Array.isArray(x.features)?x.features:[],modules:Array.isArray(x.modules)?x.modules:[],sampleStats:Array.isArray(x.sampleStats)?x.sampleStats:[],sampleRows:Array.isArray(x.sampleRows)?x.sampleRows:[],addons:Array.isArray(x.addons)?x.addons:[],pricedAddons:Array.isArray(x.pricedAddons)?x.pricedAddons:[]})) : seed();
+const defaultPricedAddons=():PricedAddon[]=>[
+ {code:"extra_page",name:"صفحة إضافية (لكل صفحة)",price:1000,pricingType:"fixed"},
+ {code:"logo_design",name:"تصميم شعار",price:1000,pricingType:"fixed"},
+ {code:"visual_identity",name:"هوية بصرية كاملة",price:1000,pricingType:"fixed"},
+ {code:"domain",name:"دومين (سنة)",price:1000,pricingType:"yearly"},
+ {code:"hosting",name:"استضافة (سنة)",price:1000,pricingType:"yearly"},
+ {code:"extra_feature",name:"ميزة إضافية",price:1000,pricingType:"fixed"}
+];
+const seed = (): CatalogItem[] => sectorTemplates.map((s,i)=>({...s,published:true,archived:false,sortOrder:i*10,imageUrl:"",previewUrl:"",demoSlug:s.slug,basePrice:5000,addons:[],pricedAddons:defaultPricedAddons()}));
+const empty = (): CatalogItem => ({slug:"",name:"",category:"",icon:"📁",description:"",features:[],modules:["لوحة القيادة"],sampleStats:[],sampleRows:[],note:"معاينة تجريبية",published:false,archived:false,sortOrder:100,imageUrl:"",previewUrl:"",demoSlug:"",basePrice:5000,addons:[],pricedAddons:defaultPricedAddons()});
+const normalize = (v: unknown): CatalogItem[] => Array.isArray(v) ? v.filter(x=>x && typeof x==="object" && typeof x.slug==="string" && typeof x.name==="string").map(x=>({...empty(),...x,features:Array.isArray(x.features)?x.features:[],modules:Array.isArray(x.modules)?x.modules:[],sampleStats:Array.isArray(x.sampleStats)?x.sampleStats:[],sampleRows:Array.isArray(x.sampleRows)?x.sampleRows:[],addons:Array.isArray(x.addons)?x.addons:[],pricedAddons:Array.isArray(x.pricedAddons)?x.pricedAddons:defaultPricedAddons()})) : seed();
 export default function CatalogManager() {
   const [items,setItems]=useState<CatalogItem[]>([]);
   const [sectors,setSectors]=useState<CatalogSector[]>(normalizeCatalogSectors(undefined));
@@ -20,7 +28,7 @@ export default function CatalogManager() {
   const [error,setError]=useState("");
   const [ready,setReady]=useState(false);
   const [uploading,setUploading]=useState(false);
-  const [addonText,setAddonText]=useState("");
+  const [addonText,setAddonText]=useState(defaultPricedAddons().map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\n"));
   const [version,setVersion]=useState(0);
   const [updatedAt,setUpdatedAt]=useState<string|null>(null);
   const [pageWasPublished,setPageWasPublished]=useState(true);
@@ -92,8 +100,13 @@ export default function CatalogManager() {
     updated.category=placement.subcategory?.name||placement.sector.name;
     const next=originalSlug?items.map(x=>x.slug===originalSlug?updated:x):[...items,updated];
     if(await saveAll(next,"تم حفظ الكتالوج وتحديث حالته.")){
-      setDraft(empty());setOriginalSlug("");
+      setDraft(empty());setAddonText(defaultPricedAddons().map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\n"));setOriginalSlug("");
     }
+  };
+  const applyDemoPrices=async()=>{
+    if(!window.confirm("تطبيق أسعار تجريبية: ٥٠٠٠ ج.م لكل كتالوج بلا سعر، و١٠٠٠ ج.م لكل إضافة جديدة. لن تُستبدل الأسعار التي حددتها سابقًا. متابعة؟"))return;
+    const next=items.map(item=>({...item,basePrice:item.basePrice===null?5000:item.basePrice,pricedAddons:[...item.pricedAddons,...defaultPricedAddons().filter(addon=>!item.pricedAddons.some(existing=>existing.code===addon.code))]}));
+    await saveAll(next,"تم حفظ الأسعار التجريبية للكتالوجات والإضافات دون تغيير الأسعار الموجودة.");
   };
   const importStarter=async()=>{
     const used=new Set(items.map(item=>item.slug));
