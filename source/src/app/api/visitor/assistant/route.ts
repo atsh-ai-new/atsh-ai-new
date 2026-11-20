@@ -12,7 +12,7 @@ export async function POST(request:Request) {
       : new URL(request.url).origin;
     allowedOrigin=originHeader!==null&&new URL(originHeader).origin===expectedOrigin;
   }catch{/* Reject missing or malformed origins. */}
-  if(!allowedOrigin)return NextResponse.json({error:"Origin not allowed"},{status:403});
+  if(!allowedOrigin||!originHeader)return NextResponse.json({error:"Origin not allowed"},{status:403});
   const raw=await request.text();
   if(Buffer.byteLength(raw,"utf8")>MAX_BYTES)return NextResponse.json({error:"Request too large"},{status:413});
   let base:URL;
