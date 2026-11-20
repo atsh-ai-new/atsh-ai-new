@@ -17,7 +17,7 @@ function candidatesFromInput(value:string):string[] {
  const name=value.trim().toLowerCase().replace(/[.。．｡]+$/gu,"");
  if(!name||name.length>253||/[\s/?&#@:]/u.test(name)||name.includes(".."))return [];
  if(name.includes("."))return [name];
- if(name.length>63||!/^[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?$/u.test(name))return [];
+ if(name.length>63||!/^[a-z0-9\u0600-\u06FF](?:[a-z0-9\u0600-\u06FF-]*[a-z0-9\u0600-\u06FF])?$/i.test(name))return [];
  return COMMON_EXTENSIONS.map(extension=>name+extension);
 }
 
