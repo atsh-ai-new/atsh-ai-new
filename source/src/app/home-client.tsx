@@ -69,7 +69,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
   const startWindowLabel = ({ soon: copy("startSoon"), month: copy("startInMonth"), twoMonths: copy("startInTwoMonths"), exploring: copy("startExploring") } as Record<string, string>)[startWindow] ?? copy("startInMonth");
   const contactWindowLabel = ({ anytime: copy("contactAnytime"), morning: copy("contactMorning"), afternoon: copy("contactAfternoon"), evening: copy("contactEvening") } as Record<string, string>)[contactWindow] ?? copy("contactAnytime");
   const contentData = siteConfig.page?.content ?? {};
-  const cardsFromContent = (key: string, fallback: PublicCard[]): PublicCard[] => Array.isArray(contentData[key]) ? contentData[key] as PublicCard[] : fallback;
+  const cardsFromContent = (key: string, fallback: PublicCard[]): PublicCard[] => (Array.isArray(contentData[key]) ? contentData[key] as PublicCard[] : fallback).filter((item) => item && typeof item.title === "string" && item.title.trim().length > 0);
   const benefitCards = cardsFromContent("benefitCards", [1,2,3,4].map((n) => ({ id: `benefit-${n}`, title: copy(`benefit${n}Title`), description: copy(`benefit${n}Description`), icon: String(n).padStart(2, "0") })));
   const processCards = cardsFromContent("processCards", [1,2,3].map((n) => ({ id: `step-${n}`, title: copy(`step${n}Title`), description: copy(`step${n}Description`), icon: String(n).padStart(2, "0") })));
   const trustItems = cardsFromContent("trustItems", [1,2,3,4].map((n) => ({ id: `trust-${n}`, title: copy(`trust${n}`) })));
