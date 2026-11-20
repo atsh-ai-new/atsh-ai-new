@@ -44,7 +44,7 @@ const roleLabels: Record<Role, string> = { owner: "مالك المنصة", admin
 async function api(path: string, init?: RequestInit): Promise<ApiPayload> {
   const response = await fetch(`/api/admin/${path}`, { ...init, credentials: "include", cache: "no-store", headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers } });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || data.error || "تعذر تنفيذ العملية.");
+  if (!response.ok) throw new Error(`${data.message || data.error || "تعذر تنفيذ العملية."} (HTTP ${response.status} · ${init?.method || "GET"} /api/admin/${path})`);
   return data;
 }
 
