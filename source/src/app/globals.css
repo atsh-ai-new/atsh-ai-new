@@ -311,3 +311,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .configurator-section { padding-top: 12px; padding-bottom: 24px; }
   .faq-section { padding-top: 24px; }
 }
+
+/* No reserved hero heading area when both editable headline and description are blank. */
+@media (max-width: 640px) {
+  .build-hero.build-hero-compact { padding-top: 8px; }
+  .build-hero.build-hero-compact .hero-actions { margin-top: 0; }
+}
