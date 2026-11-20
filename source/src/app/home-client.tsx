@@ -383,7 +383,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
         <div className="build-hero-copy">
           <h1>{copy("heroTitle")}</h1>
           <p>{copy("heroDescription")}</p>
-          <div className="hero-actions"><button className="button" onClick={() => begin()}>{copy("ctaText")} <span>←</span></button><a className="button button-quiet" href={isEnglish?"/en/start":"/start"}>{t("ابدأ مشروعًا جديدًا","Start a new project")}</a><a className="button button-quiet" href="#packages">{copy("secondaryCta")}</a></div>
+          <div className="hero-actions"><button className="button" onClick={() => begin()}>{copy("ctaText")} <span>←</span></button><a className="button button-quiet" href={isEnglish?"/en/start":"/start"}>{t("ابدأ مشروعًا جديدًا","Start a new project")}</a><a className="button button-quiet" href="#packages">{copy("secondaryCta")}</a><a className="button button-quiet" href={isEnglish?"/en/catalog":"/catalog"}>{t("الكتالوجات","Catalogs")}</a></div>
           <div className="hero-trust">{cardsFromContent("heroTrustItems", [1,2,3].map((n) => ({ id: `hero-trust-${n}`, title: copy(`heroTrust${n}`) }))).map((item, index) => <span key={item.id ?? index}>✓ {item.title}</span>)}</div>
         </div>
         <div className="build-hero-art">
@@ -427,17 +427,6 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
             <button className={item.recommended ? "button package-cta" : "button button-outline package-cta"} onClick={() => begin(item.id as PackageId)}>{item.price === null ? copy("customQuoteButton") : copy("packageButton")} <span>←</span></button>
           </article>)}
         </div>
-        <HomeCatalogShowcase locale={locale} selectedSlug={selectedSector?.slug} selectedAddons={sectorAddonCodes}
-          onSelect={(item:HomeCatalogItem)=>{
-            setSelectedSector({slug:item.slug,name:item.name});setSectorAddonCodes([]);
-            setSectorPricedAddons(Array.isArray(item.pricedAddons)?item.pricedAddons:[]);
-            saveGuestWorkspace({sectorSlug:item.slug,sectorName:item.name,sectorAddonCodes:[],source:"catalog"});
-          }}
-          onToggleAddon={(code,checked)=>setSectorAddonCodes(current=>{
-            const next=checked?[...new Set([...current,code])]:current.filter(v=>v!==code);
-            if(selectedSector)saveGuestWorkspace({sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes:next,source:"catalog"});
-            return next;
-          })}/>
         <div className="comparison-wrap"><h3>{copy("comparisonTitle")}</h3><div className="comparison-scroll"><table className="comparison-table"><thead><tr><th>{copy("comparisonFeatureTitle")}</th>{visiblePackages.map((item) => <th key={item.id}>{item.name}</th>)}</tr></thead><tbody>
           {[...new Set(visiblePackages.flatMap((item) => item.features))].map((feature) => <tr key={feature}><th>{feature}</th>{visiblePackages.map((item) => <td key={item.id}>{item.features.includes(feature) ? "✓" : "—"}</td>)}</tr>)}
         </tbody></table></div></div>
