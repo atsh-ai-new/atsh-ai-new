@@ -69,6 +69,7 @@ export default function SectorPreview({template,demoSlug,pricedAddons=[],basePri
   return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:1280,margin:"0 auto",padding:"20px",minHeight:"100vh"}}>
     <header style={{display:"flex",gap:12,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",marginBottom:20}}>
       <Link href={`${base}/catalog`} style={{color:"#4c78ae"}}>{t("← العودة للمعرض","← Back to solutions")}</Link>
+      <button type="button" onClick={()=>{if(!document.fullscreenElement)void document.documentElement.requestFullscreen?.();else void document.exitFullscreen?.();}} style={{padding:"10px 14px",borderRadius:10,border:"1px solid #cbd5e1",background:"#203958",color:"#fff",cursor:"pointer",fontWeight:700}}>{t("⛶ ملء الشاشة","⛶ Full screen")}</button>
       <span style={{background:"#fff2d2",color:"#815800",borderRadius:12,padding:"8px 12px",fontSize:12}}>{t("معاينة تجريبية — بلا خادم أو دفع حقيقي","Demo mode — no live payments or customer data")}</span>
       <Link href={`${base}/?sector=${encodeURIComponent(template.slug)}#configurator` } style={{background:brand,color:"white",padding:"10px 16px",borderRadius:10}}>{t("تخصيص الباقة والسعر","Customize & price this solution")}</Link>
     </header>
