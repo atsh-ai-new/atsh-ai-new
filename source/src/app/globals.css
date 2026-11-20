@@ -380,3 +380,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .builder-layout>.quote-sidebar{min-width:0}
 @media(min-width:900px){.builder-layout>.catalog-optional-addons{width:100%}}
 @media(max-width:899px){.builder-layout>.catalog-optional-addons{padding:12px!important}.builder-layout>.catalog-optional-addons label{gap:8px!important}}
+
+/* Mobile order: website selection, optional extras, then quote/support summary. */
+@media(max-width:899px){
+ .builder-layout{display:flex!important;flex-direction:column!important;gap:16px}
+ .builder-layout>.builder-main{order:1;width:100%;min-width:0}
+ .builder-layout>.catalog-optional-addons{order:2;width:100%;min-width:0}
+ .builder-layout>.quote-sidebar{order:3;width:100%;min-width:0}
+}
