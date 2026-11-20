@@ -18,7 +18,7 @@ export async function POST(request:Request) {
     allowedOrigin=requestedOrigin!==null && requestedOrigin.protocol===canonical.protocol &&
       (requestedOrigin.host===canonical.host ||
        (canonical.hostname.startsWith("www.")
-         ? requestedOrigin.host===canonical.host.replace(/^www\\./,"")
+         ? requestedOrigin.host===canonical.host.slice(4)
          : requestedOrigin.host===`www.${canonical.host}`));
   }catch{/* Reject missing or malformed origins. */}
   if(!allowedOrigin||!originHeader)return NextResponse.json({error:"Origin not allowed"},{status:403});
