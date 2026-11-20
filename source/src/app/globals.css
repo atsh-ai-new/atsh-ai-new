@@ -308,6 +308,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 
 /* Tighten the transition between the configurator and FAQ on small screens. */
 @media (max-width: 640px) {
-  .configurator-section { padding-bottom: 24px; }
+  .configurator-section { padding-top: 12px; padding-bottom: 24px; }
   .faq-section { padding-top: 24px; }
 }
