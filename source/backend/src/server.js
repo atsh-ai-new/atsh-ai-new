@@ -660,10 +660,12 @@ app.get("/api/admin/integrations/status",requireAdmin,requireRole("owner","admin
     catalog:{exists:!!c,published:Boolean(c?.is_published),total:Number(c?.count??0),visible:Number(c?.published_count??0)},
     pricing:{publishedPackages:packages.rows[0]?.count??0},
     gpt:{configured:Boolean(process.env.OPENAI_API_KEY&&process.env.OPENAI_MODEL)},
+    n8n:{eventOutboxConfigured:Boolean(eventDestination()),contentProductionConfigured:Boolean(process.env.N8N_AD_APPROVED_PLAN_URL&&process.env.N8N_AD_APPROVED_PLAN_TOKEN)},
     domains:{configured:domainConfigured,mode:domainConfigured?(process.env.NAMECHEAP_ENV==="production"?"production":"sandbox"):"inactive"},
     registration:{ready:emailReady,emailDelivery:emailReady},
     requiredSettings:{
       gpt:["OPENAI_API_KEY","OPENAI_MODEL"],
+      n8n:["ATSH_N8N_EVENT_URL","ATSH_N8N_EVENT_TOKEN"],
       domains:domainKeys.concat("NAMECHEAP_ENV=production"),
       registration:["PUBLIC_SITE_URL","BREVO_API_KEY","BREVO_SENDER_EMAIL","ALLOWED_ORIGINS"]
     }
