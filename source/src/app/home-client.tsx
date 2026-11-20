@@ -382,7 +382,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
       <section className="build-hero" id="top">
         <div className="build-hero-copy">
           <h1>{copy("heroTitle")}</h1>
-          <p>{copy("heroDescription")}</p>
+          {copy("heroDescription").trim() && <p>{copy("heroDescription")}</p>}
           <div className="hero-actions"><button className="button" onClick={() => begin()}>{copy("ctaText")} <span>←</span></button><a className="button button-quiet" href={isEnglish?"/en/start":"/start"}>{t("ابدأ مشروعًا جديدًا","Start a new project")}</a><a className="button button-quiet" href="#packages">{copy("secondaryCta")}</a><a className="button button-quiet" href={isEnglish?"/en/catalog":"/catalog"}>{t("الكتالوجات","Catalogs")}</a></div>
           <div className="hero-trust">{cardsFromContent("heroTrustItems", [1,2,3].map((n) => ({ id: `hero-trust-${n}`, title: copy(`heroTrust${n}`) }))).map((item, index) => <span key={item.id ?? index}>✓ {item.title}</span>)}</div>
         </div>
