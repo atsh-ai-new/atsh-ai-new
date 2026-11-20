@@ -68,7 +68,7 @@ export default function Concierge({locale="ar"}:{locale?:"ar"|"en"}) {const en=l
    setHint("");
    try{
      const history=next.filter(m=>m!==initialMessage).slice(-8).map(m=>({role:m.who==="customer"?"user":"assistant",content:m.text}));
-     const response=await fetch("/api/visitor/assistant",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:history,locale})});
+     const response=await fetch("/api/visitor/assistant",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:history})});
      const data=await response.json().catch(()=>({}));
      if(!response.ok||typeof data.answer!=="string")throw Error(typeof data.error==="string"?data.error:"GPT unavailable");
      setMessages(prev=>[...prev,{who:"assistant",text:data.answer}]);
