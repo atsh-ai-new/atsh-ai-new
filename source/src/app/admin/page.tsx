@@ -139,8 +139,13 @@ export default function AdminPage() {
 
   const save = async (action: () => Promise<unknown>, success: string) => {
     setBusy(true); setError(""); setNotice("");
-    try { await action(); await loadData(); setNotice(success); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر حفظ التغييرات."); }
+    try {
+      await action();
+      setNotice(success);
+      // A secondary dashboard refresh must not report a successful publish as failed.
+      try { await loadData(); }
+      catch { setNotice(`${success} تعذر تحديث بعض بيانات لوحة الإدارة؛ أعد فتحها لاحقًا.`); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر حفظ التغييرات."); }
     finally { setBusy(false); }
   };
 
