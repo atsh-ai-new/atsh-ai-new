@@ -79,7 +79,7 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
    }));
    setResults(checked);
    if(checked.every(item=>!item.lookup)){
-    setMessage(t("البحث لم ينجح لأي امتداد. تأكد من نشر الـBackend وتفعيل الاتصال بالسجل.", "No extension could be verified. Check the deployed backend and its registry connection."));
+    setMessage(t("تعذر الوصول إلى سجلات الدومينات حاليًا. حاول مرة أخرى لاحقًا.", "Domain registries are temporarily unreachable. Please retry later."));
    }
   }finally{setChecking(false);}
  };
