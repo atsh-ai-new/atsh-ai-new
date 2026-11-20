@@ -3,8 +3,16 @@ export const runtime = "nodejs";
 const MAX_BYTES=12*1024;
 export async function POST(request:Request) {
   const originHeader=request.headers.get("origin");
-  // Same-origin browser requests only; API handles independent Origin allowlist too.
-  if(!originHeader||new URL(originHeader).origin!==new URL(request.url).origin)return NextResponse.json({error:"Origin not allowed"},{status:403});
+  // Traefik may forward the request to Next.js over internal HTTP; request.url
+  // is therefore not a reliable public-site origin in production.
+  let allowedOrigin=false;
+  try{
+    const expectedOrigin=process.env.NODE_ENV==="production"
+      ? new URL(process.env.ATSH_SITE_ORIGIN??"https://atsh-ai.com").origin
+      : new URL(request.url).origin;
+    allowedOrigin=originHeader!==null&&new URL(originHeader).origin===expectedOrigin;
+  }catch{/* Reject missing or malformed origins. */}
+  if(!allowedOrigin)return NextResponse.json({error:"Origin not allowed"},{status:403});
   const raw=await request.text();
   if(Buffer.byteLength(raw,"utf8")>MAX_BYTES)return NextResponse.json({error:"Request too large"},{status:413});
   let base:URL;
