@@ -381,7 +381,6 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
 
       <section className="build-hero" id="top">
         <div className="build-hero-copy">
-          <span className="eyebrow-pill">{copy("heroEyebrow")}</span>
           <h1>{copy("heroTitle")}</h1>
           <p>{copy("heroDescription")}</p>
           <div className="hero-actions"><button className="button" onClick={() => begin()}>{copy("ctaText")} <span>←</span></button><a className="button button-quiet" href={isEnglish?"/en/start":"/start"}>{t("ابدأ مشروعًا جديدًا","Start a new project")}</a><a className="button button-quiet" href="#packages">{copy("secondaryCta")}</a></div>
@@ -407,14 +406,14 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
 
       <section className="why-section" id="why">
         <div className="section-heading"><div><span className="section-kicker">{copy("whyKicker")}</span><h2>{copy("whyTitle")}</h2></div><p>{copy("whyDescription")}</p></div>
-        <div className="benefit-grid">
+        {benefitCards.length > 0 && <div className="benefit-grid">
           {benefitCards.map((item, index) => <article key={item.id ?? index}><span className="benefit-icon">{item.icon || String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.description}</p></article>)}
-        </div>
+        </div>}
       </section>
 
       <section className="how-section" id="how">
         <div className="section-heading"><div><span className="section-kicker">{copy("howKicker")}</span><h2>{copy("howTitle")}</h2></div><p>{copy("howDescription")}</p></div>
-        <div className="how-grid">{processCards.map((item, index) => <article key={item.id ?? index}><span>{item.icon || String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.description}</p></article>)}</div>
+        {processCards.length > 0 && <div className="how-grid">{processCards.map((item, index) => <article key={item.id ?? index}><span>{item.icon || String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.description}</p></article>)}</div>}
       </section>
 
       <section className="packages-section" id="packages">
