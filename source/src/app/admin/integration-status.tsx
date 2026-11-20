@@ -44,8 +44,10 @@ export default function IntegrationStatus(){
     `المحفوظ: ${status.catalog.total} · بطاقات منشورة: ${status.catalog.visible} · صفحة المعرض: ${status.catalog.published?"منشورة":"مخفية"}.`)}
    {row("باقات التسعير",status.pricing.publishedPackages>0,`الباقات المنشورة: ${status.pricing.publishedPackages}.`)}
    {row("المساعد GPT",status.gpt.configured,"يحتاج مفتاح OpenAI واسم النموذج في إعدادات الـBackend؛ لا يكفي وجود واجهة الدردشة.",status.requiredSettings.gpt)}
-   {row("بحث الدومين من Namecheap",status.domains.configured&&status.domains.mode==="production",
-    status.domains.configured?`وضع المزود: ${status.domains.mode==="sandbox"?"تجريبي (ليس توافرًا حقيقيًا)":"إنتاجي"}. يلزم اختبار طلب حقيقي.`:"لم تُضبط بيانات Namecheap المعتمدة على الخادم.",status.requiredSettings.domains)}
+   {row("بحث الدومين الحقيقي",status.domains.configured,
+    status.domains.mode==="namecheap-production"
+      ?"Namecheap API إنتاجي: فحص التوافر الفعلي لدى المسجّل، دون حجز أو شراء. يجب اختبار الطلب على الخادم."
+      :"RDAP حي من سجل النطاقات: يؤكد المسجّل وغير المسجّل فقط. عدم وجود تسجيل لا يضمن إتاحة الشراء؛ التحقق النهائي يحتاج مزود تسجيل.",status.requiredSettings.domains)}
    {row("تسجيل العملاء وتأكيد البريد",status.registration.ready,
     "الاشتراك بالبريد يتطلب عنوان الموقع العام وبريد إرسال موثقًا في Brevo، ثم اختبار وصول رسالة التأكيد.",status.requiredSettings.registration)}
    <p style={{lineHeight:1.9}}>اختبر بعد النشر: <a href="/catalog" target="_blank" rel="noreferrer">الكتالوجات</a> · <a href="/account/register" target="_blank" rel="noreferrer">تسجيل عميل</a> · <a href="/account/login" target="_blank" rel="noreferrer">دخول العميل</a>. لا تختبر كلمات المرور أو المفاتيح عبر المحادثات.</p>
