@@ -196,8 +196,9 @@ export default function CatalogManager() {
       {notice&&<p role="status" className="success-message">{notice}</p>}{error&&<p role="alert" className="error-message">{error}</p>}
       {!ready?<p>جارٍ تحميل الكتالوجات…</p>:<>
         <div className="admin-actions">
-          <button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());setAddonText("");}}>+ كتالوج جديد</button>
+          <button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());setAddonText(defaultPricedAddons().map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\n"));}}>+ كتالوج جديد</button>
           <button type="button" className="button button-outline" disabled={busy} onClick={()=>void importStarter()}>استيراد النماذج الأربعة المبدئية دون تكرار</button>
+          <button type="button" className="button button-outline" disabled={busy} onClick={()=>void applyDemoPrices()}>تطبيق الأسعار التجريبية على الكتالوجات الحالية (٥٠٠٠ + إضافات ١٠٠٠)</button>
           <a className="inline-add" href="/catalog" target="_blank" rel="noreferrer">عرض المعرض ↗</a>
         </div>
         <label className="check-row"><input type="checkbox" checked={pageWasPublished} onChange={e=>setPageWasPublished(e.target.checked)}/> نشر صفحة المعرض بالكامل</label>
