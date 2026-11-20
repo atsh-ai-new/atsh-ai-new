@@ -111,7 +111,10 @@ const isolatedCiRate=process.env.ATSH_CI_TEST_RATE_LIMIT==="true"&&process.env.N
 // Keep CMS requests independent of public visitor traffic; cap login attempts separately.
 const publicApiLimiter = rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?600:120, standardHeaders: "draft-8", legacyHeaders: false });
 app.use("/api/admin/login", rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?600:20, standardHeaders: "draft-8", legacyHeaders: false }));
-app.use("/api/admin", rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?1200:600, standardHeaders: "draft-8", legacyHeaders: false }));
+const adminWriteLimiter = rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?1200:600, standardHeaders: "draft-8", legacyHeaders: false });
+// Authenticated CMS reads must not exhaust a shared-IP quota during dashboard refreshes.
+// Keep the separate, stricter login limiter and protect state-changing admin requests.
+app.use("/api/admin", (req,res,next) => (req.method === "GET" || req.method === "HEAD") ? next() : adminWriteLimiter(req,res,next));
 app.use("/api", (req,res,next) => (req.path === "/admin" || req.path.startsWith("/admin/")) ? next() : publicApiLimiter(req,res,next));
 
 async function requireAdmin(req,res,next) {
