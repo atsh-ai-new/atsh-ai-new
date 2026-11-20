@@ -82,7 +82,9 @@ export default function CatalogManager() {
       }
       codes.add(code);pricedAddons.push({code,name,price:amount,pricingType:type as PricedAddon["pricingType"]});
     }
-    const updated={...draft,pricedAddons,slug,name:draft.name.trim(),description:draft.description.trim()};
+    if(draft.previewUrl.trim()){try{const url=new URL(draft.previewUrl.trim());if(url.protocol!=="https:")throw Error();}catch{setError("رابط المعاينة يجب أن يكون رابط HTTPS صالحًا للنظام المنشور.");return;}}
+    if(draft.basePrice!==null&&(!Number.isFinite(draft.basePrice)||draft.basePrice<0)){setError("أدخل سعر بيع صحيحًا للكتالوج، أو اتركه فارغًا حتى تحديد السعر.");return;}
+    const updated={...draft,previewUrl:draft.previewUrl.trim(),pricedAddons,slug,name:draft.name.trim(),description:draft.description.trim()};
     if(!updated.name){setError("اسم الكتالوج مطلوب.");return;}
     const placement=resolvePlacement(updated,sectors);
     if(!placement.sector||!updated.sectorId){setError("اختر قطاعًا رئيسيًا صالحًا.");return;}
@@ -266,8 +268,8 @@ export default function CatalogManager() {
           {uploading&&<small>جارٍ رفع الصورة…</small>}
           {draft.imageUrl&&<img src={draft.imageUrl} alt="معاينة صورة الكتالوج" style={{maxWidth:230,maxHeight:155,objectFit:"contain",borderRadius:12}} />}
         </label>
-        {field("رابط معاينة خارجية HTTPS (اختياري)",draft.previewUrl,v=>update("previewUrl",v))}
-        <label className="admin-field">سعر أساسي استرشادي (جنيه) — السعر النهائي من محرك التسعير<input type="number" min="0" step="0.01" value={draft.basePrice??""} onChange={e=>update("basePrice",e.target.value===""?null:Number(e.target.value))}/></label>
+        {field("رابط النظام التفاعلي المنشور HTTPS — الصق رابط المعاينة هنا",draft.previewUrl,v=>update("previewUrl",v))}
+        <label className="admin-field">سعر بيع الكتالوج الأساسي (جنيه) — قبل إضافات محرك التسعير<input type="number" min="0" step="0.01" value={draft.basePrice??""} onChange={e=>update("basePrice",e.target.value===""?null:Number(e.target.value))}/></label>
         {field("إضافات القطاع المسعّرة — سطر لكل إضافة: code | اسم | سعر | fixed/monthly/yearly",addonText,setAddonText,true)}
         <label className="admin-field">ترتيب الظهور<input type="number" value={draft.sortOrder} onChange={e=>update("sortOrder",Number(e.target.value))}/></label>
         <label className="check-row"><input type="checkbox" checked={draft.published} onChange={e=>update("published",e.target.checked)}/> منشور في المعرض</label>
