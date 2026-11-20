@@ -297,3 +297,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 @media(max-width:760px){.studio-draft-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.studio-scene>header{grid-template-columns:1fr 1fr}.studio-scene>header>strong{grid-column:1/-1;padding:0}.studio-scene>header>.cms-delete{justify-self:start}.studio-review-actions{justify-content:flex-start}}
 @media(max-width:560px){.studio-service-grid,.studio-plan-grid,.studio-assets{grid-template-columns:1fr}.studio-full{grid-column:auto}.studio-draft-grid{grid-template-columns:1fr}.studio-toolbar{align-items:stretch;flex-direction:column}.studio-download-actions{width:100%}.studio-download-actions .button{flex:1}.studio-upload-form>.button{width:100%}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important;animation:none!important}}
+
+/* Compact mobile hero: four clear actions in a 2×2 grid, without empty heading space. */
+@media (max-width: 640px) {
+  .build-hero-copy .hero-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+  .build-hero-copy .hero-actions > * { width: 100%; min-width: 0; justify-content: center; text-align: center; box-sizing: border-box; }
+  .build-hero-copy h1 { margin-top: 0; }
+  .build-hero-copy h1:empty { display: none; }
+}
