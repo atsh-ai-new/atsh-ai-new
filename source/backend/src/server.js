@@ -108,7 +108,11 @@ app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 // Allow exhaustive isolated CI smoke tests to exceed visitor throttling without changing production limits.
 const isolatedCiRate=process.env.ATSH_CI_TEST_RATE_LIMIT==="true"&&process.env.NODE_ENV!=="production";
-app.use("/api", rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?600:120, standardHeaders: "draft-8", legacyHeaders: false }));
+// Keep CMS requests independent of public visitor traffic; cap login attempts separately.
+const publicApiLimiter = rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?600:120, standardHeaders: "draft-8", legacyHeaders: false });
+app.use("/api/admin/login", rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?600:20, standardHeaders: "draft-8", legacyHeaders: false }));
+app.use("/api/admin", rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?1200:600, standardHeaders: "draft-8", legacyHeaders: false }));
+app.use("/api", (req,res,next) => (req.path === "/admin" || req.path.startsWith("/admin/")) ? next() : publicApiLimiter(req,res,next));
 
 async function requireAdmin(req,res,next) {
   try {
