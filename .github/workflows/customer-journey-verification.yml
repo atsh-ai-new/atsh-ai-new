@@ -29,6 +29,7 @@ jobs:
         working-directory: source/backend
     steps:
       - name: Free disk space before Node setup
+        working-directory: ${{ github.workspace }}
         run: |
           df -h /
           sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet /usr/local/share/powershell /opt/hostedtoolcache/CodeQL
