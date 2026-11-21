@@ -3,7 +3,7 @@ import { deliveryAdminRouter, deliveryCustomerRouter } from "./delivery-control.
 import { customerCommercialRouter } from "./customer-commercial.js";
 import { customerAuthRouter } from "./customer-auth.js";
 import {createCustomerJourneyProject} from './customer-project-service.js';
-import {canJourneyTransition,transitionJourneyProject} from './customer-journey-state.js';
+import {transitionJourneyProject} from './customer-journey-state.js';
 import {quoteTotal,installments,validateTicketTransition,validateDeliveryMethod} from "./commercial-rules.js";
 import express from "express";
 import helmet from "helmet";
@@ -1403,8 +1403,8 @@ async function advancePaidJourneyIfEligible(client,invoiceId){
  AND EXISTS(SELECT 1 FROM commercial_invoices x WHERE x.quote_id=q.id AND x.status='paid')
  AND NOT EXISTS(SELECT 1 FROM commercial_invoices x WHERE x.quote_id=q.id AND x.status<>'paid')`,[quoteId]);
  if(!valid.rowCount)return null;
- const updated=await client.query("UPDATE customer_journey_projects SET status='paid',updated_at=now() WHERE id=$1 AND status='payment_pending' RETURNING id",[projectId]);
- if(!updated.rowCount)return null;
+ const updated=await transitionJourneyProject(client,{projectId,next:'paid',expectedStatus:'payment_pending',paymentVerified:true,actor:'verified-payment-ledger'});
+ if(!updated.ok)return null;
  await queueJourneyEvent(client,"project.payment_confirmed",`project.payment_confirmed:${projectId}`,{projectId,quoteId,verified:true});
  return projectId;
 }
