@@ -39,7 +39,7 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  const summary=[pkg?.name??"",...lines.map(l=>`${l.name} × ${l.quantity}: ${money(l.amount)} (${l.pricing_type})`),`${t("تكلفة التنفيذ","One-time")}: ${money(oneTime)}`,`${t("شهريًا","Monthly")}: ${money(monthly)}`,`${t("سنويًا","Yearly")}: ${money(yearly)}`,tax===null?t("الضريبة تُحدد عند اعتماد العرض","Tax to be confirmed"):`${t("ضريبة التنفيذ","One-time VAT")}: ${money(tax)}`,total===null?"":`${t("إجمالي التنفيذ","One-time total")}: ${money(total)}`].filter(Boolean).join("\n");
  return <main dir={en?"ltr":"rtl"} style={{minHeight:"100vh",background:"#f8f7f3",color:"#203958",padding:"28px 16px",fontFamily:"inherit"}}>
   <div style={{maxWidth:1040,margin:"auto"}}>
-   <nav style={{display:"flex",justifyContent:"space-between",gap:12,marginBottom:22}}><Link href={en?"/en#packages":"/ar#packages"}>{t("← العودة للباقات","← Back to packages")}</Link><Link href={en?`/ar/packages/${params.packageId}/pricing`:`/en/packages/${params.packageId}/pricing`}>{en?"العربية":"English"}</Link></nav>
+   <nav style={{display:"flex",justifyContent:"space-between",gap:12,marginBottom:22}}><Link href={en?"/en#packages":"/#packages"}>{t("← العودة للباقات","← Back to packages")}</Link><Link href={en?`/packages/${params.packageId}/pricing`:`/en/packages/${params.packageId}/pricing`}>{en?"العربية":"English"}</Link></nav>
    <h1 style={{fontSize:"clamp(26px,4vw,40px)",marginBottom:6}}>{t("تخصيص الباقة وحساب التكلفة","Customize your package and calculate cost")}</h1>
    <p>{t("اختر الإضافات والكميات، وشاهد تفصيل الأسعار مباشرة.","Select add-ons and quantities to see an instant itemized estimate.")}</p>
    {error&&<p role="alert" style={{color:"#b42318"}}>{error}</p>}
