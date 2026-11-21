@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 
-export type HubTab="overview"|"projects"|"quotes"|"contracts"|"invoices"|"deliveries"|"settings";
+export type HubTab="overview"|"projects"|"quotes"|"contracts"|"invoices"|"deliveries"|"assistant"|"settings";
 type Props={
  locale?:"ar"|"en";
  active:HubTab;onTab:(tab:HubTab)=>void;
@@ -18,11 +18,12 @@ const tabs:Array<{id:HubTab;label:string}>= [
  {id:"contracts",label:"العقود"},
  {id:"invoices",label:"الفواتير والمدفوعات"},
  {id:"deliveries",label:"التسليم والمراجعات"},
+ {id:"assistant",label:"المساعد الذكي"},
  {id:"settings",label:"إعدادات الحساب"}
 ];
 const stages=["اختيار المواصفات","تخصيص النموذج","اعتماد المعاينة","عرض السعر والعقد","المدفوعات","التنفيذ والتسليم"];
 export default function CustomerJourneyHub(props:Props){const en=props.locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
- const translatedTabs:Record<HubTab,string>={overview:"Overview",projects:"Projects & previews",quotes:"Orders & quotations",contracts:"Contracts",invoices:"Invoices & payments",deliveries:"Deliverables",settings:"Account settings"};
+ const translatedTabs:Record<HubTab,string>={overview:"Overview",projects:"Projects & previews",quotes:"Orders & quotations",contracts:"Contracts",invoices:"Invoices & payments",deliveries:"Deliverables",assistant:"AI assistant",settings:"Account settings"};
  const translatedStages=["Select requirements","Customize solution","Approve preview","Quote & contract","Payments","Build & delivery"];
  const counts=[{title:"مسودات المشروعات",number:props.draftCount},{title:"مشروعات مرتبطة",number:props.projectCount},{title:"طلبات",number:props.orderCount},{title:"عروض أسعار",number:props.quoteCount}];
  const previewStatus=props.currentPreviewStatus;

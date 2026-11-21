@@ -3,6 +3,7 @@ import {useCallback,useEffect,useRef,useState} from "react";
 import {useParams,useSearchParams} from "next/navigation";
 import { syncCustomerWorkspace, loadGuestWorkspace, type CustomerWorkspace } from "@/lib/customer-workspace";
 import CustomerJourneyHub,{type HubTab} from "@/components/customer-journey-hub";
+import Concierge from "@/components/concierge";
 
 type Order={id:string;reference:string;status:string;total:number;currency:string;project_id:string};
 type Quote={id:number;status:string;total_piasters:number;currency:string};
@@ -100,7 +101,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    const response=await fetch("/api/customer/auth/project-drafts",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({title:draftTitle.trim()||(previous.businessName?`مشروع ${previous.businessName}`:"مشروع جديد"),draft:previous})});
    const body=await response.json();if(!response.ok)throw Error(body.error||"تعذر الإنشاء");
    setSelectedProjectDraft(body.projectDraft.id);setDraftTitle("");await loadDrafts();
-   if(fromGuest){try{localStorage.removeItem("atsh_customer_workspace_v1");}catch{}setGuestPending(false)}
+   if(fromGuest){try{sessionStorage.removeItem("atsh_customer_workspace_v1");}catch{}setGuestPending(false)}
    setHubTab("projects");setMessage(fromGuest?"تم إنشاء مشروع مستقل بجميع اختياراتك السابقة.":"تم إنشاء مسودة مستقلة للمشروع");
   }catch(e){setMessage(e instanceof Error?e.message:"تعذر الإنشاء");}
  };
@@ -115,7 +116,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    const result=await response.json();if(!response.ok)throw Error(result.error||"تعذر حفظ المسودة");
    setProjectDrafts(old=>old.map(x=>x.id===target.id?result.projectDraft:x));
    setWorkspace(result.projectDraft.draft);setGuestPending(false);
-   try{localStorage.removeItem("atsh_customer_workspace_v1");}catch{}
+   try{sessionStorage.removeItem("atsh_customer_workspace_v1");}catch{}
    setMessage("تم نقل اختيارات المتصفح إلى المشروع المحدد دون التأثير على بقية مشروعاتك");
   }catch(e){setMessage(e instanceof Error?e.message:"فشل النقل؛ تظل الاختيارات على المتصفح");}
   finally{setMerging(false);}
@@ -167,7 +168,8 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
   currentPreviewStatus={selectedProjectDraft&&previewVersions.length?previewVersions[0].approval_status:undefined}
   currentJourneyStatus={projects.find(project=>project.id===projectDrafts.find(draft=>draft.id===selectedProjectDraft)?.linked_journey_id)?.status}/>
  {message&&<p role="status" aria-live="polite" style={{padding:12,borderRadius:10,background:"#eaf2ff",color:"#1f4166"}}>{message}</p>}
- {hubTab==="settings"&&<section style={{border:"1px solid #d4e2ef",borderRadius:12,padding:16,background:"#f5faff",marginBottom:18}}>
+ {hubTab==="assistant"&&<section aria-label={t("محادثاتي مع المساعد الذكي","My AI assistant conversations")} style={{padding:16,background:"white",border:"1px solid #dce4ef",borderRadius:14,marginBottom:18}}><h2>{t("مساعد ATSH AI ومحادثاتي","ATSH AI assistant & my conversations")}</h2><p>{t("محادثاتك المحفوظة مرتبطة بحسابك. محادثات الزائر لا تنتقل إلا عند تسجيل الدخول في نفس الجلسة.","Saved conversations belong to your account. Guest conversations transfer only when you sign in during the same session.")}</p><Concierge locale={locale} embedded /></section>}
+  {hubTab==="settings"&&<section style={{border:"1px solid #d4e2ef",borderRadius:12,padding:16,background:"#f5faff",marginBottom:18}}>
    <h2>{t("اختياراتي المحفوظة من جميع مسارات المنصة","My saved project preferences")}</h2>
    {guestPending&&<div style={{padding:12,background:"#fff4db",borderRadius:10,marginBottom:12}}>
      <p>{t("هذا المتصفح يحتفظ باختيارات قبل تسجيل الدخول. لضمان عدم خلط بيانات زوار مختلفين، اختر نقلها إلى حسابك الحالي صراحةً.","This browser contains preferences saved before sign-in. Import them into your account only if you agree.")}</p>
