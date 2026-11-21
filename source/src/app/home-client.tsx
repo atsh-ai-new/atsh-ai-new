@@ -138,7 +138,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     return()=>{active=false;};
   }, []);
   useEffect(() => {
-    if (selectedSector) saveGuestWorkspace({sectorSlug:selectedSector.slug,sectorName:selectedSector.name,source:"configurator"});
+    if (selectedSector) saveGuestWorkspace({sectorSlug:selectedSector.slug,sectorName:selectedSector.name,source:"catalog"});
   }, [selectedSector]);
   useEffect(() => {
     if (packageId) saveGuestWorkspace({packageId,source:"configurator"});
@@ -262,8 +262,8 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
 
   // Saving preferences is explicit and scoped to this authenticated project.
   // Server prices are NOT derived from the saved browser snapshot.
-  const saveProjectChoices=async()=>{
-    if(!selectedProjectDraftId){setRequestMessage(t("اختر مسودة المشروع أولًا من حسابك.","Select a saved project draft from your account first."));return;}
+  const saveProjectChoices=async():Promise<boolean>=>{
+    if(!selectedProjectDraftId){setRequestMessage(t("اختر مسودة المشروع أولًا من حسابك.","Select a saved project draft from your account first."));return false;}
     setRequestMessage(t("جارٍ حفظ الاختيارات في مسودة المشروع...","Saving your project selections…"));
     try{
       const endpoint=`/api/customer/auth/project-drafts/${encodeURIComponent(selectedProjectDraftId)}`;
@@ -276,7 +276,8 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
       if(!response.ok)throw Error(isEnglish?"Unable to save the current project draft":result.error||"تعذر حفظ المسودة؛ راجع التعديلات الجديدة.");
       setRequestMessage(t("تم حفظ اختيارات النموذج وإضافاته في حسابك. يمكن استكمال معاينتها من لوحة العميل.","Your project choices are saved to your account. Continue from your client dashboard."));
       setRequestState("idle");
-    }catch(error){setRequestMessage(error instanceof Error?error.message:t("فشل حفظ الاختيارات","Unable to save selections"));setRequestState("error");}
+      return true;
+    }catch(error){setRequestMessage(error instanceof Error?error.message:t("فشل حفظ الاختيارات","Unable to save selections"));setRequestState("error");return false;}
   };
   const finishSavedDraft=async()=>{
     if(!selectedProjectDraftId)return;
@@ -333,6 +334,16 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     setRequestState("sending");
     setRequestMessage("");
     try {
+      if(selectedProjectDraftId){
+        const saved=await saveProjectChoices();
+        if(!saved)return;
+        const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(selectedProjectDraftId)}/submit`,{method:"POST",credentials:"include"});
+        const result=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(result.error||t("تعذر إرسال الطلب للإدارة.","Could not submit request to management."));
+        setRequestState("sent");
+        setRequestMessage(t("تم إرسال طلبك للإدارة. تابع الرد من حسابك.","Your request was sent to management. Follow the response in your account."));
+        return;
+      }
       if (!selectedServerPackage || selectedServerOptions.some((option) => !option)) throw new Error(t("تعذر مطابقة اختياراتك مع كتالوج الخادم. أعد تحميل الصفحة أو تواصل معنا.","Some selected items are no longer in the live catalog. Refresh or contact us."));
       const resolvedOptions = selectedServerOptions.filter((option): option is BackendOption => Boolean(option));
       const optionQuantities = Object.fromEntries(resolvedOptions.filter((option) => option.pricing_type === "per_page").map((option) => [option.id, pages]));
@@ -527,8 +538,8 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
                 <div className="review-section"><h4>{copy("reviewPriceTitle")}</h4>{sectorPrice&&!sectorPrice.needsCustomQuote&&sectorPrice.items.map(item=><div key={item.code} className="review-detail"><span>{item.name} · {item.pricingType==="yearly"?t("سنوي","annual"):item.pricingType==="monthly"?t("شهري","monthly"):t("مرة واحدة","one time")}</span><b>{money(item.price)}</b></div>)}{localizedQuoteItems.map((item) => <div key={item.id} className="review-detail"><span>{item.label}{item.period ? ` · ${item.period}` : ""}</span><b>{money(item.amount)}</b></div>)}<div className="review-detail review-subtotal"><span>{copy("reviewSubtotal")}</span><b>{money(quoteSubtotal)}</b></div><div className="review-detail"><span>{copy("reviewTax")} {vatRate}%</span><b>{money(quoteTax)}</b></div><div className="review-total"><span>{copy("reviewTotal")}</span><strong>{money(quoteTotal)}</strong></div><div className="review-detail recurring-row"><span>{t("رسوم شهرية","Monthly charges")}</span><b>{money(quoteSummary.monthly)}</b></div><div className="review-detail recurring-row"><span>{t("رسوم سنوية","Annual charges")}</span><b>{money(quoteRecurring)}</b></div></div>
                 <div className="review-section"><h4>{copy("reviewContactTitle")}</h4><div className="review-detail"><span>{copy("fullNameLabel")}</span><b>{customer.name || "—"}</b></div><div className="review-detail"><span>{copy("customerEmailLabel")}</span><b>{customer.email || "—"}</b></div><div className="review-detail"><span>{copy("customerPhoneLabel")}</span><b>{customer.phone || "—"}</b></div></div>
                 {!customerSignedIn&&<p className="api-notice">{t("لإكمال رحلة المعاينة الشخصية والعقد وتسليم المشروع، ","To manage previews, contracts and project delivery, ")}<a href={isEnglish?"/en/account/login":"/account/login"} style={{textDecoration:"underline",fontWeight:700}}>{t("سجّل الدخول","Sign in")}</a> أو <a href={isEnglish?"/en/account/register":"/account/register"} style={{textDecoration:"underline",fontWeight:700}}>{t("افتح حسابًا","Create an account")}</a>{t(". اختياراتك مؤقتة في هذه الجلسة فقط، وتُمسح عند تحديث الصفحة ما لم تُحفظ في حسابك.",". Your selections are temporary in this session and reset on refresh unless saved to your account.")}</p>}
-                <div className="review-actions"><button type="button" className="button button-outline" onClick={downloadSummary}>{copy("downloadSummaryButton")}</button><button className="button" type="submit" disabled={!apiConfigured || sectorNeedsQuote || requestState === "sending" || !customer.name || !customer.email || !customer.phone || !privacyAccepted}>{requestState === "sending" ? copy("sendingRequest") : copy("submitRequestButton")}<span>←</span></button></div>
-                {!apiConfigured && <p className="api-notice">{catalogStatus === "loading" ? copy("loadingCatalogMessage") : catalogStatus === "unavailable" ? copy("unavailableCatalogMessage") : copy("catalogMismatchMessage")}</p>}
+                <div className="review-actions"><button type="button" className="button button-outline" onClick={downloadSummary}>{copy("downloadSummaryButton")}</button><button className="button" type="submit" disabled={(!selectedProjectDraftId && (!apiConfigured || sectorNeedsQuote)) || requestState === "sending" || !customer.name || !customer.email || !customer.phone || !privacyAccepted}>{requestState === "sending" ? copy("sendingRequest") : copy("submitRequestButton")}<span>←</span></button></div>
+                {!apiConfigured && !selectedProjectDraftId && <p className="api-notice">{catalogStatus === "loading" ? copy("loadingCatalogMessage") : catalogStatus === "unavailable" ? copy("unavailableCatalogMessage") : copy("catalogMismatchMessage")}</p>}
                 {requestMessage && <p className={requestState === "sent" ? "success-message" : "error-message"} role="status">{requestMessage}</p>}
               </div>}
 
