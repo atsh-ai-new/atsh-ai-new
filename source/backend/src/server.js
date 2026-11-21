@@ -978,9 +978,9 @@ app.patch("/api/admin/pages/:slug",requireAdmin,requireRole("owner","admin","edi
   if(!parsed.success)return res.status(400).json({error:"Invalid page content",details:parsed.error.issues});
   const client=await pool.connect();try{await client.query("BEGIN");
     const before=await client.query("SELECT * FROM site_pages WHERE slug=$1 AND locale=$2 FOR UPDATE",[req.params.slug,parsed.data.locale]);
-    if(req.params.slug==="catalog" && Object.prototype.hasOwnProperty.call(parsed.data,"expectedUpdatedAt")){
+    if(Object.prototype.hasOwnProperty.call(parsed.data,"expectedUpdatedAt")){
       const actual=before.rows[0]?.updated_at?new Date(before.rows[0].updated_at).toISOString():null;
-      if(actual!==parsed.data.expectedUpdatedAt){await client.query("ROLLBACK");return res.status(409).json({error:"تم تعديل الكتالوج بواسطة مستخدم آخر. أعد تحميل البيانات قبل الحفظ."});}
+      if(actual!==parsed.data.expectedUpdatedAt){await client.query("ROLLBACK");return res.status(409).json({error:"تم تعديل هذه الصفحة بواسطة مستخدم آخر. أعد تحميل البيانات قبل الحفظ.",currentUpdatedAt:actual});}
     }
     const saved=await client.query("INSERT INTO site_pages(slug,locale,content,is_published,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,is_published=EXCLUDED.is_published,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING *",[req.params.slug,parsed.data.locale,JSON.stringify(parsed.data.content),parsed.data.isPublished,req.admin.email]);
     await auditChange(client,req.admin.email,"page.updated","site_page",saved.rows[0].id,before.rows[0]||null,saved.rows[0]);await client.query("COMMIT");res.json({page:saved.rows[0]});
