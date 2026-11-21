@@ -1,2 +1,2 @@
 import HomePage from "../home-client";
-export default function ConfigurePage(){return <HomePage locale="ar" configuratorOnly/>;}
+export default function ConfigurePage(){return <HomePage locale="ar" configuratorOnly pricingOnly/>;}
