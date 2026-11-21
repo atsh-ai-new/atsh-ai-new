@@ -504,3 +504,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .page-quantity button:disabled{opacity:.35;cursor:default}
 .page-quantity output{min-width:27px;text-align:center;font-weight:800;color:#203958;font-variant-numeric:tabular-nums}
 @media(max-width:620px){.page-quantity button{width:32px;height:32px}.page-quantity{margin-inline-start:auto}}
+
+/* Desktop-only alignment: keep the approved mobile Arabic presentation unchanged. */
+@media (min-width: 841px) {
+  .platform .section-heading { margin-bottom: 16px; }
+  .platform .section-heading > p { margin-top: 8px; }
+  .platform .why-section, .platform .how-section, .platform .faq-section { padding-block: 30px 36px; }
+  .platform .section-heading h2 { margin-bottom: 0; }
+  .platform[dir="ltr"] .section-heading, .platform[dir="rtl"] .section-heading { align-items: start; }
+}
