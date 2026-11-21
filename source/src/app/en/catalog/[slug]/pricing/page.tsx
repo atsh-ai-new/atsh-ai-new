@@ -1,6 +1,7 @@
-import CatalogPricingClient from "../../../../catalog/[slug]/pricing/pricing-client";
+import {redirect} from "next/navigation";
 
-export default async function EnglishCatalogPricingPage({params}:{params:Promise<{slug:string}>}){
+// Legacy catalog pricing URLs use the existing single configurator.
+export default async function CatalogPricingPage({params}:{params:Promise<{slug:string}>}){
  const {slug}=await params;
- return <CatalogPricingClient slug={slug}/>;
+ redirect("/en?sector="+encodeURIComponent(slug)+"#configurator");
 }
