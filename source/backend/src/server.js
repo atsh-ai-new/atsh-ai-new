@@ -17,6 +17,7 @@ import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
 import { buildVisitorInstructions } from "./visitor-assistant.js";
 import { priceSectorSelection } from "./sector-pricing.js";
+import { calculateUnifiedPricing } from "./pricing-engine.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
 import {queueJourneyEvent,deliverJourneyEvents,eventDestination} from "./customer-event-outbox.js";
@@ -71,6 +72,7 @@ await pool.query(await readFile(new URL("../db/visitor_ai_usage_stage51.sql", im
 await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_checkout_stage52.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/unified_pricing_stage53.sql", import.meta.url), "utf8"));
 await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim().replace(/\/$/, "")).filter(Boolean);
 // The public website is also an explicitly configured, trusted origin.
@@ -499,13 +501,29 @@ app.get("/api/domains/check",rateLimit({windowMs:60*1000,limit:10,standardHeader
   return res.status(invalid?400:502).json({error:invalid?"Invalid domain":"Domain availability could not be verified"});
  }
 }));
+
+// The unified ledger is authoritative for amounts; catalog JSON supplies presentation and availability.
+async function pricedSectorCatalog(db,items){
+  if(!Array.isArray(items))return items;
+  const result=await db.query("SELECT scope,owner_key,code,amount,pricing_type FROM unified_price_items WHERE scope IN ('sector','sector_addon')");
+  const prices=new Map(result.rows.map(row=>[row.scope+":"+row.owner_key+":"+row.code,row]));
+  return items.map(item=>{
+    const base=prices.get("sector:"+item.slug+":base");
+    return {...item,basePrice:base?Number(base.amount):null,
+      pricedAddons:(Array.isArray(item.pricedAddons)?item.pricedAddons:[]).map(addon=>{
+        const price=prices.get("sector_addon:"+item.slug+":"+addon.code);
+        return price?{...addon,price:Number(price.amount),pricingType:price.pricing_type}:{...addon,price:null};
+      })};
+  });
+}
+
 app.get("/api/sector-price",route(async(req,res)=>{
   const slug=typeof req.query.slug==="string"?req.query.slug:"";
   const addons=typeof req.query.addons==="string"&&req.query.addons
     ? req.query.addons.split(","): [];
   const result=await pool.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true LIMIT 1");
   try{
-    const price=priceSectorSelection(result.rows[0]?.content?.items,slug,addons);
+    const price=priceSectorSelection(await pricedSectorCatalog(pool,result.rows[0]?.content?.items),slug,addons);
     res.set("Cache-Control","no-store").json(price);
   }catch{return res.status(400).json({error:"Sector unavailable or pricing not configured"});}
 }));
@@ -542,7 +560,7 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
   const client=await pool.connect();
   try {
     await client.query("BEGIN");
-    const p=await client.query("SELECT id,name,description,price,currency FROM packages WHERE id=$1 AND is_published=true FOR SHARE",[input.packageId]);
+    const p=await client.query("SELECT p.id,p.name,p.description,u.amount AS price,p.currency FROM packages p JOIN unified_price_items u ON u.scope='package' AND u.owner_key=p.id::text AND u.code='base' WHERE p.id=$1 AND p.is_published=true FOR SHARE OF p",[input.packageId]);
     if(!p.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"Package unavailable"});}
     const pkg=p.rows[0];
     // Never interpret SQL NULL custom-price packages as free (Number(null) === 0).
@@ -551,7 +569,7 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
     }
     const [o, required] = await Promise.all([
       input.optionIds.length
-        ? client.query("SELECT id,code,name,description,price,pricing_type,unit_label FROM package_options WHERE package_id=$1 AND id=ANY($2::uuid[]) AND is_active=true FOR SHARE",[pkg.id,input.optionIds])
+        ? client.query("SELECT o.id,o.code,o.name,o.description,u.amount AS price,u.pricing_type,o.unit_label FROM package_options o JOIN unified_price_items u ON u.scope='package_option' AND u.owner_key=o.package_id::text AND u.code=o.code WHERE o.package_id=$1 AND o.id=ANY($2::uuid[]) AND o.is_active=true FOR SHARE OF o",[pkg.id,input.optionIds])
         : Promise.resolve({rows:[]}),
       client.query("SELECT id FROM package_options WHERE package_id=$1 AND is_active=true AND is_required=true FOR SHARE",[pkg.id])
     ]);
@@ -563,26 +581,17 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
     let sectorPrice=null;
     if(input.sectorSlug){
       const catalog=await client.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true FOR SHARE");
-      try{sectorPrice=priceSectorSelection(catalog.rows[0]?.content?.items,input.sectorSlug,input.sectorAddonCodes);}
+      try{sectorPrice=priceSectorSelection(await pricedSectorCatalog(client,catalog.rows[0]?.content?.items),input.sectorSlug,input.sectorAddonCodes);}
       catch{await client.query("ROLLBACK");return res.status(400).json({error:"Selected sector or addon unavailable"});}
       if(sectorPrice.needsCustomQuote){await client.query("ROLLBACK");return res.status(409).json({error:"تخصيص هذا القطاع يتطلب اعتماد عرض سعر قبل تسجيل طلب شراء.",needsCustomQuote:true});}
     }
-    const subtotal=Number(pkg.price)+pricedOptions.reduce((n,x)=>n+x.lineTotal,0)+(sectorPrice?.subtotal??0);
     const settings=await client.query("SELECT vat_rate FROM site_settings WHERE id=1");
     const vatRate=settings.rows[0]?.vat_rate==null?null:Number(settings.rows[0].vat_rate);
-    const vatAmount=vatRate==null?null:Math.round(subtotal*vatRate)/100;
-    const total=vatAmount==null?subtotal:subtotal+vatAmount;
+    const unified=calculateUnifiedPricing({packagePrice:Number(pkg.price),packageOptions:pricedOptions,sectorQuote:sectorPrice,vatRate});
+    const {subtotal,vatAmount,total}=unified;
     const reference="ATSH-"+new Date().toISOString().slice(0,10).replaceAll("-","")+"-"+crypto.randomUUID().slice(0,8).toUpperCase();
-    const breakdownItems=[
-      {code:"package",name:pkg.name,amount:Number(pkg.price),period:"fixed"},
-      ...pricedOptions.map(x=>({code:x.code,name:x.name,amount:x.lineTotal,period:x.pricing_type==="monthly"?"monthly":x.pricing_type==="yearly"?"yearly":"fixed"})),
-      ...(sectorPrice?.items??[]).map(x=>({code:x.code,name:x.name,amount:x.price,period:x.pricingType}))
-    ];
-    const totals={
-      fixed:Math.round(breakdownItems.filter(x=>x.period==="fixed").reduce((sum,x)=>sum+x.amount,0)*100)/100,
-      monthly:Math.round(breakdownItems.filter(x=>x.period==="monthly").reduce((sum,x)=>sum+x.amount,0)*100)/100,
-      yearly:Math.round(breakdownItems.filter(x=>x.period==="yearly").reduce((sum,x)=>sum+x.amount,0)*100)/100
-    };
+    const breakdownItems=unified.lines.map(line=>line.code==="package"?{...line,name:pkg.name}:line);
+    const totals=unified.billing;
     const snapshot={package:pkg,options:pricedOptions,sector:sectorPrice,currency:pkg.currency,subtotal,vatRate,vatAmount,total,billing:{lines:breakdownItems,...totals,description:"Initial invoice period: fixed + first month + first year; recurring charges billed according to contract."}};
     const saved=await client.query(`INSERT INTO orders(reference,customer_name,phone,email,notes,package_id,status,currency,subtotal,vat_rate,vat_amount,total,snapshot)
       VALUES($1,$2,$3,$4,$5,$6,'new',$7,$8,$9,$10,$11,$12)
