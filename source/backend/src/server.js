@@ -167,7 +167,7 @@ async function sendTransactionalEmail({to,toName,subject,textContent}) {
 }
 
 // Session reads and authenticated project drafts must not consume the login quota.
-const customerLoginLimiter=rateLimit({windowMs:15*60*1000,limit:20,standardHeaders:"draft-8",legacyHeaders:false,skipSuccessfulRequests:true});
+const customerLoginLimiter=rateLimit({windowMs:15*60*1000,limit:200,standardHeaders:"draft-8",legacyHeaders:false,skipSuccessfulRequests:true});
 
 app.use("/api/customer/auth",(req,res,next)=>{
  if(req.path==="/login" && req.method==="POST")return customerLoginLimiter(req,res,next);
@@ -540,7 +540,7 @@ const orderSchema = z.object({
   email:z.union([z.string().email().max(254),z.literal("")]).optional(),
   notes:z.string().trim().max(4000).optional().default("")
 });
-app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"draft-8",legacyHeaders:false}), route(async (req,res) => {
+app.post("/api/orders", route(async (req,res) => {
   const parsed=orderSchema.safeParse(req.body);
   if(!parsed.success) return res.status(400).json({error:"Invalid order details",details:parsed.error.issues.map(x=>({path:x.path,message:x.message}))});
   const input=parsed.data;
