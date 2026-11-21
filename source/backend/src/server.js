@@ -72,7 +72,19 @@ await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql
 await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_checkout_stage52.sql", import.meta.url), "utf8"));
 await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
-const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim()).filter(Boolean);
+const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim().replace(/\\/$/, "")).filter(Boolean);
+// The public website is also an explicitly configured, trusted origin.
+// This prevents customer registration from failing when the canonical site URL
+// is configured but was accidentally omitted from ALLOWED_ORIGINS.
+if (process.env.PUBLIC_SITE_URL) {
+  try {
+    const site = new URL(process.env.PUBLIC_SITE_URL);
+    if (site.protocol === "https:" && !site.username && !site.password && !site.search && !site.hash) {
+      const origin = site.origin;
+      if (!origins.includes(origin)) origins.push(origin);
+    }
+  } catch { /* Invalid site configuration must not broaden CORS. */ }
+}
 const cookie = "atsh_admin";
 const cookieOptions = { httpOnly: true, secure: process.env.COOKIE_SECURE !== "false", sameSite: "strict", path: "/", maxAge: 8 * 60 * 60 * 1000 };
 const route = fn => (req,res,next) => Promise.resolve(fn(req,res,next)).catch(next);
