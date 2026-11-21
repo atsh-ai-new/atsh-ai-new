@@ -419,3 +419,18 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .builder-card .addon-grid .select-card-copy b{line-height:1.4}
 .builder-card .subsection-title{margin-block:12px 7px}
 @media(max-width:620px){.builder-card .addon-grid{grid-template-columns:minmax(0,1fr);gap:7px}.builder-card .addon-grid .select-card{padding:9px 10px}.builder-card .subsection-title{margin-block:10px 6px}}
+
+/* Shared desktop/mobile homepage spacing after removal of the legacy hero headline. */
+.build-hero{min-height:0;padding-block:22px 32px;gap:clamp(16px,3vw,36px);align-items:center}
+.build-hero-copy{min-width:0}
+.build-hero-copy>p{line-height:1.65}
+.build-hero-copy .hero-actions{margin-top:14px;gap:9px}
+.build-hero-copy .hero-trust{margin-top:13px;gap:8px 14px}
+.build-hero-art{min-width:0}
+.platform-header{gap:12px}
+.platform-header-actions{flex-wrap:wrap;justify-content:flex-end}
+.section-heading{gap:12px}
+.section-heading h2{line-height:1.35}
+.package-card{min-width:0}
+@media(min-width:841px){.build-hero{padding-block:24px 36px}.build-hero-compact{padding-top:12px}.packages-section{padding-block:28px 34px}}
+@media(max-width:840px){.build-hero{min-height:0;padding-block:12px 24px;gap:14px}.build-hero-copy .hero-actions{margin-top:8px}.build-hero-copy .hero-trust{margin-top:10px}.section-heading{margin-bottom:12px}}
