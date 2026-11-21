@@ -34,7 +34,9 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
   const localizePackage=(id:string,original:string,type:"name"|"short"|"description")=>isEnglish?(englishPackages[id]?.[type] || original):original;
   const t=(ar:string,en:string)=>isEnglish?en:ar;
   const [showOtherDetails,setShowOtherDetails]=useState(false);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(1);
+  const [showConfigurator,setShowConfigurator]=useState(false);
+  const [expandedPackageId,setExpandedPackageId]=useState<string|null>(null);
   const [packageId, setPackageId] = useState<PackageId | null>(null);
   const [pages, setPages] = useState(1);
   const [bilingual, setBilingual] = useState(false);
@@ -243,8 +245,9 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
       setPages(visiblePackages.find((item) => item.id === id)?.includedPages ?? 1);
       setSelectedExtraOptionIds([]);
     }
-    setStep(0);
-    document.getElementById("configurator")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setStep(1);
+    setShowConfigurator(true);
+    window.setTimeout(()=>document.getElementById("configurator")?.scrollIntoView({ behavior: "smooth", block: "start" }),0);
   };
 
   // Saving preferences is explicit and scoped to this authenticated project.
@@ -429,13 +432,18 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
             <span className="package-kicker">{item.short}</span><h3>{item.name}</h3><p>{item.description}</p>
             <ul>{item.features.map((feature) => <li key={feature}><span>✓</span>{feature}</li>)}</ul>
             <div className="package-price">{item.price === null ? <><strong>{copy("customQuoteLabel")}</strong><small>{copy("customQuoteDescription")}</small></> : <><strong>{copy("packagePricePrefix")} {money(item.price)}</strong><small>{copy("packagePriceFootnote")}</small></>}</div>
-            <button className={item.recommended ? "button package-cta" : "button button-outline package-cta"} onClick={() => begin(item.id as PackageId)}>{item.price === null ? copy("customQuoteButton") : copy("packageButton")} <span>←</span></button>
+            <button type="button" className={item.recommended ? "button package-cta" : "button button-outline package-cta"} aria-expanded={expandedPackageId===item.id} onClick={()=>setExpandedPackageId(current=>current===item.id?null:item.id)}>{t("عرض إضافات الباقة وتخصيصها","View package add-ons")} <span>{expandedPackageId===item.id?"−":"+"}</span></button>
+            {expandedPackageId===item.id&&<div style={{marginTop:12,padding:12,border:"1px solid #dbe4ee",borderRadius:12}}>
+              <h4 style={{margin:"0 0 10px"}}>{t("الإضافات المتاحة لهذه الباقة","Add-ons for this package")}</h4>
+              {apiCatalog.options.filter(option=>option.package_id===(backendPackageIds[item.id]??item.id)).length===0?<p>{t("ستظهر الإضافات بعد ضبطها من مركز التسعير.","Add-ons will appear once configured in the pricing center.")}</p>:apiCatalog.options.filter(option=>option.package_id===(backendPackageIds[item.id]??item.id)).map(option=><div key={option.id} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"9px 0",borderBottom:"1px solid #e6eaf0"}}><span><strong>{localizeOption(option.code,option.name)}</strong><small style={{display:"block"}}>{localizeOption(option.code,option.description||"","description")}</small></span><b style={{whiteSpace:"nowrap"}}>{money(Number(option.price))} {option.pricing_type==="yearly"?t("/ سنة","/ year"):option.pricing_type==="monthly"?t("/ شهر","/ month"):option.pricing_type==="per_page"?t("/ صفحة","/ page"):""}</b></div>)}
+              <button type="button" className="button package-cta" style={{marginTop:12}} onClick={()=>begin(item.id as PackageId)}>{t("تخصيص هذه الباقة وحساب الإجمالي","Customize package and calculate total")} ←</button>
+            </div>}
           </article>)}
         </div>
 
       </section>
 
-      <section className="configurator-section" id="configurator">
+      {showConfigurator&&<section className="configurator-section" id="configurator">
         <details style={{margin:"12px 0",padding:"12px 14px",border:"1px solid #e2e8f0",borderRadius:12,background:"#fff"}}>
           <summary style={{cursor:"pointer",fontWeight:700}}>{t("فحص توافر الدومين الحقيقي قبل الشراء","Check domain availability before purchase")}</summary>
           <DomainLookup locale={locale} onDomainChange={setRequestedDomainName}/>
@@ -445,7 +453,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
         <div className="builder-layout">
           <div className="builder-main">
             <div className="stepper" aria-label={`${copy("stepCountLabel")} ${step+1} ${copy("stepCountOf")} ${steps.length}`}>
-              {steps.map((label, index) => <button key={label} className={index === step ? "stepper-item current" : index < step ? "stepper-item done" : "stepper-item"} onClick={() => index <= step && setStep(index)} disabled={index > step} aria-current={index === step ? "step" : undefined}>
+              {steps.map((label, index) => index===0?null:<button key={label} className={index === step ? "stepper-item current" : index < step ? "stepper-item done" : "stepper-item"} onClick={() => index <= step && setStep(index)} disabled={index > step} aria-current={index === step ? "step" : undefined}>
                 <span className="stepper-number">{index < step ? "✓" : index + 1}</span><span>{label}</span>
               </button>)}
             </div>
@@ -520,7 +528,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
                 {requestMessage && <p className={requestState === "sent" ? "success-message" : "error-message"} role="status">{requestMessage}</p>}
               </div>}
 
-              <div className="builder-controls"><button type="button" className="button button-outline" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0}>{copy("previousStep")}</button><span>{step + 1} / {steps.length}</span>{step < steps.length - 1 ? <button type="button" className="button" onClick={() => { if (step === 0 && !packageId) return; if (step === 5 && (!customer.name || !customer.email || !customer.phone)) return; setStep((current) => Math.min(steps.length - 1, current + 1)); }} disabled={(step === 0 && !packageId) || (step === 5 && (!customer.name || !customer.email || !customer.phone))}>{copy("nextStep")} <span>←</span></button> : <button type="button" className="button button-outline" onClick={() => setStep(0)}>{copy("editChoices")}</button>}</div>
+              <div className="builder-controls"><button type="button" className="button button-outline" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step <= 1}>{copy("previousStep")}</button><span>{step + 1} / {steps.length}</span>{step < steps.length - 1 ? <button type="button" className="button" onClick={() => { if (step === 5 && (!customer.name || !customer.email || !customer.phone)) return; setStep((current) => Math.min(steps.length - 1, current + 1)); }} disabled={(step === 5 && (!customer.name || !customer.email || !customer.phone))}>{copy("nextStep")} <span>←</span></button> : <button type="button" className="button button-outline" onClick={() => setStep(1)}>{copy("editChoices")}</button>}</div>
             </form>
           </div>
         <aside className="quote-sidebar">
@@ -540,7 +548,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
             <div className="support-card"><span className="support-mark">?</span><div><strong>{copy("supportTitle")}</strong><p>{copy("supportDescription")}</p></div><a href="mailto:support@atsh-ai.com">{copy("supportEmail")} <span>↗</span></a><a href="#faq">{copy("supportFaq")} <span>←</span></a></div>
           </aside>
         </div>
-      </section>
+      </section>}
 
       <section className="faq-section" id="faq"><div className="section-heading"><div><span className="section-kicker">{copy("faqKicker")}</span><h2>{copy("faqTitle")}</h2></div><p>{copy("faqDescription")}</p></div><div className="faq-list">{faqItems.map((item, index) => <article key={item.id ?? index} className={openFaq === index ? "faq-item open" : "faq-item"}><button type="button" onClick={() => setOpenFaq(openFaq === index ? null : index)} aria-expanded={openFaq === index}><span className="faq-num">0{index + 1}</span><strong>{item.title}</strong><span className="faq-toggle">{openFaq === index ? "−" : "+"}</span></button>{openFaq === index && <p>{item.description}</p>}</article>)}</div></section>
 
