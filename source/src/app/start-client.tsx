@@ -39,7 +39,6 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
   event.preventDefault();if(!businessName.trim()){setError(tr("اكتب اسم مشروعك.","Please enter a project name."));return}
   const patch:CustomerWorkspace={projectMode:mode,solutionType:kind,businessName:businessName.trim(),requirements:requirements.trim(),options,deliveryMethod,source:"configurator"};
   replaceGuestWorkspace(patch);
-  if(mode==="ready"){window.location.assign(`${root}/catalog`);return}
   setSaving(true);setError("");
   try{
    const session=await fetch("/api/customer/auth/me",{credentials:"include",cache:"no-store"});
@@ -49,7 +48,7 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
    const data=await res.json().catch(()=>({}));
    if(!res.ok||!data.projectDraft?.id)throw Error((en?"Unable to save your project draft":data.error||"تعذر حفظ مسودة المشروع"));
    // A completed custom brief is a customer submission, not merely a local draft.
-   if(requirements.trim()){
+   {
     const sent=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(data.projectDraft.id)}/submit`,{method:"POST",credentials:"include"});
     const confirmation=await sent.json().catch(()=>({}));
     if(!sent.ok||!confirmation.projectId)throw Error(confirmation.error||tr("تم حفظ المسودة لكن تعذر إرسال الطلب للإدارة. افتح حسابك وأعد الإرسال.","Draft saved, but submission failed. Open your account and retry."));
@@ -85,9 +84,9 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
        {[{id:"undecided" as const,label:tr("لم أحدد بعد","Not sure yet"),note:tr("نوضح الاختلاف قبل اعتماد العرض","We will explain the options before approval")},{id:"managed" as const,label:tr("خدمة مُدارة","Managed service"),note:tr("المنصة والاستضافة والمتابعة حسب العقد","Hosting, operation and support as contracted")},{id:"source-code" as const,label:tr("شراء/ترخيص الكود","Source code license"),note:tr("تسليم المصدر والحقوق وفق العقد","Source files and rights as agreed in the contract")}].map(item=><button type="button" key={item.id} aria-pressed={deliveryMethod===item.id} onClick={()=>setDeliveryMethod(item.id)} style={chooseStyle(deliveryMethod===item.id)}><strong>{item.label}</strong><small style={{display:"block",marginTop:6,color:"#61758a"}}>{item.note}</small></button>)}
      </div>
      <label style={{display:"grid",gap:8,fontWeight:700,marginTop:18}}>{tr("اشرح طلبك","Describe your requirements")}<textarea rows={3} maxLength={4000} value={requirements} onChange={e=>setRequirements(e.target.value)} placeholder={tr("أهم التفاصيل أو المشاكل التي تريد حلها","Main goals, requirements or problems to solve")} style={{border:"1px solid #b9c9dc",borderRadius:10,padding:13,fontSize:16}}/></label>
-     <p style={{fontSize:13,color:"#607187",lineHeight:1.8}}>{mode==="ready"?tr("سننتقل للمعرض وتجربة النماذج. الخصائص المختارة هنا مجرد وصف مبدئي؛ السعر يحسبه محرك التسعير فقط.","Next you can explore interactive demos. Your current selections are a brief; only the pricing engine calculates prices."):tr("سيُحفظ وصف مشروعك في حسابك كمسودة، وليس عقدًا أو طلب شراء. إن لم تكن مسجلًا، ستنتقل لإنشاء حساب ويمكنك نقل اختياراتك إليه.","Your project brief will be saved as a draft, not a contract or purchase order. If needed, create an account to keep your selections.")}</p>
+     <p style={{fontSize:13,color:"#607187",lineHeight:1.8}}>{tr("سيُحفظ طلبك باختياراته في حسابك ويُرسل للإدارة، ثم يمكنك متابعة تفاصيله من نفس الحساب. الأسعار النهائية تخضع لمراجعة العرض.","Your selected requirements will be saved and submitted under your account. You can track the same project there; final prices are subject to quote review.")}</p>
      {error&&<p role="alert" style={{padding:12,background:"#fff0dc",borderRadius:10}}>{error}</p>}
-     <div className="atsh-start-actions" style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}}><button type="button" onClick={()=>setStep(1)} style={{padding:"12px 18px",border:"1px solid #b9c9dc",borderRadius:10,background:"white",cursor:"pointer"}}>{tr("السابق","Previous")}</button><button type="submit" disabled={saving} style={{padding:"12px 18px",border:0,borderRadius:10,background:"#203958",color:"white",fontWeight:800,cursor:"pointer"}}>{saving?"جارٍ الحفظ…":mode==="ready"?"عرض النماذج التفاعلية ←":"حفظ مسودة المشروع ←"}</button></div>
+     <div className="atsh-start-actions" style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}}><button type="button" onClick={()=>setStep(1)} style={{padding:"12px 18px",border:"1px solid #b9c9dc",borderRadius:10,background:"white",cursor:"pointer"}}>{tr("السابق","Previous")}</button><button type="submit" disabled={saving} style={{padding:"12px 18px",border:0,borderRadius:10,background:"#203958",color:"white",fontWeight:800,cursor:"pointer"}}>{saving?"جارٍ الحفظ…":tr("إنشاء الطلب ←","Create request →")}</button></div>
     </section>}
    </form>
   </div>
