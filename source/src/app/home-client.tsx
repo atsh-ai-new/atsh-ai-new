@@ -182,6 +182,9 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         const draft=result.projectDraft?.draft;
         if(!draft)return;
         setSelectedProjectDraftId(draftId);
+        // Resume the saved project at its add-ons, not the package-selection screen.
+        setStep(3);
+        setShowConfigurator(true);
         if(draft.sectorSlug&&draft.sectorName)setSelectedSector({slug:draft.sectorSlug,name:draft.sectorName});
         if(draft.packageId)setPackageId(draft.packageId);
         setSectorAddonCodes(Array.isArray(draft.sectorAddonCodes)?draft.sectorAddonCodes:[]);
