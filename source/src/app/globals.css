@@ -497,3 +497,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .platform[lang="ar"] .package-price,.platform[lang="en"] .package-price{padding-block:9px}
  .platform[lang="ar"] .builder-layout,.platform[lang="en"] .builder-layout{min-width:0;gap:14px}
 }
+
+/* Shared compact extra-page quantity stepper: Arabic/English, mobile/desktop. */
+.page-quantity{display:inline-flex;align-items:center;gap:3px;border:1px solid #cad6e2;border-radius:11px;padding:3px;direction:ltr;flex-shrink:0;background:#fff}
+.page-quantity button{width:34px;height:34px;border:0;border-radius:8px;background:#eaf0f7;color:#203958;font-size:21px;font-weight:700;cursor:pointer}
+.page-quantity button:disabled{opacity:.35;cursor:default}
+.page-quantity output{min-width:27px;text-align:center;font-weight:800;color:#203958;font-variant-numeric:tabular-nums}
+@media(max-width:620px){.page-quantity button{width:32px;height:32px}.page-quantity{margin-inline-start:auto}}
