@@ -4,6 +4,7 @@ import Link from "next/link";
 import { packages, addonOptions, formatEgp } from "@/lib/catalog";
 import { sectorTemplates } from "@/lib/sector-catalog";
 import {englishTemplateLabel} from "@/lib/sector-en";
+import {loadGuestWorkspace,saveGuestWorkspace,type AssistantMessage} from "@/lib/customer-workspace";
 
 type Sector = { slug: string; name: string; category: string; description: string; published?: boolean; archived?: boolean };
 type Message = { who: "assistant" | "customer"; text: string };
@@ -39,9 +40,11 @@ function answerEn(message:string,sectors:Sector[]):Message{
  if(/law|lawyer|legal/.test(q))return answerEn("avocato",sectors);
  return {who:"assistant",text:"Tell me whether you need a website, e-commerce store, app or business system. You can also explore interactive demos in the solutions catalog."};
 }
-export default function Concierge({locale="ar"}:{locale?:"ar"|"en"}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
+export default function Concierge({locale="ar",embedded=false}:{locale?:"ar"|"en";embedded?:boolean}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
  const initialMessage:Message=en?{who:"assistant",text:"Welcome to ATSH AI. Tell me about your business or the software you need, and I will guide you toward a solution, demo or quote."}:initial;
- const [open,setOpen]=useState(false);
+ const [open,setOpen]=useState(embedded);
+ const [ready,setReady]=useState(false);
+ const [signedIn,setSignedIn]=useState(false);
  const [messages,setMessages]=useState<Message[]>([initialMessage]);
  const [input,setInput]=useState("");
  const [sectors,setSectors]=useState<Sector[]>(sectorTemplates);
@@ -56,6 +59,33 @@ export default function Concierge({locale="ar"}:{locale?:"ar"|"en"}) {const en=l
    }).catch(()=>{if(active)setHint(t("الكتالوج المباشر غير متاح الآن؛ الإرشاد يعتمد على النماذج الافتراضية.","The live catalog is unavailable; showing available demo examples."));});
    return()=>{active=false};
  },[]);
+ useEffect(()=>{
+   let active=true;
+   const guest=loadGuestWorkspace().assistantMessages;
+   fetch("/api/customer/auth/workspace",{credentials:"include",cache:"no-store"})
+    .then(async response=>response.ok?await response.json():null)
+    .then(async data=>{
+      if(!active)return;
+      const accountMessages=data?.workspace?.draft?.assistantMessages;
+      if(data?.workspace){
+        setSignedIn(true);
+        if(Array.isArray(guest)&&guest.length){
+          const combined=[...(Array.isArray(accountMessages)?accountMessages:[]),...guest].slice(-80);
+          const saved=await fetch("/api/customer/auth/workspace",{method:"PATCH",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({assistantMessages:combined})});
+          if(active&&saved.ok){setMessages(combined);saveGuestWorkspace({assistantMessages:[]});}
+          else if(active)setMessages(Array.isArray(accountMessages)&&accountMessages.length?accountMessages:guest);
+        }else if(Array.isArray(accountMessages)&&accountMessages.length)setMessages(accountMessages);
+      }else if(Array.isArray(guest)&&guest.length)setMessages(guest);
+    }).catch(()=>{if(active&&Array.isArray(guest)&&guest.length)setMessages(guest);})
+    .finally(()=>{if(active)setReady(true)});
+   return()=>{active=false};
+ },[]);
+ const storeMessages=(items:Message[])=>{
+   const history=items.filter(item=>item.text.trim()).slice(-80) as AssistantMessage[];
+   if(signedIn){
+     void fetch("/api/customer/auth/workspace",{method:"PATCH",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({assistantMessages:history})}).catch(()=>undefined);
+   }else saveGuestWorkspace({assistantMessages:history});
+ };
  const sectorLinks=useMemo(()=>sectors.slice(0,4),[sectors]);
  const send=async(e:FormEvent)=>{
    e.preventDefault();
@@ -63,6 +93,7 @@ export default function Concierge({locale="ar"}:{locale?:"ar"|"en"}) {const en=l
    if(!q||sending)return;
    const next=[...messages,{who:"customer" as const,text:q}];
    setMessages(next);
+   if(ready)storeMessages(next);
    setInput("");
    setSending(true);
    setHint("");
@@ -71,16 +102,16 @@ export default function Concierge({locale="ar"}:{locale?:"ar"|"en"}) {const en=l
      const response=await fetch("/api/visitor/assistant",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:history})});
      const data=await response.json().catch(()=>({}));
      if(!response.ok||typeof data.answer!=="string")throw Error(`HTTP ${response.status}: ${typeof data.error==="string"?data.error:"GPT unavailable"}`);
-     setMessages(prev=>[...prev,{who:"assistant",text:data.answer}]);
+     setMessages(prev=>{const updated=[...prev,{who:"assistant" as const,text:data.answer}];storeMessages(updated);return updated;});
    }catch(error){
      const diagnostic=error instanceof Error?error.message.slice(0,100):"Network error";
-     setMessages(prev=>[...prev,en?answerEn(q,sectors):answer(q,sectors)]);
+     setMessages(prev=>{const updated=[...prev,en?answerEn(q,sectors):answer(q,sectors)];storeMessages(updated);return updated;});
      setHint(t(`تعذّر اتصال GPT (${diagnostic}). الرد المعروض توضيحي وليس إجابة من GPT.`,`GPT connection failed (${diagnostic}). The displayed reply is rule-based, not generated by GPT.`));
    }finally{setSending(false);}
  };
- return <div dir={en?"ltr":"rtl"} style={{position:"fixed",bottom:18,left:18,zIndex:150,maxWidth:"calc(100vw - 36px)",fontFamily:"inherit"}}>
-   {open&&<section role="dialog" aria-label={t("مساعد ATSH AI الإرشادي","ATSH AI assistant")} style={{width:"min(370px,calc(100vw - 36px))",height:"min(560px,calc(100dvh - 100px))",background:"#fff",borderRadius:20,boxShadow:"0 18px 65px #0d244050",border:"1px solid #d7e1eb",display:"flex",flexDirection:"column",overflow:"hidden",marginBottom:12}}>
-     <header style={{padding:16,background:"#203958",color:"white",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><strong>{t("مساعد ATSH AI","ATSH AI assistant")}</strong><small style={{display:"block",opacity:.8}}>{t("مساعد GPT عند تفعيل الربط، وإرشاد بديل عند عدم توفره","GPT when connected; guided support otherwise")}</small></div><button aria-label={t("إغلاق المساعد","Close assistant")} onClick={()=>setOpen(false)} style={{background:"transparent",border:0,color:"white",fontSize:25,cursor:"pointer"}}>×</button></header>
+ return <div dir={en?"ltr":"rtl"} style={embedded?{width:"100%",fontFamily:"inherit"}:{position:"fixed",bottom:18,left:18,zIndex:150,maxWidth:"calc(100vw - 36px)",fontFamily:"inherit"}}>
+   {(open||embedded)&&<section role="dialog" aria-label={t("مساعد ATSH AI الإرشادي","ATSH AI assistant")} style={{width:embedded?"100%":"min(370px,calc(100vw - 36px))",height:embedded?"min(650px,75dvh)":"min(560px,calc(100dvh - 100px))",background:"#fff",borderRadius:20,boxShadow:"0 18px 65px #0d244050",border:"1px solid #d7e1eb",display:"flex",flexDirection:"column",overflow:"hidden",marginBottom:12}}>
+     <header style={{padding:16,background:"#203958",color:"white",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><strong>{t("مساعد ATSH AI","ATSH AI assistant")}</strong><small style={{display:"block",opacity:.8}}>{t("مساعد GPT عند تفعيل الربط، وإرشاد بديل عند عدم توفره","GPT when connected; guided support otherwise")}</small></div><button aria-label={t("إغلاق المساعد","Close assistant")} onClick={()=>setOpen(false)} hidden={embedded} style={{background:"transparent",border:0,color:"white",fontSize:25,cursor:"pointer"}}>×</button></header>
      <div aria-live="polite" style={{flex:1,overflowY:"auto",padding:15,display:"flex",flexDirection:"column",gap:10}}>
        {messages.map((m,i)=><div key={i} style={{padding:"10px 12px",borderRadius:14,lineHeight:1.8,fontSize:13,maxWidth:"95%",alignSelf:m.who==="customer"?"flex-start":"flex-end",background:m.who==="customer"?"#e8f0fb":"#f3f5f8",color:"#203958"}}>{m.text}</div>)}
        {hint&&<small style={{color:"#96610e"}}>{hint}</small>}
@@ -96,6 +127,6 @@ export default function Concierge({locale="ar"}:{locale?:"ar"|"en"}) {const en=l
        <button type="submit" disabled={!input.trim()||sending} style={{border:0,borderRadius:10,padding:"10px 14px",background:"#203958",color:"white",cursor:"pointer"}}>{sending?t("جارٍ الرد…","Replying…"):t("إرسال","Send")}</button>
      </form>
    </section>}
-   <button aria-expanded={open} aria-label={open?t("إغلاق مساعد ATSH AI","Close ATSH AI assistant"):t("فتح مساعد ATSH AI","Open ATSH AI assistant")} onClick={()=>setOpen(v=>!v)} style={{border:0,borderRadius:99,background:"#203958",color:"#fff",padding:"13px 19px",boxShadow:"0 8px 30px #20395844",cursor:"pointer",fontWeight:700}}>✦ {open?t("إغلاق المساعد","Close assistant"):t("اسأل مساعد ATSH AI","Ask ATSH AI")}</button>
+   {!embedded&&<button aria-expanded={open} aria-label={open?t("إغلاق مساعد ATSH AI","Close ATSH AI assistant"):t("فتح مساعد ATSH AI","Open ATSH AI assistant")} onClick={()=>setOpen(v=>!v)} style={{border:0,borderRadius:99,background:"#203958",color:"#fff",padding:"13px 19px",boxShadow:"0 8px 30px #20395844",cursor:"pointer",fontWeight:700}}>✦ {open?t("إغلاق المساعد","Close assistant"):t("اسأل مساعد ATSH AI","Ask ATSH AI")}</button>}
  </div>;
 }
