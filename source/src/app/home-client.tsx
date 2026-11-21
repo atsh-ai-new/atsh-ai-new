@@ -406,7 +406,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
 
       <section className="trust-strip" aria-label={copy("trustStripLabel")}>{trustItems.filter((item) => item.title).map((item, index) => <span key={item.id ?? index}>✓ {item.title}</span>)}</section>
 
-      {activeCustomSections(contentData.sections).map((section) => <CustomSection key={section.id} section={section} />)}
+      {activeCustomSections(contentData.sections).filter((section) => !isEnglish || !Array.isArray(arabicReference?.sections) || activeCustomSections(arabicReference.sections).some((reference) => reference.id === section.id)).map((section) => <CustomSection key={section.id} section={section} />)}
 
       {benefitCards.length > 0 && <section className="why-section" id="why">
         <div className="section-heading"><div><span className="section-kicker">{copy("whyKicker")}</span><h2>{copy("whyTitle")}</h2></div><p>{copy("whyDescription")}</p></div>
