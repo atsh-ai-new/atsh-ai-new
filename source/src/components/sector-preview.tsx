@@ -11,7 +11,8 @@ export default function SectorPreview({template,demoSlug,pricedAddons=[],basePri
   const [active,setActive]=useState(template.modules[0]);
   const [embedded,setEmbedded]=useState(false);
   const [fullScreen,setFullScreen]=useState(false);
-  useEffect(()=>{setEmbedded(new URLSearchParams(window.location.search).get("embedded")==="1");},[]);
+  const [immersive,setImmersive]=useState(false);
+  useEffect(()=>{const params=new URLSearchParams(window.location.search);setEmbedded(params.get("embedded")==="1");setImmersive(params.get("fullscreen")==="1");},[]);
   useEffect(()=>{const sync=()=>setFullScreen(Boolean(document.fullscreenElement));document.addEventListener("fullscreenchange",sync);return()=>document.removeEventListener("fullscreenchange",sync);},[]);
   const [previewMode,setPreviewMode]=useState<"full"|"simple">(demoSlug?"full":"simple");
   const [rows,setRows]=useState(template.sampleRows);
@@ -70,16 +71,17 @@ export default function SectorPreview({template,demoSlug,pricedAddons=[],basePri
     }).catch(()=>undefined);
     return()=>{active=false;if(url)URL.revokeObjectURL(url);};
   },[template.slug]);
-  return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:"none",width:"100%",margin:0,padding:embedded||fullScreen?0:"12px",minHeight:embedded?"100%":"100dvh",boxSizing:"border-box"}}>
-    {!embedded && <header style={{display:"flex",gap:12,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",marginBottom:20}}>
+  return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:"none",width:"100%",margin:0,padding:embedded||fullScreen||immersive?0:"12px",minHeight:embedded?"100%":"100dvh",boxSizing:"border-box"}}>
+    {immersive && !embedded && <Link href={`${base}/catalog/${encodeURIComponent(template.slug)}`} style={{position:"fixed",top:10,insetInlineStart:10,zIndex:9999,background:"#203958",color:"white",padding:"8px 12px",borderRadius:9,textDecoration:"none",fontWeight:700}}>{t("إغلاق ملء الشاشة ×","Exit full screen ×")}</Link>}
+    {!embedded && !immersive && <header style={{display:"flex",gap:12,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",marginBottom:20}}>
       <Link href={`${base}/catalog`} style={{color:"#4c78ae"}}>{t("← العودة للمعرض","← Back to solutions")}</Link>
       <button type="button" onClick={()=>{if(!document.fullscreenElement)void document.documentElement.requestFullscreen?.();else void document.exitFullscreen?.();}} style={{padding:"10px 14px",borderRadius:10,border:"1px solid #cbd5e1",background:"#203958",color:"#fff",cursor:"pointer",fontWeight:700}}>{t("⛶ ملء الشاشة","⛶ Full screen")}</button>
       <span style={{background:"#fff2d2",color:"#815800",borderRadius:12,padding:"8px 12px",fontSize:12}}>{t("معاينة تجريبية — بلا خادم أو دفع حقيقي","Demo mode — no live payments or customer data")}</span>
       <Link href={`${base}/?sector=${encodeURIComponent(template.slug)}#configurator` } style={{background:brand,color:"white",padding:"10px 16px",borderRadius:10}}>{t("تخصيص الباقة والسعر","Customize & price this solution")}</Link>
     </header>}
     <style>{`@media(max-width:700px){.sector-preview-grid{grid-template-columns:1fr!important}.sector-preview-nav{display:flex;overflow-x:auto;gap:5px}.sector-preview-nav button{min-width:max-content}}`}</style>
-    {demoSlug && interactiveDemoPaths[demoSlug] && previewMode==="full" ? <section aria-label={t("المعاينة التفاعلية الكاملة","Full interactive demo")} style={{background:"white",border:fullScreen?0:"1px solid #e2e8f0",borderRadius:fullScreen?0:12,overflow:"hidden",width:"100%"}}>
-      <iframe title={en?`${englishTemplateLabel(template.slug,template.name)} interactive demo`:`معاينة ${template.name} التفاعلية الكاملة`} src={interactiveDemoPaths[demoSlug]} loading="eager" referrerPolicy="no-referrer" sandbox="allow-scripts allow-forms allow-modals" style={{width:"100%",height:fullScreen?"100dvh":"calc(100dvh - 110px)",minHeight:embedded?360:480,border:0,display:"block"}} />
+    {demoSlug && interactiveDemoPaths[demoSlug] && previewMode==="full" ? <section aria-label={t("المعاينة التفاعلية الكاملة","Full interactive demo")} style={{background:"white",border:fullScreen||immersive?0:"1px solid #e2e8f0",borderRadius:fullScreen||immersive?0:12,overflow:"hidden",width:"100%"}}>
+      <iframe title={en?`${englishTemplateLabel(template.slug,template.name)} interactive demo`:`معاينة ${template.name} التفاعلية الكاملة`} src={interactiveDemoPaths[demoSlug]} loading="eager" referrerPolicy="no-referrer" sandbox="allow-scripts allow-forms allow-modals" style={{width:"100%",height:fullScreen||immersive?"100dvh":"calc(100dvh - 110px)",minHeight:embedded?360:480,border:0,display:"block"}} />
       <p style={{fontSize:12,padding:"8px 14px",color:"#64748b"}}>{t("المعاينة تفاعلية وبياناتها تجريبية داخل المتصفح؛ ليست متصلة ببيانات العملاء أو بالفوترة الحقيقية.","This demo uses sample browser data; it is not connected to live customers or billing.")}</p>
     </section> : <div className="sector-preview-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,230px) minmax(0,1fr)",gap:16}}> 
       <nav className="sector-preview-nav" aria-label={t("أقسام النموذج","Demo sections")} style={{background:brand,color:"white",borderRadius:16,padding:14,alignSelf:"start"}}>
