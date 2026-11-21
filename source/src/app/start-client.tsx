@@ -43,12 +43,12 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
   setSaving(true);setError("");
   try{
    const session=await fetch("/api/customer/auth/me",{credentials:"include",cache:"no-store"});
-   if(session.status===401){window.location.assign(`${root}/account/register`);return}
+   if(session.status===401){window.location.assign(`${root}/account/login`);return}
    if(!session.ok)throw Error(tr("تعذر فحص حساب العميل. أعد المحاولة.","Could not verify your account. Try again."));
    const res=await fetch("/api/customer/auth/project-drafts",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:businessName.trim(),draft:loadGuestWorkspace()})});
    const data=await res.json().catch(()=>({}));
    if(!res.ok||!data.projectDraft?.id)throw Error((en?"Unable to save your project draft":data.error||"تعذر حفظ مسودة المشروع"));
-   try{localStorage.removeItem("atsh_customer_workspace_v1");}catch{}
+   try{sessionStorage.removeItem("atsh_customer_workspace_v1");}catch{}
    window.location.assign(`${root}/account/project-preview/${encodeURIComponent(data.projectDraft.id)}`);
   }catch(e){setError(e instanceof Error?e.message:tr("تعذر حفظ المشروع","Unable to save your project"));}finally{setSaving(false)}
  };
