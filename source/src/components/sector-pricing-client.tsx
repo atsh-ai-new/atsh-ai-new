@@ -2,6 +2,7 @@
 import {useEffect,useMemo,useState} from "react";
 import {useParams} from "next/navigation";
 import Link from "next/link";
+import DomainLookup from "@/components/domain-lookup";
 import {saveGuestWorkspace} from "@/lib/customer-workspace";
 
 type Addon={code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
@@ -17,6 +18,8 @@ export default function SectorPricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
  const [notes,setNotes]=useState("");
+ const [domainName,setDomainName]=useState("");
+ const [requestDomainBooking,setRequestDomainBooking]=useState(false);
  const money=(n:number)=>new Intl.NumberFormat(en?"en-EG":"ar-EG",{maximumFractionDigits:2}).format(n)+" "+t("ج.م","EGP");
  useEffect(()=>{let active=true;setLoading(true);setError("");
  fetch("/api/site-content/catalog",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();return r.json()}).then(data=>{
@@ -34,7 +37,7 @@ export default function SectorPricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  return()=>{active=false};
  },[item,codes.join(","),en]);
  const save=()=>{if(!item||!quote)return;
-  saveGuestWorkspace({sectorSlug:item.slug,sectorName:item.name,sectorAddonCodes:codes,source:"catalog",projectMode:"ready",requirements:[item.name,...(quote.items??[]).map(x=>x.name+" : "+x.price),notes].join("\n")});
+  saveGuestWorkspace({sectorSlug:item.slug,sectorName:item.name,sectorAddonCodes:codes,source:"catalog",projectMode:"ready",domainName,requirements:[item.name,...(quote.items??[]).map(x=>x.name+" : "+x.price),domainName?`الدومين المطلوب: ${domainName}`:"",requestDomainBooking&&domainName?"طلب حجز الدومين بواسطة الإدارة بعد تأكيد التوفر والسعر":"",notes].filter(Boolean).join("\n")});
   window.location.assign(en?"/en/account/register":"/account/register");
  };
  return <main dir={en?"ltr":"rtl"} style={{background:"#f8f7f3",minHeight:"100vh",padding:"24px 16px",color:"#203958"}}>
@@ -45,7 +48,7 @@ export default function SectorPricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  {error&&<p role="alert" style={{color:"#a33"}}>{error}</p>}
  {item&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,320px),1fr))",gap:20,alignItems:"start"}}>
  <section style={{background:"white",border:"1px solid #dbe4ee",borderRadius:18,padding:20}}>
- <h2>{item.name}</h2><p>{item.description}</p>
+ <h2>{item.name}</h2><h3>{t("١. اختيار الدومين","1. Choose a domain")}</h3><DomainLookup locale={locale} onDomainChange={setDomainName}/><label style={{display:"flex",gap:9,alignItems:"center",marginBottom:16}}><input type="checkbox" checked={requestDomainBooking} onChange={e=>setRequestDomainBooking(e.target.checked)}/>{t("أطلب من الإدارة حجز الدومين المختار بعد تأكيد السعر والتوفر","Ask management to register the selected domain after confirming price and availability")}</label><p>{item.description}</p>
  <h3>{t("الإضافات الاختيارية","Optional add-ons")}</h3>
  {!item.pricedAddons?.length&&<p>{t("لا توجد إضافات مسجلة حاليًا لهذا النظام.","No add-ons configured for this solution.")}</p>}
  {(item.pricedAddons??[]).map(a=><label key={a.code} style={{display:"flex",gap:12,padding:"14px 0",borderBottom:"1px solid #e4e9ef",cursor:"pointer"}}>
