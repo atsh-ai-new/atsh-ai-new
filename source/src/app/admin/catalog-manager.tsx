@@ -7,15 +7,13 @@ type PricedAddon={code:string;name:string;price:number;pricingType:"fixed"|"mont
 type CatalogItem = SectorTemplate & {published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; demoSlug?:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[];sectorId?:string;subcategoryId?:string};
 const defaultPricedAddons=():PricedAddon[]=>[
  {code:"extra_page",name:"صفحة إضافية (لكل صفحة)",price:1000,pricingType:"fixed"},
- {code:"logo_design",name:"تصميم شعار",price:1000,pricingType:"fixed"},
- {code:"visual_identity",name:"هوية بصرية كاملة",price:1000,pricingType:"fixed"},
  {code:"domain",name:"دومين (سنة)",price:1000,pricingType:"yearly"},
  {code:"hosting",name:"استضافة (سنة)",price:1000,pricingType:"yearly"},
  {code:"extra_feature",name:"ميزة إضافية",price:1000,pricingType:"fixed"}
 ];
 const seed = (): CatalogItem[] => sectorTemplates.map((s,i)=>({...s,published:true,archived:false,sortOrder:i*10,imageUrl:"",previewUrl:"",demoSlug:s.slug,basePrice:5000,addons:[],pricedAddons:defaultPricedAddons()}));
 const empty = (): CatalogItem => ({slug:"",name:"",category:"",icon:"📁",description:"",features:[],modules:["لوحة القيادة"],sampleStats:[],sampleRows:[],note:"معاينة تجريبية",published:false,archived:false,sortOrder:100,imageUrl:"",previewUrl:"",demoSlug:"",basePrice:5000,addons:[],pricedAddons:defaultPricedAddons()});
-const normalize = (v: unknown): CatalogItem[] => Array.isArray(v) ? v.filter(x=>x && typeof x==="object" && typeof x.slug==="string" && typeof x.name==="string").map(x=>({...empty(),...x,features:Array.isArray(x.features)?x.features:[],modules:Array.isArray(x.modules)?x.modules:[],sampleStats:Array.isArray(x.sampleStats)?x.sampleStats:[],sampleRows:Array.isArray(x.sampleRows)?x.sampleRows:[],addons:Array.isArray(x.addons)?x.addons:[],pricedAddons:Array.isArray(x.pricedAddons)?x.pricedAddons:defaultPricedAddons()})) : seed();
+const normalize = (v: unknown): CatalogItem[] => Array.isArray(v) ? v.filter(x=>x && typeof x==="object" && typeof x.slug==="string" && typeof x.name==="string").map(x=>({...empty(),...x,features:Array.isArray(x.features)?x.features:[],modules:Array.isArray(x.modules)?x.modules:[],sampleStats:Array.isArray(x.sampleStats)?x.sampleStats:[],sampleRows:Array.isArray(x.sampleRows)?x.sampleRows:[],addons:Array.isArray(x.addons)?x.addons:[],pricedAddons:Array.isArray(x.pricedAddons)?x.pricedAddons.filter((option:PricedAddon)=>!["logo_design","visual_identity"].includes(option.code)):defaultPricedAddons()})) : seed();
 export default function CatalogManager() {
   const [items,setItems]=useState<CatalogItem[]>([]);
   const [sectors,setSectors]=useState<CatalogSector[]>(normalizeCatalogSectors(undefined));
