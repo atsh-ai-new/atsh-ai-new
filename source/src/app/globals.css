@@ -434,3 +434,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .package-card{min-width:0}
 @media(min-width:841px){.build-hero{padding-block:24px 36px}.build-hero-compact{padding-top:12px}.packages-section{padding-block:28px 34px}}
 @media(max-width:840px){.build-hero{min-height:0;padding-block:12px 24px;gap:14px}.build-hero-copy .hero-actions{margin-top:8px}.build-hero-copy .hero-trust{margin-top:10px}.section-heading{margin-bottom:12px}}
+
+/* English mobile uses the same compact structure and spacing as Arabic mobile. */
+@media(max-width:840px){
+ .platform[dir="ltr"] .build-hero,.platform[dir="rtl"] .build-hero{min-height:0;gap:14px;padding-block:12px 24px}
+ .platform[dir="ltr"] .build-hero-copy,.platform[dir="rtl"] .build-hero-copy{min-width:0;max-width:100%}
+ .platform[dir="ltr"] .build-hero-copy>p,.platform[dir="rtl"] .build-hero-copy>p{line-height:1.55;margin:0}
+ .platform[dir="ltr"] .hero-actions,.platform[dir="rtl"] .hero-actions{gap:8px;margin-top:10px}
+ .platform[dir="ltr"] .hero-actions>.button,.platform[dir="rtl"] .hero-actions>.button{min-width:0;min-height:0;padding:10px 12px;line-height:1.35}
+ .platform[dir="ltr"] .hero-trust,.platform[dir="rtl"] .hero-trust{gap:7px 12px;margin-top:10px}
+ .platform[dir="ltr"] .package-card,.platform[dir="rtl"] .package-card{min-height:0}
+}
