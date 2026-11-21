@@ -1269,11 +1269,13 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
  if(!c.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Contract unavailable"})}
  const quoteAmount=await client.query("SELECT total_piasters FROM commercial_quotes WHERE id=$1",[id]);
  const invoices=await ensureInvoiceScheduleOnAcceptance(client,{quoteId:Number(id),totalPiasters:quoteAmount.rows[0].total_piasters});
- await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[id]);await client.query(`UPDATE customer_journey_projects SET status='payment_pending',updated_at=now()
-  WHERE id IN (
-    SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true
-    UNION ALL SELECT project_id FROM commercial_custom_quote_links WHERE quote_id=$1 AND is_current=true
-   ) AND status='quoted'`,[id]);
+ await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[id]);
+ const linkedProjects=await client.query(`SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true
+  UNION SELECT project_id FROM commercial_custom_quote_links WHERE quote_id=$1 AND is_current=true`,[id]);
+ for(const linked of linkedProjects.rows){
+  const moved=await transitionJourneyProject(client,{projectId:linked.project_id,next:'payment_pending',expectedStatus:'quoted',actor:req.admin.email});
+  if(!moved.ok){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage changed before contract acceptance",reason:moved.reason});}
+ }
  await queueJourneyEvent(client,"contract.signed",`contract.signed:${c.rows[0].id}`,{contractId:c.rows[0].id,quoteId:id,signedAt:c.rows[0].signed_at});
  await client.query("COMMIT");res.json({accepted:true,quoteId:id,contractId:c.rows[0].id,signedAt:c.rows[0].signed_at,paymentStatus:"not_started",checkoutStage:"payment_pending",gatewayConnected:false,invoices:invoices.invoices.map(x=>({id:x.id,status:x.status}))});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
