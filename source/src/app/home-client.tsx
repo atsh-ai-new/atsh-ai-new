@@ -60,17 +60,19 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
   const [apiCatalog, setApiCatalog] = useState<BackendCatalog>({ packages: [], options: [] });
   const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [siteConfig, setSiteConfig] = useState<SiteConfig>({});
+  // Arabic published content is the visibility reference for the English homepage.
+  const [arabicReference, setArabicReference] = useState<Record<string, unknown> | null>(null);
   const [pageLinks, setPageLinks] = useState<PageLink[]>([]);
   const [selectedSector, setSelectedSector] = useState<{ slug: string; name: string } | null>(null);
   const [sectorPricedAddons,setSectorPricedAddons]=useState<Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>>([]);
   const [sectorAddonCodes,setSectorAddonCodes]=useState<string[]>([]);
   const [sectorPrice,setSectorPrice]=useState<{subtotal:number;monthly:number;yearly:number;needsCustomQuote:boolean;items:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>}|null>(null);
-  const copy=(key:string)=>{const content=siteConfig.page?.content;const value=content?.[key];if(typeof value==="string")return value;return isEnglish ? siteCopyEn[key] ?? "" : siteCopyDefaults[key] ?? "";};
+  const copy=(key:string)=>{const content=siteConfig.page?.content;const value=content?.[key];if(isEnglish && arabicReference && Object.prototype.hasOwnProperty.call(arabicReference,key) && arabicReference[key] === "")return "";if(typeof value==="string")return value;return isEnglish ? siteCopyEn[key] ?? "" : siteCopyDefaults[key] ?? "";};
   const steps = Array.from({ length: 8 }, (_, index) => copy(`stepper${index}`));
   const startWindowLabel = ({ soon: copy("startSoon"), month: copy("startInMonth"), twoMonths: copy("startInTwoMonths"), exploring: copy("startExploring") } as Record<string, string>)[startWindow] ?? copy("startInMonth");
   const contactWindowLabel = ({ anytime: copy("contactAnytime"), morning: copy("contactMorning"), afternoon: copy("contactAfternoon"), evening: copy("contactEvening") } as Record<string, string>)[contactWindow] ?? copy("contactAnytime");
   const contentData = siteConfig.page?.content ?? {};
-  const cardsFromContent = (key: string, fallback: PublicCard[]): PublicCard[] => (Array.isArray(contentData[key]) ? contentData[key] as PublicCard[] : fallback).filter((item) => item && typeof item.title === "string" && item.title.trim().length > 0);
+  const cardsFromContent = (key: string, fallback: PublicCard[]): PublicCard[] => {const reference=arabicReference?.[key];const source=Array.isArray(contentData[key]) ? contentData[key] as PublicCard[] : fallback;const visibleIds=isEnglish && Array.isArray(reference) ? new Set(reference.filter((item):item is PublicCard=>!!item && typeof item==="object").map(item=>item.id).filter(Boolean)) : null;return source.filter((item)=>item && typeof item.title==="string" && item.title.trim().length>0 && (!visibleIds || (item.id && visibleIds.has(item.id))));};
   const benefitCards = cardsFromContent("benefitCards", [1,2,3,4].map((n) => ({ id: `benefit-${n}`, title: copy(`benefit${n}Title`), description: copy(`benefit${n}Description`), icon: String(n).padStart(2, "0") })));
   const processCards = cardsFromContent("processCards", [1,2,3].map((n) => ({ id: `step-${n}`, title: copy(`step${n}Title`), description: copy(`step${n}Description`), icon: String(n).padStart(2, "0") })));
   const trustItems = cardsFromContent("trustItems", [1,2,3,4].map((n) => ({ id: `trust-${n}`, title: copy(`trust${n}`) })));
@@ -87,6 +89,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
       setApiCatalog(catalog);
       setCatalogStatus(catalog.packages.length ? "ready" : "unavailable");
     }).catch(() => { if (active) setCatalogStatus("unavailable"); });
+    if (isEnglish) fetch("/api/site-content/home?locale=ar", { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as SiteConfig : null).then((config)=>{if(active && config?.page?.content)setArabicReference(config.page.content);}).catch(()=>undefined);
     fetch(`/api/site-content/home?locale=${locale}`, { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as SiteConfig : null)
       .then((config) => { if (active && config) setSiteConfig(config); }).catch(() => undefined);
     fetch(`/api/site-pages?locale=${locale}`, { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { pages?: PageLink[] } : null)
@@ -403,7 +406,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
 
       <section className="trust-strip" aria-label={copy("trustStripLabel")}>{trustItems.filter((item) => item.title).map((item, index) => <span key={item.id ?? index}>✓ {item.title}</span>)}</section>
 
-      {activeCustomSections(contentData.sections).map((section) => <CustomSection key={section.id} section={section} />)}
+      {activeCustomSections(contentData.sections).filter((section) => !isEnglish || !Array.isArray(arabicReference?.sections) || activeCustomSections(arabicReference.sections).some((reference) => reference.id === section.id)).map((section) => <CustomSection key={section.id} section={section} />)}
 
       {benefitCards.length > 0 && <section className="why-section" id="why">
         <div className="section-heading"><div><span className="section-kicker">{copy("whyKicker")}</span><h2>{copy("whyTitle")}</h2></div><p>{copy("whyDescription")}</p></div>
