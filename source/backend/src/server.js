@@ -129,7 +129,15 @@ const adminWriteLimiter = rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRat
 // Authenticated CMS reads must not exhaust a shared-IP quota during dashboard refreshes.
 // Keep the separate, stricter login limiter and protect state-changing admin requests.
 app.use("/api/admin", (req,res,next) => (req.method === "GET" || req.method === "HEAD" || req.path === "/login") ? next() : adminWriteLimiter(req,res,next));
-app.use("/api", (req,res,next) => (req.path === "/admin" || req.path.startsWith("/admin/")) ? next() : publicApiLimiter(req,res,next));
+// High-traffic read-only catalog/pricing endpoints get a separate shared-IP quota.
+// Keep write/auth/visitor endpoints on the original restrictive limiter.
+const publicCatalogLimiter = rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?12000:3000, standardHeaders: "draft-8", legacyHeaders: false });
+app.use("/api", (req,res,next) => {
+ if(req.path === "/admin" || req.path.startsWith("/admin/"))return next();
+ const publicRead=req.method==="GET"||req.method==="HEAD";
+ if(publicRead && (req.path==="/site-content/catalog" || req.path==="/sector-price"))return publicCatalogLimiter(req,res,next);
+ return publicApiLimiter(req,res,next);
+});
 
 async function requireAdmin(req,res,next) {
   try {
