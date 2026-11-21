@@ -234,6 +234,49 @@ app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requireRole("ow
  res.status(201).json({message:result.rows[0]});
 }));
 
+// Internal project tasks: only administrators assign work to active team accounts.
+const journeyTaskCreate=z.object({title:z.string().trim().min(2).max(180),description:z.string().max(4000).default(''),assignedTo:z.string().uuid().nullable().default(null)}).strict();
+const journeyTaskUpdate=z.object({title:z.string().trim().min(2).max(180).optional(),description:z.string().max(4000).optional(),assignedTo:z.string().uuid().nullable().optional(),status:z.enum(['todo','in_progress','blocked','done']).optional()}).strict().refine(x=>Object.keys(x).length>0);
+app.get("/api/admin/journey/projects/:id/tasks",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
+ const project=await pool.query("SELECT 1 FROM customer_journey_projects WHERE id=$1",[req.params.id]);
+ if(!project.rowCount)return res.status(404).json({error:"Project not found"});
+ const tasks=await pool.query(`SELECT t.id,t.project_id,t.title,t.description,t.status,t.assigned_to,m.display_name AS assigned_to_name,m.is_active AS assignee_active,t.created_at,t.updated_at
+ FROM customer_journey_tasks t LEFT JOIN team_members m ON m.id=t.assigned_to WHERE t.project_id=$1 ORDER BY t.created_at DESC LIMIT 200`,[req.params.id]);
+ res.set("Cache-Control","private, no-store").json({tasks:tasks.rows});
+}));
+app.post("/api/admin/journey/projects/:id/tasks",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
+ const parsed=journeyTaskCreate.safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid task"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const project=await client.query("SELECT 1 FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
+  if(!project.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
+  if(parsed.data.assignedTo){const member=await client.query("SELECT 1 FROM team_members WHERE id=$1 AND is_active=true",[parsed.data.assignedTo]);if(!member.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"Assignee is not active"});}}
+  const task=await client.query("INSERT INTO customer_journey_tasks(project_id,title,description,assigned_to,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$5) RETURNING *",[req.params.id,parsed.data.title,parsed.data.description,parsed.data.assignedTo,req.admin.email]);
+  await auditChange(client,req.admin.email,"journey.task.created","customer_journey_task",task.rows[0].id,null,task.rows[0]);
+  await client.query("COMMIT");res.status(201).json({task:task.rows[0]});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
+app.patch("/api/admin/journey/projects/:id/tasks/:taskId",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success||!z.string().uuid().safeParse(req.params.taskId).success)return res.status(400).json({error:"Invalid id"});
+ const parsed=journeyTaskUpdate.safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid task update"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const before=await client.query("SELECT * FROM customer_journey_tasks WHERE id=$1 AND project_id=$2 FOR UPDATE",[req.params.taskId,req.params.id]);
+  if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Task not found"});}
+  if(parsed.data.assignedTo){const member=await client.query("SELECT 1 FROM team_members WHERE id=$1 AND is_active=true",[parsed.data.assignedTo]);if(!member.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"Assignee is not active"});}}
+  const hasAssignee=Object.hasOwn(parsed.data,"assignedTo");
+  const task=await client.query(`UPDATE customer_journey_tasks SET title=COALESCE($3,title),description=COALESCE($4,description),status=COALESCE($5,status),assigned_to=CASE WHEN $6 THEN $7::uuid ELSE assigned_to END,updated_by=$8,updated_at=now() WHERE id=$1 AND project_id=$2 RETURNING *`,[req.params.taskId,req.params.id,parsed.data.title??null,parsed.data.description??null,parsed.data.status??null,hasAssignee,parsed.data.assignedTo??null,req.admin.email]);
+  await auditChange(client,req.admin.email,"journey.task.updated","customer_journey_task",task.rows[0].id,before.rows[0],task.rows[0]);
+  await client.query("COMMIT");res.json({task:task.rows[0]});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
+
 // Stage 4: authoritative catalog guidance and audited, restricted lifecycle transitions.
 app.get("/api/admin/journey/catalog",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
  const [packages,options]=await Promise.all([
