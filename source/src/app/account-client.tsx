@@ -97,7 +97,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
   try{
    const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(target.id)}/submit`,{method:"POST",credentials:"include"});
    const result=await response.json().catch(()=>({}));
-   if(!response.ok)throw Error(result.error||"Submission failed");
+   if(!response.ok){const errorCode=String(result.code||"");const message=errorCode==="PROJECT_REQUIREMENTS_INCOMPLETE"?t("أكمل متطلبات المشروع قبل إرساله للإدارة.","Complete project requirements before submission."):String(result.error||t("تعذر إرسال الطلب. حاول مجددًا.","Submission failed. Please try again."));throw Error(message);}
    await Promise.all([loadDrafts(),loadProjects()]);
    setMessage(result.alreadySubmitted?t("هذا الطلب مسجل بالفعل لدى الإدارة.","This request is already registered with management."):t("تم إرسال المتطلبات للإدارة. يمكنك متابعة المشروع من لوحة التحكم.","Requirements sent to management. Track the project in your dashboard."));
   }catch(error){setMessage(error instanceof Error?error.message:"Submission failed");}
