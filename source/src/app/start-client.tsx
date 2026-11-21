@@ -58,14 +58,14 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
    window.location.assign(`${root}/account/project-preview/${encodeURIComponent(data.projectDraft.id)}`);
   }catch(e){setError(e instanceof Error?e.message:tr("تعذر حفظ المشروع","Unable to save your project"));}finally{setSaving(false)}
  };
- return <main lang={locale} dir={en?"ltr":"rtl"} style={{background:"#f8f8f5",minHeight:"100vh",padding:"15px 14px 65px",color:"#203958"}}>
-  <div style={{maxWidth:810,margin:"auto"}}>
-   <header style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+ return <main className="atsh-start" lang={locale} dir={en?"ltr":"rtl"} style={{background:"#f8f8f5",minHeight:"100vh",padding:"15px 14px 65px",color:"#203958"}}>
+  <div className="atsh-start-container" style={{maxWidth:810,margin:"auto"}}>
+   <header className="atsh-start-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
     <Link href={en?"/en":"/"} style={{fontSize:21,fontWeight:900,color:"#203958",textDecoration:"none"}}>ATSH AI</Link>
     <Link href={`${root}/account/dashboard`} style={{color:"#203958"}}>{tr("حساب العميل","Customer account")}</Link>
    </header>
-   <div style={{margin:"25px 0 17px"}}><small style={{color:"#986727",fontWeight:800}}>{tr("خطوة","Step")} {step} {tr("من","of")} 2</small><h1 style={{fontSize:"clamp(25px,4vw,36px)",margin:"6px 0"}}>{tr("ابدأ مشروعك بالطريقة المناسبة","Start your project your way")}</h1><p style={{color:"#66788c",lineHeight:1.8}}>{tr("حدد نوع الحل والمسار. لن نعرض سعرًا غير معتمد أو نعتبر مواصفاتك طلب شراء.","Choose your solution and starting point. This is a project brief, not a purchase order or a final quote.")}</p></div>
-   <form onSubmit={e=>void submit(e)} style={{border:"1px solid #dce6ef",borderRadius:18,background:"white",padding:"clamp(14px,3vw,24px)"}}>
+   <div className="atsh-start-intro" style={{margin:"25px 0 17px"}}><small style={{color:"#986727",fontWeight:800}}>{tr("خطوة","Step")} {step} {tr("من","of")} 2</small><h1 style={{fontSize:"clamp(25px,4vw,36px)",margin:"6px 0"}}>{tr("ابدأ مشروعك بالطريقة المناسبة","Start your project your way")}</h1><p style={{color:"#66788c",lineHeight:1.8}}>{tr("حدد نوع الحل والمسار. لن نعرض سعرًا غير معتمد أو نعتبر مواصفاتك طلب شراء.","Choose your solution and starting point. This is a project brief, not a purchase order or a final quote.")}</p></div>
+   <form className="atsh-start-form" onSubmit={e=>void submit(e)} style={{border:"1px solid #dce6ef",borderRadius:18,background:"white",padding:"clamp(14px,3vw,24px)"}}>
     {step===1?<section>
      <h2 style={{fontSize:19}}>{tr("نوع المشروع","Project type")}</h2>
      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,215px),1fr))",gap:10}}>{types.map(x=><button type="button" key={x.id} aria-pressed={kind===x.id} onClick={()=>changeKind(x.id)} style={chooseStyle(kind===x.id)}><strong>{en?titles[x.id]?.title:x.title}</strong><small style={{display:"block",marginTop:5,color:"#65788b"}}>{en?titles[x.id]?.desc:x.desc}</small></button>)}</div>
@@ -74,7 +74,7 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
       <button type="button" aria-pressed={mode==="ready"} onClick={()=>setMode("ready")} style={chooseStyle(mode==="ready")}><strong>{tr("قالب جاهز للتخصيص","Ready-to-customize template")}</strong><small style={{display:"block",marginTop:6}}>{tr("تجربة الكتالوجات واختيار الإضافات وتسعيرها.","Explore available solutions, optional features and pricing.")}</small></button>
       <button type="button" aria-pressed={mode==="custom"} onClick={()=>setMode("custom")} style={chooseStyle(mode==="custom")}><strong>{tr("مشروع بمواصفات خاصة","Custom project")}</strong><small style={{display:"block",marginTop:6}}>{tr("حفظ فكرة المشروع ثم مراجعتها قبل إصدار عرض مخصص.","Save your project brief for review before a custom quote is issued.")}</small></button>
      </div>
-     <div style={{textAlign:"left",marginTop:20}}><button type="button" onClick={()=>setStep(2)} style={{padding:"12px 23px",background:"#203958",color:"white",border:0,borderRadius:10,fontSize:16,cursor:"pointer"}}>{tr("التالي ←","Next →")}</button></div>
+     <div className="atsh-start-next" style={{textAlign:"left",marginTop:20}}><button type="button" onClick={()=>setStep(2)} style={{padding:"12px 23px",background:"#203958",color:"white",border:0,borderRadius:10,fontSize:16,cursor:"pointer"}}>{tr("التالي ←","Next →")}</button></div>
     </section>:<section>
      <h2 style={{fontSize:19,margin:"0 0 17px"}}>{tr("تفاصيل","Details:")} {en?titles[kind]?.title:types.find(x=>x.id===kind)?.title}</h2>
      <label style={{display:"grid",gap:7,fontWeight:700}}>{tr("اسم المشروع / النشاط","Project or business name")}<input required maxLength={120} value={businessName} onChange={e=>setBusinessName(e.target.value)} placeholder={tr("مثال: عيادتي","For example: My Clinic")} style={{border:"1px solid #b9c9dc",borderRadius:10,padding:13,fontSize:16}}/></label>
@@ -87,7 +87,7 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
      <label style={{display:"grid",gap:8,fontWeight:700,marginTop:18}}>{tr("اشرح طلبك","Describe your requirements")}<textarea rows={3} maxLength={4000} value={requirements} onChange={e=>setRequirements(e.target.value)} placeholder={tr("أهم التفاصيل أو المشاكل التي تريد حلها","Main goals, requirements or problems to solve")} style={{border:"1px solid #b9c9dc",borderRadius:10,padding:13,fontSize:16}}/></label>
      <p style={{fontSize:13,color:"#607187",lineHeight:1.8}}>{mode==="ready"?tr("سننتقل للمعرض وتجربة النماذج. الخصائص المختارة هنا مجرد وصف مبدئي؛ السعر يحسبه محرك التسعير فقط.","Next you can explore interactive demos. Your current selections are a brief; only the pricing engine calculates prices."):tr("سيُحفظ وصف مشروعك في حسابك كمسودة، وليس عقدًا أو طلب شراء. إن لم تكن مسجلًا، ستنتقل لإنشاء حساب ويمكنك نقل اختياراتك إليه.","Your project brief will be saved as a draft, not a contract or purchase order. If needed, create an account to keep your selections.")}</p>
      {error&&<p role="alert" style={{padding:12,background:"#fff0dc",borderRadius:10}}>{error}</p>}
-     <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}}><button type="button" onClick={()=>setStep(1)} style={{padding:"12px 18px",border:"1px solid #b9c9dc",borderRadius:10,background:"white",cursor:"pointer"}}>{tr("السابق","Previous")}</button><button type="submit" disabled={saving} style={{padding:"12px 18px",border:0,borderRadius:10,background:"#203958",color:"white",fontWeight:800,cursor:"pointer"}}>{saving?"جارٍ الحفظ…":mode==="ready"?"عرض النماذج التفاعلية ←":"حفظ مسودة المشروع ←"}</button></div>
+     <div className="atsh-start-actions" style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}}><button type="button" onClick={()=>setStep(1)} style={{padding:"12px 18px",border:"1px solid #b9c9dc",borderRadius:10,background:"white",cursor:"pointer"}}>{tr("السابق","Previous")}</button><button type="submit" disabled={saving} style={{padding:"12px 18px",border:0,borderRadius:10,background:"#203958",color:"white",fontWeight:800,cursor:"pointer"}}>{saving?"جارٍ الحفظ…":mode==="ready"?"عرض النماذج التفاعلية ←":"حفظ مسودة المشروع ←"}</button></div>
     </section>}
    </form>
   </div>
