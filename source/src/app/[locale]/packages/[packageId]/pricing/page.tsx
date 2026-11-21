@@ -16,6 +16,9 @@ export default function PackagePricingPage(){
  const [quantities,setQuantities]=useState<Record<string,number>>({});
  const [error,setError]=useState("");
  const [copied,setCopied]=useState(false);
+ const [customer,setCustomer]=useState({name:"",phone:"",email:"",notes:""});
+ const [submitting,setSubmitting]=useState(false);
+ const [submission,setSubmission]=useState("");
  useEffect(()=>{let active=true;Promise.all([
   fetch("/api/catalog",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("catalog");return r.json()}),
   fetch(`/api/site-content/home?locale=${en?"en":"ar"}`,{cache:"no-store"}).then(async r=>r.ok?r.json():null).catch(()=>null)
@@ -32,6 +35,7 @@ export default function PackagePricingPage(){
  const total=tax===null?null:round(oneTime+tax);
  const money=(n:number)=>new Intl.NumberFormat(en?"en-EG":"ar-EG",{maximumFractionDigits:2,minimumFractionDigits:0}).format(n)+" "+t("ج.م","EGP");
  const toggle=(id:string)=>setSelected(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id]);
+ const submit=async(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();if(!pkg||pkg.is_custom_quote||invalid||vat===null)return;setSubmitting(true);setSubmission("");try{const response=await fetch("/api/orders",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({packageId:pkg.id,optionIds:lines.map(l=>l.id),optionQuantities:Object.fromEntries(lines.filter(l=>l.pricing_type==="per_page").map(l=>[l.id,l.quantity])),customerName:customer.name,phone:customer.phone,email:customer.email,notes:customer.notes})});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||data.message||t("تعذر إرسال الطلب","Could not submit request"));setSubmission(t("تم تسجيل الطلب: ","Order received: ")+(data.order?.reference??""));}catch(e){setSubmission(e instanceof Error?e.message:t("تعذر إرسال الطلب","Could not submit request"))}finally{setSubmitting(false)}};
  const summary=[pkg?.name??"",...lines.map(l=>`${l.name} × ${l.quantity}: ${money(l.amount)} (${l.pricing_type})`),`${t("تكلفة التنفيذ","One-time")}: ${money(oneTime)}`,`${t("شهريًا","Monthly")}: ${money(monthly)}`,`${t("سنويًا","Yearly")}: ${money(yearly)}`,tax===null?t("الضريبة تُحدد عند اعتماد العرض","Tax to be confirmed"):`${t("ضريبة التنفيذ","One-time VAT")}: ${money(tax)}`,total===null?"":`${t("إجمالي التنفيذ","One-time total")}: ${money(total)}`].filter(Boolean).join("\n");
  return <main dir={en?"ltr":"rtl"} style={{minHeight:"100vh",background:"#f8f7f3",color:"#203958",padding:"28px 16px",fontFamily:"inherit"}}>
   <div style={{maxWidth:1040,margin:"auto"}}>
@@ -68,6 +72,7 @@ export default function PackagePricingPage(){
      <small style={{display:"block",marginBottom:18}}>{t("الاشتراكات المتكررة منفصلة عن إجمالي التنفيذ. التقدير غير ملزم حتى تأكيد الطلب من الخادم.","Recurring charges are separate. This estimate is not a binding server-confirmed order.")}</small>
      {pkg.is_custom_quote&&<p>{t("الباقة تتطلب عرض سعر مخصصًا.","This package requires a custom quote.")}</p>}
      <button type="button" disabled={invalid} onClick={async()=>{try{await navigator.clipboard.writeText(summary);setCopied(true)}catch{setCopied(false)}}} style={{padding:"12px 18px",background:"#203958",color:"white",border:0,borderRadius:10,width:"100%",cursor:"pointer"}}>{copied?t("تم نسخ التفاصيل","Copied"):t("نسخ تفاصيل الفاتورة","Copy itemized estimate")}</button>
+     <form onSubmit={submit} style={{marginTop:20,display:"grid",gap:10}}><h3>{t("إرسال الطلب","Submit order")}</h3>{pkg.is_custom_quote?<p>{t("هذه الباقة تحتاج عرض سعر معتمد. انسخ التفاصيل للتواصل مع المبيعات.","This package requires an approved custom quote. Copy the estimate and contact sales.")}</p>:<><input required minLength={2} maxLength={120} placeholder={t("الاسم","Name")} value={customer.name} onChange={e=>setCustomer(x=>({...x,name:e.target.value}))} style={{padding:12,borderRadius:8,border:"1px solid #cbd5e1"}}/><input required minLength={7} maxLength={30} type="tel" placeholder={t("الهاتف","Phone")} value={customer.phone} onChange={e=>setCustomer(x=>({...x,phone:e.target.value}))} style={{padding:12,borderRadius:8,border:"1px solid #cbd5e1"}}/><input type="email" placeholder={t("البريد الإلكتروني (اختياري)","Email (optional)")} value={customer.email} onChange={e=>setCustomer(x=>({...x,email:e.target.value}))} style={{padding:12,borderRadius:8,border:"1px solid #cbd5e1"}}/><textarea maxLength={4000} placeholder={t("تفاصيل إضافية (اختياري)","Additional details (optional)")} value={customer.notes} onChange={e=>setCustomer(x=>({...x,notes:e.target.value}))} style={{padding:12,borderRadius:8,border:"1px solid #cbd5e1"}}/><button type="submit" disabled={submitting||invalid||vat===null} style={{padding:12,borderRadius:8,border:0,background:"#203958",color:"white"}}>{submitting?t("جارٍ الإرسال...","Submitting..."):t("تأكيد وإرسال الطلب","Confirm and submit order")}</button></>}{submission&&<p role="status">{submission}</p>}</form>
     </aside>
    </div>}
   </div>
