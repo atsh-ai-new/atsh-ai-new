@@ -560,3 +560,16 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .atsh-account-auth>form label{font-size:14px}
  .atsh-account-auth>p{font-size:13px;line-height:2.1;overflow-wrap:anywhere}
 }
+
+/* Mobile navigation mirrors the desktop header without adding a long page section. */
+.atsh-mobile-nav{display:none}
+@media(max-width:840px){
+ .platform-header{overflow:visible}
+ .atsh-mobile-nav{display:block;position:relative;flex:0 0 auto;z-index:30}
+ .atsh-mobile-nav>summary{display:flex;align-items:center;gap:5px;list-style:none;cursor:pointer;white-space:nowrap;border:1px solid #ccd5df;border-radius:9px;background:#fff;color:#203958;padding:9px 10px;font-size:12px;font-weight:700;min-height:38px}
+ .atsh-mobile-nav>summary::-webkit-details-marker{display:none}
+ .atsh-mobile-nav>nav{position:absolute;top:calc(100% + 8px);inset-inline-end:0;width:min(280px,calc(100vw - 36px));max-height:min(65vh,480px);overflow-y:auto;display:flex;flex-direction:column;gap:0;background:#fff;border:1px solid #d7dfe8;border-radius:13px;box-shadow:0 12px 30px rgba(24,46,70,.17);padding:7px}
+ .atsh-mobile-nav>nav>a{display:block;padding:12px 13px;border-radius:8px;color:#203958;font-size:13px;line-height:1.5}
+ .atsh-mobile-nav>nav>a:hover,.atsh-mobile-nav>nav>a:focus-visible{background:#e9eff6}
+}
+@media(max-width:380px){.atsh-mobile-nav>summary span{display:none}.atsh-mobile-nav>summary{padding-inline:11px}}
