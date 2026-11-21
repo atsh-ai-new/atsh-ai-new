@@ -40,6 +40,12 @@ jobs:
         run: |
           node --version
           npm --version
-      - run: npm ci
+      - name: Install backend dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
       - run: npm run check
       - run: npm test
