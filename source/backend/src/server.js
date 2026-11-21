@@ -17,6 +17,7 @@ import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
 import { buildVisitorInstructions } from "./visitor-assistant.js";
 import { priceSectorSelection } from "./sector-pricing.js";
+import { calculateUnifiedPricing } from "./pricing-engine.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
 import {queueJourneyEvent,deliverJourneyEvents,eventDestination} from "./customer-event-outbox.js";
@@ -567,22 +568,13 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
       catch{await client.query("ROLLBACK");return res.status(400).json({error:"Selected sector or addon unavailable"});}
       if(sectorPrice.needsCustomQuote){await client.query("ROLLBACK");return res.status(409).json({error:"تخصيص هذا القطاع يتطلب اعتماد عرض سعر قبل تسجيل طلب شراء.",needsCustomQuote:true});}
     }
-    const subtotal=Number(pkg.price)+pricedOptions.reduce((n,x)=>n+x.lineTotal,0)+(sectorPrice?.subtotal??0);
     const settings=await client.query("SELECT vat_rate FROM site_settings WHERE id=1");
     const vatRate=settings.rows[0]?.vat_rate==null?null:Number(settings.rows[0].vat_rate);
-    const vatAmount=vatRate==null?null:Math.round(subtotal*vatRate)/100;
-    const total=vatAmount==null?subtotal:subtotal+vatAmount;
+    const unified=calculateUnifiedPricing({packagePrice:Number(pkg.price),packageOptions:pricedOptions,sectorQuote:sectorPrice,vatRate});
+    const {subtotal,vatAmount,total}=unified;
     const reference="ATSH-"+new Date().toISOString().slice(0,10).replaceAll("-","")+"-"+crypto.randomUUID().slice(0,8).toUpperCase();
-    const breakdownItems=[
-      {code:"package",name:pkg.name,amount:Number(pkg.price),period:"fixed"},
-      ...pricedOptions.map(x=>({code:x.code,name:x.name,amount:x.lineTotal,period:x.pricing_type==="monthly"?"monthly":x.pricing_type==="yearly"?"yearly":"fixed"})),
-      ...(sectorPrice?.items??[]).map(x=>({code:x.code,name:x.name,amount:x.price,period:x.pricingType}))
-    ];
-    const totals={
-      fixed:Math.round(breakdownItems.filter(x=>x.period==="fixed").reduce((sum,x)=>sum+x.amount,0)*100)/100,
-      monthly:Math.round(breakdownItems.filter(x=>x.period==="monthly").reduce((sum,x)=>sum+x.amount,0)*100)/100,
-      yearly:Math.round(breakdownItems.filter(x=>x.period==="yearly").reduce((sum,x)=>sum+x.amount,0)*100)/100
-    };
+    const breakdownItems=unified.lines.map(line=>line.code==="package"?{...line,name:pkg.name}:line);
+    const totals=unified.billing;
     const snapshot={package:pkg,options:pricedOptions,sector:sectorPrice,currency:pkg.currency,subtotal,vatRate,vatAmount,total,billing:{lines:breakdownItems,...totals,description:"Initial invoice period: fixed + first month + first year; recurring charges billed according to contract."}};
     const saved=await client.query(`INSERT INTO orders(reference,customer_name,phone,email,notes,package_id,status,currency,subtotal,vat_rate,vat_amount,total,snapshot)
       VALUES($1,$2,$3,$4,$5,$6,'new',$7,$8,$9,$10,$11,$12)
