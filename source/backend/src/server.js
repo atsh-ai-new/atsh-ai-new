@@ -133,7 +133,7 @@ app.use("/api/admin", (req,res,next) => (req.method === "GET" || req.method === 
 // Keep write/auth/visitor endpoints on the original restrictive limiter.
 const publicCatalogLimiter = rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?12000:3000, standardHeaders: "draft-8", legacyHeaders: false });
 app.use("/api", (req,res,next) => {
- if(req.path === "/admin" || req.path.startsWith("/admin/"))return next();
+ if(req.path === "/admin" || req.path.startsWith("/admin/") || req.path === "/customer/auth" || req.path.startsWith("/customer/auth/"))return next();
  const publicRead=req.method==="GET"||req.method==="HEAD";
  if(publicRead && (req.path==="/site-content/catalog" || req.path==="/sector-price"))return publicCatalogLimiter(req,res,next);
  return publicApiLimiter(req,res,next);
@@ -180,7 +180,14 @@ async function sendTransactionalEmail({to,toName,subject,textContent}) {
   return true;
 }
 
-app.use("/api/customer/auth",rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?600:20,standardHeaders:"draft-8",legacyHeaders:false}),customerAuthRouter({pool,sendEmail:sendTransactionalEmail,allowedOrigins:origins}));
+// Session reads and authenticated project drafts must not consume the login quota.
+const customerLoginLimiter=rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?600:20,standardHeaders:"draft-8",legacyHeaders:false,skipSuccessfulRequests:true});
+const customerAuthWriteLimiter=rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?1200:120,standardHeaders:"draft-8",legacyHeaders:false});
+app.use("/api/customer/auth",(req,res,next)=>{
+ if(req.path==="/login" && req.method==="POST")return customerLoginLimiter(req,res,next);
+ if(req.method==="GET"||req.method==="HEAD")return next();
+ return customerAuthWriteLimiter(req,res,next);
+},customerAuthRouter({pool,sendEmail:sendTransactionalEmail,allowedOrigins:origins}));
 app.use("/api/customer/deliverables",deliveryCustomerRouter({pool,allowedOrigins:origins}));
 app.use("/api/admin/deliverables",requireAdmin,requireRole("owner","admin","editor"),deliveryAdminRouter({pool}));
 app.use("/api/admin/operations",requireAdmin,requireRole("owner","admin"),deliveryAdminRouter({pool,operationsOnly:true}));
