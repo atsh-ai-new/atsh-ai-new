@@ -77,7 +77,7 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
       <iframe title={t("معاينة تفاعلية: ","Interactive preview: ")+item.name} src={`${base}/catalog/${encodeURIComponent(item.slug)}?embedded=1`} loading="lazy" style={{width:"100%",height:"100%",border:0,background:"white"}} allowFullScreen />
      </div>
      <h3 style={{margin:"2px 0",color:"#203958"}}>{en?englishTemplateLabel(item.slug,item.name):item.name}</h3>
-     <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("جرّب النظام بملء الشاشة ←","Try full-screen demo →")}</Link>
+     <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("جرّب النظام بملء الشاشة ←","Try full-screen demo →")}</Link>
      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",borderTop:"1px solid #e2e8f0",paddingTop:12}}>
       <span style={{fontWeight:800,color:"#203958"}}>{typeof item.basePrice==="number"&&Number.isFinite(item.basePrice)&&item.basePrice>=0? t("السعر الأساسي: ","Base price: ")+item.basePrice.toLocaleString(en?"en-EG":"ar-EG")+t(" ج.م"," EGP"):t("السعر يُحدد من لوحة الإدارة","Price pending admin setup")}</span>
       <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}#customize`} style={{fontSize:13,color:"#203958",textDecoration:"underline",fontWeight:700}}>{t("أضف المواصفات واحسب الإجمالي ←","Add options & calculate total →")}</Link>
