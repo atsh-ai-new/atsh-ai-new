@@ -573,3 +573,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .atsh-mobile-nav>nav>a:hover,.atsh-mobile-nav>nav>a:focus-visible{background:#e9eff6}
 }
 @media(max-width:380px){.atsh-mobile-nav>summary span{display:none}.atsh-mobile-nav>summary{padding-inline:11px}}
+
+/* Keep mobile navigation above hero artwork and all floating widgets. */
+@media(max-width:840px){
+ .platform{overflow:visible}
+ .platform-header{position:relative;z-index:100}
+ .atsh-mobile-nav{z-index:110}
+ .atsh-mobile-nav[open]>nav{position:fixed;top:clamp(120px,17vh,165px);left:16px;right:16px;inset-inline-end:auto;width:auto;max-height:65vh;z-index:9999;background:#fff;box-shadow:0 14px 42px rgba(15,32,54,.25);border:1px solid #c9d5e1}
+ .atsh-mobile-nav[open]>nav>a{display:block!important;visibility:visible!important;opacity:1!important;color:#203958!important;background:#fff;font-size:15px!important;font-weight:600;min-height:44px;position:relative;z-index:1}
+ .atsh-mobile-nav[open]>nav>a+a{border-top:1px solid #eef1f5}
+ .platform-header-actions .header-language-switch{display:none!important}
+}
