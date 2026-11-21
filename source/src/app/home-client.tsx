@@ -270,7 +270,12 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
       const current=await fetch(endpoint,{credentials:"include",cache:"no-store"});
       const body=await current.json().catch(()=>({}));
       if(!current.ok||!body.projectDraft)throw Error(t("تعذر قراءة مسودة المشروع؛ تحقق من الجلسة.","Unable to access the project draft. Verify your sign-in."));
-      const patch={...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes,source:"catalog" as const}:{}),...(packageId?{packageId,source:"configurator" as const}:{}),options:[...addons,...selectedExtraOptionIds].slice(0,30),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||body.projectDraft.draft?.businessName||"",requirements:customer.details||body.projectDraft.draft?.requirements||""};
+      const savedDraft=body.projectDraft.draft||{};
+       const chosenSector=selectedSector?.slug||savedDraft.sectorSlug;
+       const chosenPackage=packageId||savedDraft.packageId;
+       const customRequirements=(customer.details||savedDraft.requirements||"").trim();
+       if(!chosenSector&&!chosenPackage&&!(savedDraft.projectMode==="custom"&&customRequirements))throw Error(t("لم يتم تحديد نوع المشروع في المسودة. ارجع لاختيار باقة أو مشروع من الكتالوج، ثم أكمل الإضافات.","No project type is selected in this draft. Choose a package or catalog project, then continue with add-ons."));
+       const patch={...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes,source:"catalog" as const}:{}),...(packageId?{packageId,source:"configurator" as const}:{}),options:[...addons,...selectedExtraOptionIds].slice(0,30),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||savedDraft.businessName||"",requirements:customRequirements};
       const response=await fetch(endpoint,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({expectedRevision:Number(body.projectDraft.revision),patch})});
       const result=await response.json().catch(()=>({}));
       if(!response.ok)throw Error(isEnglish?"Unable to save the current project draft":result.error||"تعذر حفظ المسودة؛ راجع التعديلات الجديدة.");
