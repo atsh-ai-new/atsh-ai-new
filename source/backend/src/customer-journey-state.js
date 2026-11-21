@@ -7,6 +7,7 @@ export const journeyTransitions=Object.freeze({
 });
 export function canJourneyTransition(previous,next,{manual=false,note=''}={}){
  if(manual&&next==='paid')return false;
+ if(manual&&previous==='draft'&&next==='quoted')return false;
  if(!journeyTransitions[previous]?.includes(next))return false;
  if(manual&&next==='delivered'&&!String(note).trim())return false;
  return true;
