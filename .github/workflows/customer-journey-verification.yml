@@ -28,6 +28,12 @@ jobs:
       run:
         working-directory: source/backend
     steps:
+      - name: Free disk space before Node setup
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet /usr/local/share/powershell /opt/hostedtoolcache/CodeQL
+          sudo docker system prune -af || true
+          df -h /
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
