@@ -27,7 +27,7 @@ const backendPackageIds: Record<string, string> = {
 const obsoleteIdentityOptionCodes = new Set(["logo_design", "visual_identity"]);
 const builtInOptionCodes = new Set(["language", "logo", "brand", "writing", "seo", "booking", "contact", "analytics", "hosting", "domain_com", "domain_eg", "maintenance"]);
 
-export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
+export default function HomePage({locale="ar",configuratorOnly=false}:{locale?:"ar"|"en";configuratorOnly?:boolean}) {
   const isEnglish=locale==="en";
   const money=(value:number)=>isEnglish?englishPrice(value):formatEgp(value);
   const localizeOption=(code:string,original:string,type:"name"|"description"="name")=>isEnglish?(englishOptions[code]?.[type] || (type==="name" ? original : "Available on request")):original;
@@ -35,8 +35,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
   const t=(ar:string,en:string)=>isEnglish?en:ar;
   const [showOtherDetails,setShowOtherDetails]=useState(false);
   const [step, setStep] = useState(1);
-  const [showConfigurator,setShowConfigurator]=useState(false);
-  const [expandedPackageId,setExpandedPackageId]=useState<string|null>(null);
+  const [showConfigurator,setShowConfigurator]=useState(configuratorOnly);
   const [packageId, setPackageId] = useState<PackageId | null>(null);
   const [pages, setPages] = useState(1);
   const [bilingual, setBilingual] = useState(false);
@@ -123,7 +122,9 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
     const guest=loadGuestWorkspace();
     const slug=new URLSearchParams(window.location.search).get("sector");
     if(!slug&&guest.sectorSlug&&guest.sectorName)setSelectedSector({slug:guest.sectorSlug,name:guest.sectorName});
-    if(guest.packageId)setPackageId(guest.packageId);
+    const requestedPackage=new URLSearchParams(window.location.search).get("package");
+    if(configuratorOnly&&requestedPackage){setPackageId(requestedPackage);setPages(packages.find(item=>item.id===requestedPackage)?.includedPages??1);}
+    else if(guest.packageId)setPackageId(guest.packageId);
     if(Array.isArray(guest.sectorAddonCodes)&&(!slug||guest.sectorSlug===slug))setSectorAddonCodes(guest.sectorAddonCodes);
     // Account-owned draft is only read after authentication; never silently merge guest data into another account.
     if(!guest.sectorSlug&&!guest.packageId&&!slug){
@@ -240,6 +241,12 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
   const includedPages = selectedPackage?.includedPages ?? 0;
 
   const begin = (id?: PackageId) => {
+    if (!configuratorOnly) {
+      const target=new URL(isEnglish?"/en/configure":"/configure",window.location.origin);
+      if(id)target.searchParams.set("package",id);
+      window.location.assign(target.toString());
+      return;
+    }
     if (id) {
       setPackageId(id);
       setPages(visiblePackages.find((item) => item.id === id)?.includedPages ?? 1);
@@ -376,7 +383,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
   return (
     <main className="platform" lang={locale} dir={isEnglish?"ltr":"rtl"} style={{ "--navy": siteConfig.theme?.navy, "--navy-2": siteConfig.theme?.blue, "--blue": siteConfig.theme?.blue, "--gold": siteConfig.theme?.gold, "--page": siteConfig.theme?.page, "--site-font": siteConfig.theme?.fontFamily ? `\"${siteConfig.theme.fontFamily}\", system-ui, sans-serif` : undefined, "--card-radius": siteConfig.theme?.cardRadius === undefined ? undefined : `${siteConfig.theme.cardRadius}px`, backgroundImage: siteConfig.theme?.backgroundImageUrl ? `linear-gradient(rgba(250,249,245,.94), rgba(250,249,245,.94)), url(${JSON.stringify(siteConfig.theme.backgroundImageUrl)})` : undefined, backgroundSize: siteConfig.theme?.backgroundImageUrl ? "cover" : undefined, backgroundAttachment: siteConfig.theme?.backgroundImageUrl ? "fixed" : undefined } as CSSProperties}>
       <Concierge locale={locale} />
-      <header className="platform-header">
+      {!configuratorOnly&&<header className="platform-header">
         <a className="platform-brand" href="#top" aria-label={copy("homeAriaLabel")}>
           <img src={siteConfig.theme?.logoUrl || "/images/atsh-logo.jpg"} alt={copy("logoAlt")} />
           <span><strong>ATSH <b>AI</b></strong><small>{copy("brandTagline")}</small></span>
@@ -385,9 +392,9 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
           <a href="#why">{copy("navWhy")}</a><a href={isEnglish?"/en/start":"/start"}>{t("ابدأ مشروعك","Start your project")}</a><a href="#packages">{copy("navPackages")}</a><a href={isEnglish?"/en/catalog":"/catalog"}>{t("معرض الأنظمة","Solutions gallery")}</a><a href={isEnglish?"/en/account/register":"/account/register"}>{t("إنشاء حساب عميل","Create an account")}</a><a href={isEnglish?"/en/account/login":"/account/login"}>{t("دخول العميل","Client login")}</a><a href="#how">{copy("navHow")}</a><a href="#faq">{copy("navFaq")}</a>{pageLinks.map((item) => <a key={item.slug} href={`${isEnglish?"/en":""}/${item.slug}`}>{item.title}</a>)}
         </nav>
         <div className="platform-header-actions"><a className="language-pill header-language-switch" href={isEnglish?"/ar":"/en"} hrefLang={isEnglish?"ar":"en"} aria-label={isEnglish?"Switch to Arabic":"Switch to English"} onClick={(event) => { event.preventDefault(); window.location.assign(isEnglish ? "/ar" : "/en"); }}>🌐 {isEnglish?"العربية":"English"}</a><a className="button button-small" href="#configurator">{copy("navAction")} <span>←</span></a></div>
-      </header>
+      </header>}
 
-      <section className={`build-hero${!copy("heroDescription").trim() ? " build-hero-compact" : ""}`} id="top">
+      {!configuratorOnly&&<><section className={`build-hero${!copy("heroDescription").trim() ? " build-hero-compact" : ""}`} id="top">
         <div className="build-hero-copy">
 
           {copy("heroDescription").trim() && <p>{copy("heroDescription")}</p>}
@@ -412,18 +419,6 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
 
       {activeCustomSections(contentData.sections).filter((section) => !isEnglish || !Array.isArray(arabicReference?.sections) || activeCustomSections(arabicReference.sections).some((reference) => reference.id === section.id)).map((section) => <CustomSection key={section.id} section={section} />)}
 
-      {benefitCards.length > 0 && <section className="why-section" id="why">
-        <div className="section-heading"><div><span className="section-kicker">{copy("whyKicker")}</span><h2>{copy("whyTitle")}</h2></div><p>{copy("whyDescription")}</p></div>
-        {benefitCards.length > 0 && <div className="benefit-grid">
-          {benefitCards.map((item, index) => <article key={item.id ?? index}><span className="benefit-icon">{item.icon || String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.description}</p></article>)}
-        </div>}
-      </section>}
-
-      {processCards.length > 0 && <section className="how-section" id="how">
-        <div className="section-heading"><div><span className="section-kicker">{copy("howKicker")}</span><h2>{copy("howTitle")}</h2></div><p>{copy("howDescription")}</p></div>
-        {processCards.length > 0 && <div className="how-grid">{processCards.map((item, index) => <article key={item.id ?? index}><span>{item.icon || String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.description}</p></article>)}</div>}
-      </section>}
-
       <section className="packages-section" id="packages">
         <div className="section-heading"><div><span className="section-kicker">{copy("packagesKicker")}</span><h2>{copy("packagesTitle")}</h2></div><p>{copy("packagesDescription")}</p></div>
         <div className="package-grid">
@@ -432,18 +427,14 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
             <span className="package-kicker">{item.short}</span><h3>{item.name}</h3><p>{item.description}</p>
             <ul>{item.features.map((feature) => <li key={feature}><span>✓</span>{feature}</li>)}</ul>
             <div className="package-price">{item.price === null ? <><strong>{copy("customQuoteLabel")}</strong><small>{copy("customQuoteDescription")}</small></> : <><strong>{copy("packagePricePrefix")} {money(item.price)}</strong><small>{copy("packagePriceFootnote")}</small></>}</div>
-            <button type="button" className={item.recommended ? "button package-cta" : "button button-outline package-cta"} aria-expanded={expandedPackageId===item.id} onClick={()=>setExpandedPackageId(current=>current===item.id?null:item.id)}>{t("عرض إضافات الباقة وتخصيصها","View package add-ons")} <span>{expandedPackageId===item.id?"−":"+"}</span></button>
-            {expandedPackageId===item.id&&<div style={{marginTop:12,padding:12,border:"1px solid #dbe4ee",borderRadius:12}}>
-              <h4 style={{margin:"0 0 10px"}}>{t("الإضافات المتاحة لهذه الباقة","Add-ons for this package")}</h4>
-              {apiCatalog.options.filter(option=>option.package_id===(backendPackageIds[item.id]??item.id)).length===0?<p>{t("ستظهر الإضافات بعد ضبطها من مركز التسعير.","Add-ons will appear once configured in the pricing center.")}</p>:apiCatalog.options.filter(option=>option.package_id===(backendPackageIds[item.id]??item.id)).map(option=><div key={option.id} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"9px 0",borderBottom:"1px solid #e6eaf0"}}><span><strong>{localizeOption(option.code,option.name)}</strong><small style={{display:"block"}}>{localizeOption(option.code,option.description||"","description")}</small></span><b style={{whiteSpace:"nowrap"}}>{money(Number(option.price))} {option.pricing_type==="yearly"?t("/ سنة","/ year"):option.pricing_type==="monthly"?t("/ شهر","/ month"):option.pricing_type==="per_page"?t("/ صفحة","/ page"):""}</b></div>)}
-              <button type="button" className="button package-cta" style={{marginTop:12}} onClick={()=>begin(item.id as PackageId)}>{t("تخصيص هذه الباقة وحساب الإجمالي","Customize package and calculate total")} ←</button>
-            </div>}
+            <a className={item.recommended ? "button package-cta" : "button button-outline package-cta"} href={`${isEnglish?"/en":""}/configure?package=${encodeURIComponent(item.id)}`}>{t("اختر الباقة وخصص الإضافات","Choose package and customize add-ons")} ←</a>
           </article>)}
         </div>
 
-      </section>
+      </section></>}
 
       {showConfigurator&&<section className="configurator-section" id="configurator">
+        {configuratorOnly&&<div style={{marginBottom:20}}><a href={isEnglish?"/en#packages":"/#packages"} className="button button-outline">{t("← العودة للباقات","← Back to packages")}</a></div>}
         <details style={{margin:"12px 0",padding:"12px 14px",border:"1px solid #e2e8f0",borderRadius:12,background:"#fff"}}>
           <summary style={{cursor:"pointer",fontWeight:700}}>{t("فحص توافر الدومين الحقيقي قبل الشراء","Check domain availability before purchase")}</summary>
           <DomainLookup locale={locale} onDomainChange={setRequestedDomainName}/>
@@ -550,10 +541,11 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
         </div>
       </section>}
 
-      <section className="faq-section" id="faq"><div className="section-heading"><div><span className="section-kicker">{copy("faqKicker")}</span><h2>{copy("faqTitle")}</h2></div><p>{copy("faqDescription")}</p></div><div className="faq-list">{faqItems.map((item, index) => <article key={item.id ?? index} className={openFaq === index ? "faq-item open" : "faq-item"}><button type="button" onClick={() => setOpenFaq(openFaq === index ? null : index)} aria-expanded={openFaq === index}><span className="faq-num">0{index + 1}</span><strong>{item.title}</strong><span className="faq-toggle">{openFaq === index ? "−" : "+"}</span></button>{openFaq === index && <p>{item.description}</p>}</article>)}</div></section>
+      {!configuratorOnly&&<><section className="faq-section" id="faq"><div className="section-heading"><div><span className="section-kicker">{copy("faqKicker")}</span><h2>{copy("faqTitle")}</h2></div><p>{copy("faqDescription")}</p></div><div className="faq-list">{faqItems.map((item, index) => <article key={item.id ?? index} className={openFaq === index ? "faq-item open" : "faq-item"}><button type="button" onClick={() => setOpenFaq(openFaq === index ? null : index)} aria-expanded={openFaq === index}><span className="faq-num">0{index + 1}</span><strong>{item.title}</strong><span className="faq-toggle">{openFaq === index ? "−" : "+"}</span></button>{openFaq === index && <p>{item.description}</p>}</article>)}</div></section>
 
       <section className="final-cta"><div><span className="section-kicker">{copy("finalKicker")}</span><h2>{copy("finalTitle")}</h2><p>{copy("finalDescription")}</p></div><button className="button" onClick={() => begin()}>{copy("finalCta")} <span>←</span></button></section>
       <footer className="platform-footer"><a className="platform-brand" href="#top"><img src={siteConfig.theme?.logoUrl || "/images/atsh-logo.jpg"} alt="" /><span><strong>ATSH <b>AI</b></strong><small>{copy("footerTagline")}</small></span></a>{pageLinks.map((item) => <a key={item.slug} href={`${isEnglish?"/en":""}/${item.slug}`}>{item.title}</a>)}<a href={`mailto:${copy("footerInfoEmail")}`}>{copy("footerInfoLabel")}</a><a href={`mailto:${copy("footerSalesEmail")}`}>{copy("footerSalesLabel")}</a><a href={`mailto:${copy("footerSupportEmail")}`}>{copy("footerSupportLabel")}</a><span>{copy("copyrightPrefix")} {new Date().getFullYear()} ATSH AI</span><a href="/admin">{copy("footerAdminLabel")}</a><a href="#top">{copy("footerTopLabel")}</a></footer>
+      </>}
     </main>
   );
 }
