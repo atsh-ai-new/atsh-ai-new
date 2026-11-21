@@ -36,7 +36,6 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
   const [showOtherDetails,setShowOtherDetails]=useState(false);
   const [step, setStep] = useState(1);
   const [showConfigurator,setShowConfigurator]=useState(false);
-  const [expandedPackageId,setExpandedPackageId]=useState<string|null>(null);
   const [packageId, setPackageId] = useState<PackageId | null>(null);
   const [pages, setPages] = useState(1);
   const [bilingual, setBilingual] = useState(false);
@@ -432,12 +431,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
             <span className="package-kicker">{item.short}</span><h3>{item.name}</h3><p>{item.description}</p>
             <ul>{item.features.map((feature) => <li key={feature}><span>✓</span>{feature}</li>)}</ul>
             <div className="package-price">{item.price === null ? <><strong>{copy("customQuoteLabel")}</strong><small>{copy("customQuoteDescription")}</small></> : <><strong>{copy("packagePricePrefix")} {money(item.price)}</strong><small>{copy("packagePriceFootnote")}</small></>}</div>
-            <button type="button" className={item.recommended ? "button package-cta" : "button button-outline package-cta"} aria-expanded={expandedPackageId===item.id} onClick={()=>setExpandedPackageId(current=>current===item.id?null:item.id)}>{t("عرض إضافات الباقة وتخصيصها","View package add-ons")} <span>{expandedPackageId===item.id?"−":"+"}</span></button>
-            {expandedPackageId===item.id&&<div style={{marginTop:12,padding:12,border:"1px solid #dbe4ee",borderRadius:12}}>
-              <h4 style={{margin:"0 0 10px"}}>{t("الإضافات المتاحة لهذه الباقة","Add-ons for this package")}</h4>
-              {apiCatalog.options.filter(option=>option.package_id===(backendPackageIds[item.id]??item.id)).length===0?<p>{t("ستظهر الإضافات بعد ضبطها من مركز التسعير.","Add-ons will appear once configured in the pricing center.")}</p>:apiCatalog.options.filter(option=>option.package_id===(backendPackageIds[item.id]??item.id)).map(option=><div key={option.id} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"9px 0",borderBottom:"1px solid #e6eaf0"}}><span><strong>{localizeOption(option.code,option.name)}</strong><small style={{display:"block"}}>{localizeOption(option.code,option.description||"","description")}</small></span><b style={{whiteSpace:"nowrap"}}>{money(Number(option.price))} {option.pricing_type==="yearly"?t("/ سنة","/ year"):option.pricing_type==="monthly"?t("/ شهر","/ month"):option.pricing_type==="per_page"?t("/ صفحة","/ page"):""}</b></div>)}
-              <button type="button" className="button package-cta" style={{marginTop:12}} onClick={()=>begin(item.id as PackageId)}>{t("تخصيص هذه الباقة وحساب الإجمالي","Customize package and calculate total")} ←</button>
-            </div>}
+            <a className={item.recommended ? "button package-cta" : "button button-outline package-cta"} href={`/${locale}/packages/${encodeURIComponent(item.id)}/pricing`}>{t("تخصيص الباقة وحساب السعر","Customize package and calculate price")} <span>←</span></a>
           </article>)}
         </div>
 
