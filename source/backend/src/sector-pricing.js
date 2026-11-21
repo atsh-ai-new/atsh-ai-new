@@ -1,3 +1,4 @@
+import { calculateUnifiedPricing } from "./pricing-engine.js";
 // Server-owned sector pricing. Never accept numeric prices from browser input.
 const types=new Set(["fixed","monthly","yearly"]);
 function validMoney(value){
@@ -22,10 +23,11 @@ export function priceSectorSelection(catalog,slug,requestedCodes=[]){
     if(!selected)throw new Error("Sector addon not published");
     lines.push({code:selected.code,name:selected.name,price:selected.price,pricingType:selected.pricingType});
   }
+  const calculated=calculateUnifiedPricing({packagePrice:0,sectorQuote:{items:lines}});
   return {
     sectorSlug:slug,sectorName:item.name,needsCustomQuote:false,items:lines,
-    subtotal:lines.reduce((sum,line)=>sum+line.price,0),
-    monthly:lines.filter(l=>l.pricingType==="monthly").reduce((sum,line)=>sum+line.price,0),
-    yearly:lines.filter(l=>l.pricingType==="yearly").reduce((sum,line)=>sum+line.price,0)
+    subtotal:calculated.subtotal,
+    monthly:calculated.billing.monthly,
+    yearly:calculated.billing.yearly
   };
 }
