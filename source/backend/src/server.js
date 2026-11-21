@@ -7,7 +7,7 @@ import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import pg from "pg";
@@ -167,7 +167,11 @@ async function sendTransactionalEmail({to,toName,subject,textContent}) {
 }
 
 // Session reads and authenticated project drafts must not consume the login quota.
-const customerLoginLimiter=rateLimit({windowMs:15*60*1000,limit:200,standardHeaders:"draft-8",legacyHeaders:false,skipSuccessfulRequests:true});
+// Keep brute-force protection per account and client network, not one quota for every
+// visitor behind a shared reverse-proxy address. Do not log or persist the email.
+const customerLoginLimiter=rateLimit({windowMs:15*60*1000,limit:30,standardHeaders:"draft-8",legacyHeaders:false,skipSuccessfulRequests:true,
+ keyGenerator:req=>createHash("sha256").update(String(req.body?.email||"").trim().toLowerCase()+"|"+ipKeyGenerator(req.ip||"0.0.0.0")).digest("hex"),
+ message:{error:"Too many failed login attempts. Please try again later."}});
 
 app.use("/api/customer/auth",(req,res,next)=>{
  if(req.path==="/login" && req.method==="POST")return customerLoginLimiter(req,res,next);
