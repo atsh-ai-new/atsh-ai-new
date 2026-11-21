@@ -175,6 +175,19 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    res.status(201).json({projectId,status:created.rows[0].status});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
  }));
+ router.get('/project-drafts/:id/messages',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Project not found'});
+  const result=await pool.query('SELECT m.id,m.actor,m.body,m.created_at FROM customer_journey_messages m JOIN customer_project_drafts d ON d.linked_journey_id=m.project_id WHERE d.id=$1 AND d.customer_id=$2 ORDER BY m.id DESC LIMIT 100',[req.params.id,req.customer.id]);
+  res.set('Cache-Control','private, no-store').json({messages:result.rows.reverse()});
+ }));
+ router.post('/project-drafts/:id/messages',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Project not found'});
+  const parsed=z.object({body:z.string().trim().min(2).max(2000)}).strict().safeParse(req.body);
+  if(!parsed.success)return res.status(400).json({error:'Invalid message'});
+  const result=await pool.query("INSERT INTO customer_journey_messages(project_id,actor,body) SELECT linked_journey_id,'customer',$3 FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 AND linked_journey_id IS NOT NULL RETURNING id,actor,body,created_at",[req.params.id,req.customer.id,parsed.data.body]);
+  if(!result.rowCount)return res.status(404).json({error:'Submit project before messaging'});
+  res.status(201).json({message:result.rows[0]});
+ }));
  router.get('/project-drafts/:id',requireCustomer,safe(async(req,res)=>{
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Not found'});
   const result=await pool.query("SELECT id,title,draft,revision,linked_journey_id,updated_at FROM customer_project_drafts WHERE id=$1 AND customer_id=$2",[req.params.id,req.customer.id]);
