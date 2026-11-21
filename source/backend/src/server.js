@@ -560,7 +560,7 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
   const client=await pool.connect();
   try {
     await client.query("BEGIN");
-    const p=await client.query("SELECT id,name,description,price,currency FROM packages WHERE id=$1 AND is_published=true FOR SHARE",[input.packageId]);
+    const p=await client.query("SELECT p.id,p.name,p.description,u.amount AS price,p.currency FROM packages p JOIN unified_price_items u ON u.scope='package' AND u.owner_key=p.id::text AND u.code='base' WHERE p.id=$1 AND p.is_published=true FOR SHARE OF p",[input.packageId]);
     if(!p.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"Package unavailable"});}
     const pkg=p.rows[0];
     // Never interpret SQL NULL custom-price packages as free (Number(null) === 0).
@@ -569,7 +569,7 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
     }
     const [o, required] = await Promise.all([
       input.optionIds.length
-        ? client.query("SELECT id,code,name,description,price,pricing_type,unit_label FROM package_options WHERE package_id=$1 AND id=ANY($2::uuid[]) AND is_active=true FOR SHARE",[pkg.id,input.optionIds])
+        ? client.query("SELECT o.id,o.code,o.name,o.description,u.amount AS price,u.pricing_type,o.unit_label FROM package_options o JOIN unified_price_items u ON u.scope='package_option' AND u.owner_key=o.package_id::text AND u.code=o.code WHERE o.package_id=$1 AND o.id=ANY($2::uuid[]) AND o.is_active=true FOR SHARE OF o",[pkg.id,input.optionIds])
         : Promise.resolve({rows:[]}),
       client.query("SELECT id FROM package_options WHERE package_id=$1 AND is_active=true AND is_required=true FOR SHARE",[pkg.id])
     ]);
