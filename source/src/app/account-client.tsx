@@ -134,11 +134,15 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
   const guest=loadGuestWorkspace();
   const target=projectDrafts.find(d=>d.id===selectedProjectDraft);
   if(!target){setMessage("اختر مشروعًا أولًا");return;}
+  if(target.linked_journey_id){setMessage(t("لا يمكن تعديل مشروع أُرسل للإدارة. أنشئ مسودة جديدة لاستيراد الاختيارات.","This project has already been submitted. Create a new draft to import selections."));return;}
   if(!Object.keys(guest).length){setMessage("لا توجد اختيارات سابقة لنقلها");return;}
+  if(merging)return;
   setMerging(true);
   try{
    const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(target.id)}`,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({expectedRevision:target.revision,patch:guest})});
-   const result=await response.json();if(!response.ok)throw Error(result.error||"تعذر حفظ المسودة");
+   const result=await response.json();
+   if(response.status===409){await loadDrafts();throw Error(t("تغيّرت المسودة على جهاز آخر أو أُرسلت للإدارة. حدّثنا البيانات؛ اختيارات المتصفح ما زالت محفوظة.","The draft changed on another device or was submitted. Drafts were refreshed; browser selections are still saved."));}
+   if(!response.ok)throw Error(result.error||"تعذر حفظ المسودة");
    setProjectDrafts(old=>old.map(x=>x.id===target.id?result.projectDraft:x));
    setWorkspace(result.projectDraft.draft);setGuestPending(false);
    try{sessionStorage.removeItem("atsh_customer_workspace_v1");}catch{}
