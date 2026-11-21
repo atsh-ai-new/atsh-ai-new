@@ -33,7 +33,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
  const monthly=addons.filter(a=>selected.includes(a.code)&&a.pricingType==="monthly").reduce((n,a)=>n+Number(a.price),0);
  const yearly=addons.filter(a=>selected.includes(a.code)&&a.pricingType==="yearly").reduce((n,a)=>n+Number(a.price),0);
  const money=(n:number)=>n.toLocaleString(en?"en-EG":"ar-EG",{maximumFractionDigits:2})+" "+t("ج.م","EGP");
- const save=()=>{if(!catalog)return;saveGuestWorkspace({sectorSlug:slug,sectorName:catalog.name,sectorAddonCodes:selected,source:"catalog",businessDescription:details});};
+ const save=()=>{if(!catalog)return;saveGuestWorkspace({sectorSlug:slug,sectorName:catalog.name,sectorAddonCodes:selected,source:"catalog",businessDescription:[pages>0?`${pages} ${t("صفحات إضافية","additional pages")}`:"",details].filter(Boolean).join(" — ")});};
  const cardStyle={border:"1px solid #d8e1eb",borderRadius:12,padding:"12px 14px",background:"#fff"} as const;
  return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:780,margin:"0 auto",padding:"18px 14px 70px",color:"#203958"}}>
   <Link href={en?"/en/catalog":"/catalog"} style={{color:"#203958"}}>{t("← العودة للكتالوجات","← Back to catalogs")}</Link>
