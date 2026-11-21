@@ -18,8 +18,8 @@ function guestStorage():Storage|null{
     if(!guestStorageInitialized){
       guestStorageInitialized=true;
       window.localStorage.removeItem(WORKSPACE_KEY); // Purge persistent guest data from older releases.
-      const navigation=window.performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming|undefined;
-      if(navigation?.type==="reload")window.sessionStorage.removeItem(WORKSPACE_KEY);
+      // Keep in-progress selections through reloads and same-tab navigation.
+      // Session storage is cleared when the browser tab session ends.
     }
     return window.sessionStorage;
   }catch{return null;}
