@@ -266,7 +266,7 @@ export default function AdminPage() {
         {view === "pages" && <ContentManager onSaved={loadData} />}
         {view === "works" && <ContentManager initialSlug="works" onSaved={loadData} />}
         {view === "content-studio" && canEditContent && <ContentStudio />}
-        {view === "journey" && <JourneyManager />}
+        {view === "journey" && <JourneyManager canManageTasks={canEditCatalog} />}
       {view === "commercial" && <CommercialManager />}
 
         {view === "options" && <section className="admin-content-card"><h2>مركز التسعير والكتالوجات</h2><p>بوابة واحدة لإدارة مواصفات وأسعار الباقات وإضافاتها والكتالوجات والضريبة. يتم الحفظ عبر الواجهات الحالية دون تغيير البيانات المخزنة.</p><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["unified-package-pricing","الباقات"],["unified-package-options","إضافات الباقات"],["unified-catalog-pricing","الكتالوجات"],["unified-vat","الضريبة"]].map(([id,label])=><button key={id} type="button" className="button button-outline button-small" onClick={()=>document.getElementById(id)?.scrollIntoView({behavior:"smooth"})}>{label}</button>)}</div></section>}

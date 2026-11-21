@@ -2,6 +2,9 @@ import {validCalendarDate} from './invoice-ledger-rules.js';
 import { deliveryAdminRouter, deliveryCustomerRouter } from "./delivery-control.js";
 import { customerCommercialRouter } from "./customer-commercial.js";
 import { customerAuthRouter } from "./customer-auth.js";
+import {createCustomerJourneyProject} from './customer-project-service.js';
+import {transitionJourneyProject} from './customer-journey-state.js';
+import {journeyTaskCreate,journeyTaskUpdate} from './journey-task-rules.js';
 import {quoteTotal,installments,validateTicketTransition,validateDeliveryMethod} from "./commercial-rules.js";
 import express from "express";
 import helmet from "helmet";
@@ -209,12 +212,19 @@ app.get("/api/admin/journey/projects",requireAdmin,requireRole("owner","admin","
 }));
 app.get("/api/admin/journey/projects/:id",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
- const [project,messages]=await Promise.all([
+ const [project,messages,drafts,assignments]=await Promise.all([
   pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at FROM customer_journey_projects WHERE id=$1",[req.params.id]),
-  pool.query("SELECT id,actor,body,created_at FROM customer_journey_messages WHERE project_id=$1 ORDER BY id LIMIT 200",[req.params.id])
+  pool.query("SELECT id,actor,body,created_at FROM customer_journey_messages WHERE project_id=$1 ORDER BY id LIMIT 200",[req.params.id]),
+  pool.query("SELECT id,title,draft,revision,updated_at FROM customer_project_drafts WHERE linked_journey_id=$1 ORDER BY updated_at DESC LIMIT 1",[req.params.id]),
+  pool.query(`SELECT o.id,o.reference,o.status,o.assigned_to,t.display_name AS assigned_to_name,t.is_active AS assignee_active
+    FROM customer_journey_order_links l JOIN orders o ON o.id=l.order_id
+    LEFT JOIN team_members t ON t.id=o.assigned_to
+    WHERE l.project_id=$1 ORDER BY o.created_at DESC LIMIT 20`,[req.params.id])
  ]);
  if(!project.rowCount)return res.status(404).json({error:"Project not found"});
- res.json({project:project.rows[0],messages:messages.rows});
+ // Return the exact customer-submitted configurator snapshot for admin review.
+ // The draft remains account-owned and is never modified by this read-only endpoint.
+ res.set('Cache-Control','private, no-store').json({project:project.rows[0],messages:messages.rows,submittedDraft:drafts.rows[0]||null,linkedOrderAssignments:assignments.rows});
 }));
 app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
@@ -225,12 +235,48 @@ app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requireRole("ow
  res.status(201).json({message:result.rows[0]});
 }));
 
+// Internal project tasks: only administrators assign work to active team accounts.
+app.get("/api/admin/journey/projects/:id/tasks",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
+ const project=await pool.query("SELECT 1 FROM customer_journey_projects WHERE id=$1",[req.params.id]);
+ if(!project.rowCount)return res.status(404).json({error:"Project not found"});
+ const tasks=await pool.query(`SELECT t.id,t.project_id,t.title,t.description,t.status,t.assigned_to,m.display_name AS assigned_to_name,m.is_active AS assignee_active,t.created_at,t.updated_at
+ FROM customer_journey_tasks t LEFT JOIN team_members m ON m.id=t.assigned_to WHERE t.project_id=$1 ORDER BY t.created_at DESC LIMIT 200`,[req.params.id]);
+ res.set("Cache-Control","private, no-store").json({tasks:tasks.rows});
+}));
+app.post("/api/admin/journey/projects/:id/tasks",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
+ const parsed=journeyTaskCreate.safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid task"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const project=await client.query("SELECT 1 FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
+  if(!project.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
+  if(parsed.data.assignedTo){const member=await client.query("SELECT 1 FROM team_members WHERE id=$1 AND is_active=true",[parsed.data.assignedTo]);if(!member.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"Assignee is not active"});}}
+  const task=await client.query("INSERT INTO customer_journey_tasks(project_id,title,description,assigned_to,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$5) RETURNING *",[req.params.id,parsed.data.title,parsed.data.description,parsed.data.assignedTo,req.admin.email]);
+  await auditChange(client,req.admin.email,"journey.task.created","customer_journey_task",task.rows[0].id,null,task.rows[0]);
+  await client.query("COMMIT");res.status(201).json({task:task.rows[0]});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
+app.patch("/api/admin/journey/projects/:id/tasks/:taskId",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success||!z.string().uuid().safeParse(req.params.taskId).success)return res.status(400).json({error:"Invalid id"});
+ const parsed=journeyTaskUpdate.safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid task update"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const before=await client.query("SELECT * FROM customer_journey_tasks WHERE id=$1 AND project_id=$2 FOR UPDATE",[req.params.taskId,req.params.id]);
+  if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Task not found"});}
+  if(parsed.data.assignedTo){const member=await client.query("SELECT 1 FROM team_members WHERE id=$1 AND is_active=true",[parsed.data.assignedTo]);if(!member.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"Assignee is not active"});}}
+  const hasAssignee=Object.hasOwn(parsed.data,"assignedTo");
+  const task=await client.query(`UPDATE customer_journey_tasks SET title=COALESCE($3,title),description=COALESCE($4,description),status=COALESCE($5,status),assigned_to=CASE WHEN $6 THEN $7::uuid ELSE assigned_to END,updated_by=$8,updated_at=now() WHERE id=$1 AND project_id=$2 RETURNING *`,[req.params.taskId,req.params.id,parsed.data.title??null,parsed.data.description??null,parsed.data.status??null,hasAssignee,parsed.data.assignedTo??null,req.admin.email]);
+  await auditChange(client,req.admin.email,"journey.task.updated","customer_journey_task",task.rows[0].id,before.rows[0],task.rows[0]);
+  await client.query("COMMIT");res.json({task:task.rows[0]});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
+
 // Stage 4: authoritative catalog guidance and audited, restricted lifecycle transitions.
-const journeyTransitions = Object.freeze({
- draft:["configured"], configured:["quoted"], quoted:["payment_pending"],
- payment_pending:[], paid:["building"], building:["preview_ready"],
- preview_ready:["building","approved"], approved:["delivered"], delivered:["support"], support:[]
-});
 app.get("/api/admin/journey/catalog",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
  const [packages,options]=await Promise.all([
   pool.query("SELECT id,name,description,price,currency,is_custom_quote FROM packages WHERE is_published=true ORDER BY sort_order LIMIT 100"),
@@ -246,19 +292,9 @@ app.post("/api/admin/journey/projects/:id/transition",requireAdmin,requireRole("
  const client=await pool.connect();
  try{
   await client.query("BEGIN");
-  const current=await client.query("SELECT id,status FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
-  if(!current.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
-  const previous=current.rows[0].status,next=parsed.data.status;
-  if(!journeyTransitions[previous]?.includes(next)){
-   await client.query("ROLLBACK");return res.status(409).json({error:"Transition not permitted",currentStatus:previous});
-  }
-  // Payment verification is never inferred from a manually entered status.
-  if(next==="delivered" && !parsed.data.note){await client.query("ROLLBACK");return res.status(400).json({error:"Delivery requires an approval and handover note"});}
-  const updated=await client.query("UPDATE customer_journey_projects SET status=$2,updated_at=now() WHERE id=$1 RETURNING id,status,updated_at",[req.params.id,next]);
-  await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,before_data,after_data) VALUES($1,'journey.status.changed','customer_journey_project',$2,$3::jsonb,$4::jsonb)",[
-   req.admin.email,req.params.id,JSON.stringify({status:previous}),JSON.stringify({status:next,note:parsed.data.note||null})
-  ]);
-  await client.query("COMMIT");res.json({project:updated.rows[0]});
+  const outcome=await transitionJourneyProject(client,{projectId:req.params.id,next:parsed.data.status,manual:true,note:parsed.data.note,actor:req.admin.email});
+  if(!outcome.ok){await client.query("ROLLBACK");return res.status(outcome.reason==='not_found'?404:409).json({error:outcome.reason,currentStatus:outcome.currentStatus});}
+  await client.query("COMMIT");res.json({project:outcome.project});
  }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
 
@@ -564,6 +600,13 @@ app.post("/api/orders", route(async (req,res) => {
   const client=await pool.connect();
   try {
     await client.query("BEGIN");
+    // Lock the owned draft before creating any order: concurrent submissions must serialize.
+    if(input.projectDraftId){
+      if(!ownedCustomer){await client.query("ROLLBACK");return res.status(401).json({error:"Account required for project draft"});}
+      const ownedDraft=await client.query("SELECT id,linked_journey_id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 FOR UPDATE",[input.projectDraftId,ownedCustomer.id]);
+      if(!ownedDraft.rowCount){await client.query("ROLLBACK");return res.status(403).json({error:"Project draft is not owned by this account"});}
+      if(ownedDraft.rows[0].linked_journey_id){await client.query("ROLLBACK");return res.status(409).json({error:"This project draft already has an order or submission"});}
+    }
     const p=await client.query("SELECT p.id,p.name,p.description,u.amount AS price,p.currency FROM packages p JOIN unified_price_items u ON u.scope='package' AND u.owner_key=p.id::text AND u.code='base' WHERE p.id=$1 AND p.is_published=true FOR SHARE OF p",[input.packageId]);
     if(!p.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"Package unavailable"});}
     const pkg=p.rows[0];
@@ -601,19 +644,11 @@ app.post("/api/orders", route(async (req,res) => {
       VALUES($1,$2,$3,$4,$5,$6,'new',$7,$8,$9,$10,$11,$12)
       RETURNING id,reference,status,total,currency,created_at`,
       [reference,input.customerName,input.phone,input.email||null,input.notes,pkg.id,pkg.currency,subtotal,vatRate,vatAmount,total,snapshot]);
-    if(input.projectDraftId&&!ownedCustomer){await client.query("ROLLBACK");return res.status(401).json({error:"Account required for project draft"});}
-    if(input.projectDraftId&&ownedCustomer){
-      const draft=await client.query("SELECT id,linked_journey_id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 FOR UPDATE",[input.projectDraftId,ownedCustomer.id]);
-      if(!draft.rowCount){await client.query("ROLLBACK");return res.status(403).json({error:"Project draft is not owned by this account"});}
-      if(draft.rows[0].linked_journey_id){await client.query("ROLLBACK");return res.status(409).json({error:"This project draft already has an order"});}
-    }
     if(ownedCustomer){
-      const project=await client.query(`INSERT INTO customer_journey_projects(customer_name,customer_email,template_id,created_by,customer_account_id)
-        VALUES($1,$2,$3,$4,$5) RETURNING id`,
-        [input.customerName,ownedCustomer.email,input.sectorSlug||null,ownedCustomer.email,ownedCustomer.id]);
-      await client.query("INSERT INTO customer_journey_order_links(project_id,order_id,linked_by) VALUES($1,$2,$3)",[project.rows[0].id,saved.rows[0].id,ownedCustomer.email]);
-      saved.rows[0].projectId=project.rows[0].id;
-      if(input.projectDraftId){await client.query("UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2 AND customer_id=$3",[project.rows[0].id,input.projectDraftId,ownedCustomer.id]);}
+      const project=await createCustomerJourneyProject(client,{customerName:input.customerName,customerEmail:ownedCustomer.email,templateId:input.sectorSlug||null,createdBy:ownedCustomer.email,customerAccountId:ownedCustomer.id});
+      await client.query("INSERT INTO customer_journey_order_links(project_id,order_id,linked_by) VALUES($1,$2,$3)",[project.id,saved.rows[0].id,ownedCustomer.email]);
+      saved.rows[0].projectId=project.id;
+      if(input.projectDraftId){await client.query("UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2 AND customer_id=$3",[project.id,input.projectDraftId,ownedCustomer.id]);}
     }
     await client.query("COMMIT");
     res.status(201).json({order:saved.rows[0]});
@@ -978,9 +1013,9 @@ app.patch("/api/admin/pages/:slug",requireAdmin,requireRole("owner","admin","edi
   if(!parsed.success)return res.status(400).json({error:"Invalid page content",details:parsed.error.issues});
   const client=await pool.connect();try{await client.query("BEGIN");
     const before=await client.query("SELECT * FROM site_pages WHERE slug=$1 AND locale=$2 FOR UPDATE",[req.params.slug,parsed.data.locale]);
-    if(req.params.slug==="catalog" && Object.prototype.hasOwnProperty.call(parsed.data,"expectedUpdatedAt")){
+    if(Object.prototype.hasOwnProperty.call(parsed.data,"expectedUpdatedAt")){
       const actual=before.rows[0]?.updated_at?new Date(before.rows[0].updated_at).toISOString():null;
-      if(actual!==parsed.data.expectedUpdatedAt){await client.query("ROLLBACK");return res.status(409).json({error:"تم تعديل الكتالوج بواسطة مستخدم آخر. أعد تحميل البيانات قبل الحفظ."});}
+      if(actual!==parsed.data.expectedUpdatedAt){await client.query("ROLLBACK");return res.status(409).json({error:"تم تعديل هذه الصفحة بواسطة مستخدم آخر. أعد تحميل البيانات قبل الحفظ.",currentUpdatedAt:actual});}
     }
     const saved=await client.query("INSERT INTO site_pages(slug,locale,content,is_published,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,is_published=EXCLUDED.is_published,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING *",[req.params.slug,parsed.data.locale,JSON.stringify(parsed.data.content),parsed.data.isPublished,req.admin.email]);
     await auditChange(client,req.admin.email,"page.updated","site_page",saved.rows[0].id,before.rows[0]||null,saved.rows[0]);await client.query("COMMIT");res.json({page:saved.rows[0]});
@@ -1283,11 +1318,13 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
  if(!c.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Contract unavailable"})}
  const quoteAmount=await client.query("SELECT total_piasters FROM commercial_quotes WHERE id=$1",[id]);
  const invoices=await ensureInvoiceScheduleOnAcceptance(client,{quoteId:Number(id),totalPiasters:quoteAmount.rows[0].total_piasters});
- await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[id]);await client.query(`UPDATE customer_journey_projects SET status='payment_pending',updated_at=now()
-  WHERE id IN (
-    SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true
-    UNION ALL SELECT project_id FROM commercial_custom_quote_links WHERE quote_id=$1 AND is_current=true
-   ) AND status='quoted'`,[id]);
+ await client.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[id]);
+ const linkedProjects=await client.query(`SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true
+  UNION SELECT project_id FROM commercial_custom_quote_links WHERE quote_id=$1 AND is_current=true`,[id]);
+ for(const linked of linkedProjects.rows){
+  const moved=await transitionJourneyProject(client,{projectId:linked.project_id,next:'payment_pending',expectedStatus:'quoted',actor:req.admin.email});
+  if(!moved.ok){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage changed before contract acceptance",reason:moved.reason});}
+ }
  await queueJourneyEvent(client,"contract.signed",`contract.signed:${c.rows[0].id}`,{contractId:c.rows[0].id,quoteId:id,signedAt:c.rows[0].signed_at});
  await client.query("COMMIT");res.json({accepted:true,quoteId:id,contractId:c.rows[0].id,signedAt:c.rows[0].signed_at,paymentStatus:"not_started",checkoutStage:"payment_pending",gatewayConnected:false,invoices:invoices.invoices.map(x=>({id:x.id,status:x.status}))});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
@@ -1417,8 +1454,8 @@ async function advancePaidJourneyIfEligible(client,invoiceId){
  AND EXISTS(SELECT 1 FROM commercial_invoices x WHERE x.quote_id=q.id AND x.status='paid')
  AND NOT EXISTS(SELECT 1 FROM commercial_invoices x WHERE x.quote_id=q.id AND x.status<>'paid')`,[quoteId]);
  if(!valid.rowCount)return null;
- const updated=await client.query("UPDATE customer_journey_projects SET status='paid',updated_at=now() WHERE id=$1 AND status='payment_pending' RETURNING id",[projectId]);
- if(!updated.rowCount)return null;
+ const updated=await transitionJourneyProject(client,{projectId,next:'paid',expectedStatus:'payment_pending',paymentVerified:true,actor:'verified-payment-ledger'});
+ if(!updated.ok)return null;
  await queueJourneyEvent(client,"project.payment_confirmed",`project.payment_confirmed:${projectId}`,{projectId,quoteId,verified:true});
  return projectId;
 }
@@ -1478,9 +1515,8 @@ app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requireRo
     const priorOrder=await client.query("SELECT 1 FROM customer_journey_order_links WHERE project_id=$1",[projectId]);
     if(priorOrder.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Use the existing verified order quotation path for this project"});}
   }else{
-    const created=await client.query(`INSERT INTO customer_journey_projects(customer_name,customer_email,template_id,created_by,customer_account_id,status)
-      VALUES($1,$2,$3,$4,$5,'quoted') RETURNING id`,[d.name,d.email,d.draft?.sectorSlug||null,req.admin.email,d.account_id]);
-    projectId=created.rows[0].id;
+    const created=await createCustomerJourneyProject(client,{customerName:d.title||d.name,customerEmail:d.email,templateId:d.draft?.sectorSlug||null,createdBy:req.admin.email,customerAccountId:d.account_id,status:'quoted'});
+    projectId=created.id;
     await client.query("UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2 AND customer_id=$3",[projectId,d.id,d.account_id]);
   }
   const config=await client.query("SELECT vat_rate FROM site_settings WHERE id=1");
@@ -1494,7 +1530,13 @@ app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requireRo
    VALUES($1,$2,$3::jsonb,$4,'EGP',$5) RETURNING id,revision,status,total_piasters,valid_until`,
    [d.email,d.account_id,JSON.stringify(pricedItems),grossTotal,parsed.data.validUntil||new Date(Date.now()+14*86400000).toISOString()]);
   await client.query("INSERT INTO commercial_custom_quote_links(quote_id,draft_id,project_id,customer_account_id) VALUES($1,$2,$3,$4)",[q.rows[0].id,d.id,projectId,d.account_id]);
-  await client.query("UPDATE customer_journey_projects SET status='quoted',updated_at=now() WHERE id=$1 AND status IN ('draft','configured')",[projectId]);
+  if(d.linked_journey_id){
+    const status=await client.query("SELECT status FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[projectId]);
+    if(status.rows[0]?.status!=='quoted'){
+      const moved=await transitionJourneyProject(client,{projectId,next:'quoted',actor:req.admin.email});
+      if(!moved.ok){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage changed before custom quote",reason:moved.reason});}
+    }
+  }
   await queueJourneyEvent(client,"quote.created",`quote.created:${q.rows[0].id}`,{quoteId:q.rows[0].id,projectId,custom:true,totalPiasters:grossTotal});
   await client.query("COMMIT");res.status(201).json({quote:q.rows[0],projectId,requiresAdminIssue:true});
  }catch(error){await client.query("ROLLBACK");if(error.code==="23505")return res.status(409).json({error:"Concurrent custom quote already exists"});throw error;}finally{client.release();}
@@ -1524,7 +1566,11 @@ app.post("/api/admin/commercial/orders/:orderId/quote",requireAdmin,requireRole(
     VALUES($1,$2,$3::jsonb,$4,$5,now()+interval '14 days') RETURNING id,revision,status,total_piasters,valid_until`,
     [selected.customer_email,selected.customer_account_id,JSON.stringify(priced.items),priced.totalPiasters,priced.currency]);
   await client.query("INSERT INTO commercial_order_quote_links(order_id,quote_id,project_id,draft_id) VALUES($1,$2,$3,$4)",[selected.id,quote.rows[0].id,selected.project_id,draft.rows[0].id]);
-  await client.query("UPDATE customer_journey_projects SET status='quoted',updated_at=now() WHERE id=$1 AND status IN ('draft','configured')",[selected.project_id]);
+  const stage=await client.query("SELECT status FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[selected.project_id]);
+  if(stage.rows[0]?.status!=='quoted'){
+    const moved=await transitionJourneyProject(client,{projectId:selected.project_id,next:'quoted',actor:req.admin.email});
+    if(!moved.ok){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage changed before order quote",reason:moved.reason});}
+  }
   await queueJourneyEvent(client,"quote.created",`quote.created:${quote.rows[0].id}`,{quoteId:quote.rows[0].id,orderId:selected.id,projectId:selected.project_id,totalPiasters:priced.totalPiasters});
   await client.query("COMMIT");
   res.status(201).json({quote:quote.rows[0],orderId:selected.id,requiresAdminIssue:true});

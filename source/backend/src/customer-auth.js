@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import {queueJourneyEvent} from './customer-event-outbox.js';
+import {createCustomerJourneyProject} from './customer-project-service.js';
 
 const emailSchema=z.string().trim().email().max(254).transform(v=>v.toLowerCase());
 const passwordSchema=z.string().min(12).max(128);
@@ -165,10 +166,10 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    if(!draft.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Project not found'});}
    const item=draft.rows[0];
    if(item.linked_journey_id){await client.query('COMMIT');return res.json({projectId:item.linked_journey_id,alreadySubmitted:true});}
-   if(!item.draft?.packageId&&!item.draft?.sectorSlug&&!(item.draft?.projectMode==='custom'&&item.draft?.requirements?.trim())){await client.query('ROLLBACK');return res.status(422).json({error:'Complete project requirements before submission'});}
+   if(!item.draft?.packageId&&!item.draft?.sectorSlug&&!(item.draft?.projectMode==='custom'&&item.draft?.requirements?.trim())){await client.query('ROLLBACK');return res.status(422).json({code:'PROJECT_REQUIREMENTS_INCOMPLETE',error:'Complete project requirements before submission'});}
    const customer=await client.query('SELECT email,name FROM customer_accounts WHERE id=$1',[req.customer.id]);
-   const created=await client.query('INSERT INTO customer_journey_projects(customer_name,customer_email,created_by,customer_account_id) VALUES($1,$2,$3,$4) RETURNING id,status',[item.title,customer.rows[0]?.email??null,'customer-portal',req.customer.id]);
-   const projectId=created.rows[0].id;
+   const created=await createCustomerJourneyProject(client,{customerName:item.title,customerEmail:customer.rows[0]?.email??null,customerAccountId:req.customer.id,createdBy:'customer-portal'});
+   const projectId=created.id;
    await client.query('UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2',[projectId,item.id]);
    const summary=[
     'Project: '+item.title,
@@ -181,7 +182,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    ].join('\\n').slice(0,4000);
    await client.query('INSERT INTO customer_journey_messages(project_id,actor,body) VALUES($1,$2,$3)',[projectId,'customer',summary]);
    await client.query('COMMIT');
-   res.status(201).json({projectId,status:created.rows[0].status});
+   res.status(201).json({projectId,status:created.status});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
  }));
  router.get('/project-drafts/:id/messages',requireCustomer,safe(async(req,res)=>{
