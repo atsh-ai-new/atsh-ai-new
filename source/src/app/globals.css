@@ -543,3 +543,20 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .atsh-start-form{padding:12px 10px!important}
  .atsh-start-form button[aria-pressed]{font-size:13px!important}
 }
+
+/* Customer authentication: readable, compact and touch-friendly on mobile. */
+.atsh-account-auth{width:min(100% - 32px,540px);min-width:0}
+.atsh-account-auth>h1{color:var(--navy);font-size:clamp(25px,4vw,36px);line-height:1.35;margin:0 0 24px}
+.atsh-account-auth>form{display:flex;flex-direction:column;gap:16px}
+.atsh-account-auth>form label{display:flex;flex-direction:column;gap:7px;font-size:15px;font-weight:600;color:var(--navy)}
+.atsh-account-auth>form input{display:block;width:100%;min-width:0;min-height:48px;padding:11px 13px;border:1px solid #ccd5df;border-radius:10px;background:#fff;color:var(--ink);font-size:16px;direction:ltr;text-align:start}
+.atsh-account-auth>form button[type="submit"]{align-self:stretch;min-height:48px;border:0;border-radius:10px;background:var(--navy);color:#fff;font-weight:700;cursor:pointer}
+.atsh-account-auth>p{font-size:14px;line-height:2;color:#51647a}
+.atsh-account-auth>p a{color:var(--navy);text-decoration:underline;text-underline-offset:3px}
+@media(max-width:600px){
+ .atsh-account-auth{width:calc(100% - 32px);margin:40px auto!important;padding:20px 16px!important;border:1px solid #e2e5e8;border-radius:16px;background:#fff}
+ .atsh-account-auth>h1{font-size:27px;margin-bottom:20px}
+ .atsh-account-auth>form{gap:14px}
+ .atsh-account-auth>form label{font-size:14px}
+ .atsh-account-auth>p{font-size:13px;line-height:2.1;overflow-wrap:anywhere}
+}
