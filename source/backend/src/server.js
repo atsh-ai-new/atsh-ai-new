@@ -4,6 +4,7 @@ import { customerCommercialRouter } from "./customer-commercial.js";
 import { customerAuthRouter } from "./customer-auth.js";
 import {createCustomerJourneyProject} from './customer-project-service.js';
 import {transitionJourneyProject} from './customer-journey-state.js';
+import {journeyTaskCreate,journeyTaskUpdate} from './journey-task-rules.js';
 import {quoteTotal,installments,validateTicketTransition,validateDeliveryMethod} from "./commercial-rules.js";
 import express from "express";
 import helmet from "helmet";
@@ -235,8 +236,6 @@ app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requireRole("ow
 }));
 
 // Internal project tasks: only administrators assign work to active team accounts.
-const journeyTaskCreate=z.object({title:z.string().trim().min(2).max(180),description:z.string().max(4000).default(''),assignedTo:z.string().uuid().nullable().default(null)}).strict();
-const journeyTaskUpdate=z.object({title:z.string().trim().min(2).max(180).optional(),description:z.string().max(4000).optional(),assignedTo:z.string().uuid().nullable().optional(),status:z.enum(['todo','in_progress','blocked','done']).optional()}).strict().refine(x=>Object.keys(x).length>0);
 app.get("/api/admin/journey/projects/:id/tasks",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const project=await pool.query("SELECT 1 FROM customer_journey_projects WHERE id=$1",[req.params.id]);
