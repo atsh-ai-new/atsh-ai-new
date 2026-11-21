@@ -79,8 +79,11 @@ export function calculateQuote(input: {
     needsCustomQuote = true;
   }
 
-  if (selectedPackage?.includedPages !== null && selectedPackage?.includedPages !== undefined && input.pages > selectedPackage.includedPages) {
-    needsCustomQuote = true;
+  // Extra pages extend the chosen package; they are not a second website package.
+  // Price is configurable through the existing per-page option in admin.
+  const extraPageCount = selectedPackage?.includedPages == null ? 0 : Math.max(0, input.pages - selectedPackage.includedPages);
+  if (extraPageCount > 0) {
+    items.push({ id: "extra_page", label: optionLabel("extra_page", "صفحات إضافية") + " × " + extraPageCount, amount: extraPageCount * optionPrice("extra_page", 1000) });
   }
   if (input.bilingual) items.push({ id: "language", label: optionLabel("language", "إضافة اللغة الإنجليزية"), amount: optionPrice("language", bilingualPrice) });
 
