@@ -3,7 +3,7 @@ import { deliveryAdminRouter, deliveryCustomerRouter } from "./delivery-control.
 import { customerCommercialRouter } from "./customer-commercial.js";
 import { customerAuthRouter } from "./customer-auth.js";
 import {createCustomerJourneyProject} from './customer-project-service.js';
-import {canJourneyTransition} from './customer-journey-state.js';
+import {canJourneyTransition,transitionJourneyProject} from './customer-journey-state.js';
 import {quoteTotal,installments,validateTicketTransition,validateDeliveryMethod} from "./commercial-rules.js";
 import express from "express";
 import helmet from "helmet";
@@ -243,19 +243,9 @@ app.post("/api/admin/journey/projects/:id/transition",requireAdmin,requireRole("
  const client=await pool.connect();
  try{
   await client.query("BEGIN");
-  const current=await client.query("SELECT id,status FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
-  if(!current.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
-  const previous=current.rows[0].status,next=parsed.data.status;
-  if(!canJourneyTransition(previous,next,{manual:true,note:parsed.data.note})){
-   await client.query("ROLLBACK");return res.status(409).json({error:"Transition not permitted",currentStatus:previous});
-  }
-  // Payment verification is never inferred from a manually entered status.
-  if(next==="delivered" && !parsed.data.note){await client.query("ROLLBACK");return res.status(400).json({error:"Delivery requires an approval and handover note"});}
-  const updated=await client.query("UPDATE customer_journey_projects SET status=$2,updated_at=now() WHERE id=$1 RETURNING id,status,updated_at",[req.params.id,next]);
-  await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,before_data,after_data) VALUES($1,'journey.status.changed','customer_journey_project',$2,$3::jsonb,$4::jsonb)",[
-   req.admin.email,req.params.id,JSON.stringify({status:previous}),JSON.stringify({status:next,note:parsed.data.note||null})
-  ]);
-  await client.query("COMMIT");res.json({project:updated.rows[0]});
+  const outcome=await transitionJourneyProject(client,{projectId:req.params.id,next:parsed.data.status,manual:true,note:parsed.data.note,actor:req.admin.email});
+  if(!outcome.ok){await client.query("ROLLBACK");return res.status(outcome.reason==='not_found'?404:409).json({error:outcome.reason,currentStatus:outcome.currentStatus});}
+  await client.query("COMMIT");res.json({project:outcome.project});
  }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
 
