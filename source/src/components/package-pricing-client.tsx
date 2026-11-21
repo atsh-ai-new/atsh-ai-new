@@ -2,6 +2,7 @@
 import {useEffect,useMemo,useState} from "react";
 import {useParams} from "next/navigation";
 import Link from "next/link";
+import DomainLookup from "@/components/domain-lookup";
 import {saveGuestWorkspace} from "@/lib/customer-workspace";
 
 type Package={id:string;name:string;description:string;price:number|string;is_custom_quote:boolean;features?:string[]};
@@ -19,6 +20,8 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  const [customer,setCustomer]=useState({name:"",phone:"",email:"",notes:""});
  
  const [submission,setSubmission]=useState("");
+ const [domainName,setDomainName]=useState("");
+ const [requestDomainBooking,setRequestDomainBooking]=useState(false);
  useEffect(()=>{let active=true;Promise.all([
   fetch("/api/catalog",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("catalog");return r.json()}),
   fetch(`/api/site-content/home?locale=${en?"en":"ar"}`,{cache:"no-store"}).then(async r=>r.ok?r.json():null).catch(()=>null)
@@ -35,7 +38,7 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  const total=tax===null?null:round(oneTime+tax);
  const money=(n:number)=>new Intl.NumberFormat(en?"en-EG":"ar-EG",{maximumFractionDigits:2,minimumFractionDigits:0}).format(n)+" "+t("ج.م","EGP");
  const toggle=(id:string)=>setSelected(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id]);
- const submit=(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();if(!pkg||invalid||vat===null)return;setSubmission("");try{const details=[`الباقة: ${pkg.name}`,`رقم الباقة: ${pkg.id}`,...lines.map(l=>`إضافة: ${l.name} | ID: ${l.id} | الكمية: ${l.quantity} | نوع التسعير: ${l.pricing_type} | السعر المعروض: ${l.amount}`),`تنفيذ: ${oneTime}`,`شهري: ${monthly}`,`سنوي: ${yearly}`,`ضريبة التنفيذ: ${tax??"غير محددة"}`,`الإجمالي التقديري: ${total??"غير محدد"}`,`ملاحظات المشروع: ${customer.notes}`].join("\\n");saveGuestWorkspace({packageId:pkg.id,requirements:details,options:lines.map(l=>l.id),source:"configurator",projectMode:"custom"});window.location.assign(en?"/en/account/register":"/account/register");}catch{setSubmission(t("تعذر حفظ الاختيارات على هذا المتصفح. حاول مجددًا.","Unable to save selections in this browser. Please retry."));}};
+ const submit=(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();if(!pkg||invalid||vat===null)return;setSubmission("");try{const details=[`الباقة: ${pkg.name}`,`رقم الباقة: ${pkg.id}`,...lines.map(l=>`إضافة: ${l.name} | ID: ${l.id} | الكمية: ${l.quantity} | نوع التسعير: ${l.pricing_type} | السعر المعروض: ${l.amount}`),`تنفيذ: ${oneTime}`,`شهري: ${monthly}`,`سنوي: ${yearly}`,`ضريبة التنفيذ: ${tax??"غير محددة"}`,`الإجمالي التقديري: ${total??"غير محدد"}`,`الدومين المختار: ${domainName||"لم يُحدد"}`,`طلب حجز الدومين من الإدارة: ${requestDomainBooking&&domainName?"نعم، بعد تأكيد السعر والتوفر":"لا"}`,`ملاحظات المشروع: ${customer.notes}`].join("\\n");saveGuestWorkspace({domainName,packageId:pkg.id,requirements:details,options:lines.map(l=>l.id),source:"configurator",projectMode:"custom"});window.location.assign(en?"/en/account/register":"/account/register");}catch{setSubmission(t("تعذر حفظ الاختيارات على هذا المتصفح. حاول مجددًا.","Unable to save selections in this browser. Please retry."));}};
  return <main dir={en?"ltr":"rtl"} style={{minHeight:"100vh",background:"#f8f7f3",color:"#203958",padding:"28px 16px",fontFamily:"inherit"}}>
   <div style={{maxWidth:1040,margin:"auto"}}>
    <nav style={{display:"flex",justifyContent:"space-between",gap:12,marginBottom:22}}><Link href={en?"/en#packages":"/#packages"}>{t("← العودة للباقات","← Back to packages")}</Link><Link href={en?`/packages/${params.packageId}/pricing`:`/en/packages/${params.packageId}/pricing`}>{en?"العربية":"English"}</Link></nav>
@@ -46,7 +49,7 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
    {catalog&&!pkg&&<p role="alert">{t("هذه الباقة غير متاحة حاليًا.","This package is not currently available.")}</p>}
    {pkg&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,320px),1fr))",gap:20,alignItems:"start",marginTop:24}}>
     <section style={{background:"white",padding:22,borderRadius:18,border:"1px solid #dbe4ee"}}>
-     <h2>{pkg.name}</h2><p>{pkg.description}</p><strong>{pkg.is_custom_quote?t("السعر بعد مراجعة المتطلبات","Price on request"):money(base)}</strong>
+     <h2>{pkg.name}</h2><h3>{t("١. البحث عن الدومين","1. Search for a domain")}</h3><DomainLookup locale={locale} onDomainChange={setDomainName}/><label style={{display:"flex",gap:9,alignItems:"center",margin:"12px 0 20px"}}><input type="checkbox" checked={requestDomainBooking} onChange={e=>setRequestDomainBooking(e.target.checked)}/>{t("أطلب من الإدارة حجز الدومين المختار بعد تأكيد السعر والتوفر","Request management to register the selected domain after confirming availability and price")}</label><p>{pkg.description}</p><strong>{pkg.is_custom_quote?t("السعر بعد مراجعة المتطلبات","Price on request"):money(base)}</strong>
      {!!pkg.features?.length&&<ul style={{paddingInlineStart:22}}>{pkg.features.map((feature,i)=><li key={i}>{feature}</li>)}</ul>}
      <h2 style={{marginTop:24}}>{t("الإضافات والتخصيص","Add-ons and customization")}</h2>
      {!options.length&&<p>{t("لا توجد إضافات مسجلة لهذه الباقة.","No add-ons configured for this package.")}</p>}
