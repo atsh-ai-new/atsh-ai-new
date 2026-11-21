@@ -18,8 +18,8 @@ function guestStorage():Storage|null{
     if(!guestStorageInitialized){
       guestStorageInitialized=true;
       window.localStorage.removeItem(WORKSPACE_KEY); // Purge persistent guest data from older releases.
-      const navigation=window.performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming|undefined;
-      if(navigation?.type==="reload")window.sessionStorage.removeItem(WORKSPACE_KEY);
+      // Keep in-progress selections through reloads and same-tab navigation.
+      // Session storage is cleared when the browser tab session ends.
     }
     return window.sessionStorage;
   }catch{return null;}
@@ -73,7 +73,7 @@ export async function loadAccountWorkspace():Promise<CustomerWorkspace|null>{
 export function replaceGuestWorkspace(value:CustomerWorkspace):CustomerWorkspace {
  const next=Object.fromEntries(Object.entries(value).filter(([key])=>allowed.has(key))) as CustomerWorkspace;
  if(typeof window!=="undefined"){
-  try{window.localStorage.setItem(WORKSPACE_KEY,JSON.stringify(next));window.dispatchEvent(new CustomEvent("atsh-workspace-updated",{detail:next}));}catch{/* restricted storage */}
+  try{guestStorage()?.setItem(WORKSPACE_KEY,JSON.stringify(next));window.dispatchEvent(new CustomEvent("atsh-workspace-updated",{detail:next}));}catch{/* restricted storage */}
  }
  return next;
 }
