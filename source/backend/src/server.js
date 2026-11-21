@@ -72,7 +72,7 @@ await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql
 await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_checkout_stage52.sql", import.meta.url), "utf8"));
 await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
-const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim().replace(/\\/$/, "")).filter(Boolean);
+const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim().replace(/\/$/, "")).filter(Boolean);
 // The public website is also an explicitly configured, trusted origin.
 // This prevents customer registration from failing when the canonical site URL
 // is configured but was accidentally omitted from ALLOWED_ORIGINS.
