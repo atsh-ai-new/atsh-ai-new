@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
 import { addonOptions, calculateQuote, formatEgp, identityOptions, packages, type AddonId, type ContentId, type DomainId, type IdentityId, type PackageId } from "@/lib/catalog";
 import { siteCopyDefaults } from "@/lib/site-copy";
 import { siteCopyEn, englishPackages, englishOptions, englishPrice } from "@/lib/site-copy-en";
@@ -56,6 +56,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   const [customer, setCustomer] = useState<Customer>({ name: "", company: "", email: "", phone: "", details: "", compliance: "" });
   const [customerSignedIn,setCustomerSignedIn]=useState(false);
   const [selectedProjectDraftId,setSelectedProjectDraftId]=useState<string|null>(null);
+  const submitRequestInFlight=useRef(false);
   const [requestState, setRequestState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [requestMessage, setRequestMessage] = useState("");
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -331,11 +332,13 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
 
   const submitRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if(submitRequestInFlight.current||requestState==="sent")return;
     if (!privacyAccepted) {
       setRequestState("error");
       setRequestMessage(copy("privacyRequiredMessage"));
       return;
     }
+    submitRequestInFlight.current=true;
     setRequestState("sending");
     setRequestMessage("");
     try {
@@ -394,6 +397,8 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     } catch (error) {
       setRequestState("error");
       setRequestMessage(error instanceof Error ? error.message : t("تعذر تسجيل الطلب الآن.","Unable to submit the request."));
+    } finally {
+      submitRequestInFlight.current=false;
     }
   };
 
