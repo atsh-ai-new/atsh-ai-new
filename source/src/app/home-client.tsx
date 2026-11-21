@@ -27,7 +27,7 @@ const backendPackageIds: Record<string, string> = {
 const obsoleteIdentityOptionCodes = new Set(["logo_design", "visual_identity"]);
 const builtInOptionCodes = new Set(["language", "logo", "brand", "writing", "seo", "booking", "contact", "analytics", "hosting", "domain_com", "domain_eg", "maintenance"]);
 
-export default function HomePage({locale="ar",configuratorOnly=false}:{locale?:"ar"|"en";configuratorOnly?:boolean}) {
+export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly=false}:{locale?:"ar"|"en";configuratorOnly?:boolean;pricingOnly?:boolean}) {
   const isEnglish=locale==="en";
   const money=(value:number)=>isEnglish?englishPrice(value):formatEgp(value);
   const localizeOption=(code:string,original:string,type:"name"|"description"="name")=>isEnglish?(englishOptions[code]?.[type] || (type==="name" ? original : "Available on request")):original;
@@ -443,13 +443,13 @@ export default function HomePage({locale="ar",configuratorOnly=false}:{locale?:"
         <div className="section-heading configurator-title"><div><span className="section-kicker">{copy("configuratorKicker")}</span><h2>{copy("configuratorTitle")}</h2></div><p>{copy("configuratorDescription")}</p></div>
         <div className="builder-layout">
           <div className="builder-main">
-            <div className="stepper" aria-label={`${copy("stepCountLabel")} ${step+1} ${copy("stepCountOf")} ${steps.length}`}>
+            {!pricingOnly&&<div className="stepper" aria-label={`${copy("stepCountLabel")} ${step+1} ${copy("stepCountOf")} ${steps.length}`}>
               {steps.map((label, index) => index===0?null:<button key={label} className={index === step ? "stepper-item current" : index < step ? "stepper-item done" : "stepper-item"} onClick={() => index <= step && setStep(index)} disabled={index > step} aria-current={index === step ? "step" : undefined}>
                 <span className="stepper-number">{index < step ? "✓" : index + 1}</span><span>{label}</span>
               </button>)}
-            </div>
+            </div>}
             <form className="builder-card" onSubmit={handleBuilderSubmit}>
-              <div className="builder-step-heading"><span>{copy("stepCountLabel")} {step + 1} {copy("stepCountOf")} {steps.length}</span><h3>{steps[step]}</h3><p>{copy(`stepDesc${step}`)}</p></div>
+              {!pricingOnly||step>=5?<div className="builder-step-heading"><span>{copy("stepCountLabel")} {step + 1} {copy("stepCountOf")} {steps.length}</span><h3>{steps[step]}</h3><p>{copy(`stepDesc${step}`)}</p></div>:<div className="builder-step-heading"><h3>{t("خصص إضافات الباقة","Customize package add-ons")}</h3><p>{t("اختر المواصفات وشاهد الفاتورة تتغير مباشرة.","Choose options and see your estimate update live.")}</p></div>}
 
               {step === 0 && <div className="option-grid package-option-grid">
                 {visiblePackages.map((item) => <button type="button" key={item.id} className={packageId === item.id ? "select-card selected" : "select-card"} onClick={() => { setPackageId(item.id); setPages(item.includedPages ?? 5); setSelectedExtraOptionIds([]); }}>
@@ -457,7 +457,7 @@ export default function HomePage({locale="ar",configuratorOnly=false}:{locale?:"
                 </button>)}
               </div>}
 
-              {step === 1 && <div className="form-stack">
+              {(step === 1 || (pricingOnly&&step<5)) && <div className="form-stack">
                 <label className="field-label">{copy("requestedPagesLabel")}<input type="number" min="1" max="50" value={pages} onChange={(event) => setPages(Math.max(1, Number(event.target.value) || 1))} /></label>
                 <p className="field-hint">{includedPages ? `${copy("includedPagesLead")} ${includedPages} ${copy(includedPages === 1 ? "includedOnePage" : "includedManyPages")}.` : copy("scopeReviewText")} {copy("extraPagesReviewText")}</p>
                 <div className="choice-row"><div><strong>{copy("languageChoiceTitle")}</strong><small>{copy("languageIncluded")}</small></div><div className="choice-toggle"><button type="button" className={!bilingual ? "selected" : ""} onClick={() => setBilingual(false)}>{copy("languageArabic")}</button><button type="button" className={bilingual ? "selected" : ""} onClick={() => setBilingual(true)}>{copy("languageBilingual")} <b>+{money(Number(serverOptions.find((option) => option.code === "language")?.price ?? 900))}</b></button></div></div>
@@ -470,7 +470,7 @@ export default function HomePage({locale="ar",configuratorOnly=false}:{locale?:"
                 {identity === "provided" && <label className="upload-zone"><input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,application/pdf" onChange={(event) => setLogoName(event.target.files?.[0]?.name ?? "")} /><span className="upload-icon">↑</span><strong>{logoName || copy("logoUploadLabel")}</strong><small>{copy("logoUploadFormats")}</small></label>}
               </div>}
 
-              {step === 3 && <div className="form-stack">
+              {(step === 3 || (pricingOnly&&step<5)) && <div className="form-stack">
                 <div className="choice-row"><div><strong>{copy("contentWritingTitle")}</strong><small>{copy("contentIncluded")}</small></div><div className="choice-toggle"><button type="button" className={content === "provided" ? "selected" : ""} onClick={() => setContent("provided")}>{copy("provideContent")}</button><button type="button" className={content === "writing" ? "selected" : ""} onClick={() => setContent("writing")}>{copy("requestWriting")} <b>+{money(250)} {copy("perPageSuffix")}</b></button></div></div>
                 <h4 className="subsection-title">{copy("addonsTitle")}</h4>
                 <div className="option-grid addon-grid">{addonOptions.map((item) => { const configured = serverOptions.find((option) => option.code === item.id); return <button type="button" key={item.id} className={addons.includes(item.id) ? "select-card selected" : "select-card"} onClick={() => toggleAddon(item.id)}><span className="select-mark">{addons.includes(item.id) ? "✓" : "+"}</span><span className="select-card-copy"><strong>{localizeOption(item.id,configured?.name ?? item.name)}</strong><small>{localizeOption(item.id,configured?.description || item.description,"description")}</small><b>+{money(Number(configured?.price ?? item.price))}</b></span></button>; })}
@@ -484,7 +484,7 @@ export default function HomePage({locale="ar",configuratorOnly=false}:{locale?:"
                 {serverOptions.some((option) => !builtInOptionCodes.has(option.code) && !obsoleteIdentityOptionCodes.has(option.code)) && <><h4 className="subsection-title">{copy("extraOptionsTitle")}</h4><div className="option-grid addon-grid">{serverOptions.filter((option) => !builtInOptionCodes.has(option.code) && !obsoleteIdentityOptionCodes.has(option.code)).map((option) => { const selected = option.is_required || selectedExtraOptionIds.includes(option.id); return <button type="button" key={option.id} disabled={option.is_required} className={selected ? "select-card selected" : "select-card"} onClick={() => toggleExtraOption(option.id)}><span className="select-mark">{selected ? "✓" : "+"}</span><span className="select-card-copy"><strong>{localizeOption(option.code,option.name)}{option.is_required ? copy("requiredSuffix") : ""}</strong><small>{localizeOption(option.code,option.description || copy("extraOptionFallback"),"description")}</small><b>+{money(Number(option.price))}{option.pricing_type === "yearly" ? ` / ${copy("yearUnit")}` : option.pricing_type === "monthly" ? ` / ${copy("monthUnit")}` : option.pricing_type === "per_page" ? ` / ${copy("pageUnit")}` : ""}</b></span></button>; })}</div></>}
               </div>}
 
-              {step === 4 && <div className="form-stack">
+              {(step === 4 || (pricingOnly&&step<5)) && <div className="form-stack">
                 <div className="hosting-callout"><span className="hosting-icon">✓</span><div><strong>{copy("hostingCalloutTitle")}</strong><p>{copy("hostingCalloutText")}</p></div></div>
                 <button type="button" className={hosting ? "select-card selected" : "select-card"} onClick={() => setHosting((value) => !value)}><span className="select-mark">{hosting ? "✓" : "+"}</span><span className="select-card-copy"><strong>{serverOptions.find((option) => option.code === "hosting")?.name ?? copy("hostingOptionTitle")}</strong><small>{serverOptions.find((option) => option.code === "hosting")?.description || copy("hostingOptionDescription")}</small><b>+{money(Number(serverOptions.find((option) => option.code === "hosting")?.price ?? 600))} / {copy("yearUnit")}</b></span></button>
                 <div className="field-label">{copy("domainLabel")} <div className="choice-toggle domain-choice"><button type="button" className={domain === "com" ? "selected" : ""} onClick={() => setDomain("com")}>{copy("domainComLabel")} <small>{hosting ? copy("domainIncluded") : copy("domainOnDemand")}</small></button><button type="button" className={domain === "eg" ? "selected" : ""} onClick={() => setDomain("eg")}>{copy("domainEgLabel")} <small>{hosting ? copy("domainIncluded") : copy("domainOnDemand")}</small></button><button type="button" className={domain === "none" ? "selected" : ""} onClick={() => setDomain("none")}>{copy("domainOwn")}</button></div></div>
@@ -519,7 +519,7 @@ export default function HomePage({locale="ar",configuratorOnly=false}:{locale?:"
                 {requestMessage && <p className={requestState === "sent" ? "success-message" : "error-message"} role="status">{requestMessage}</p>}
               </div>}
 
-              <div className="builder-controls"><button type="button" className="button button-outline" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step <= 1}>{copy("previousStep")}</button><span>{step + 1} / {steps.length}</span>{step < steps.length - 1 ? <button type="button" className="button" onClick={() => { if (step === 5 && (!customer.name || !customer.email || !customer.phone)) return; setStep((current) => Math.min(steps.length - 1, current + 1)); }} disabled={(step === 5 && (!customer.name || !customer.email || !customer.phone))}>{copy("nextStep")} <span>←</span></button> : <button type="button" className="button button-outline" onClick={() => setStep(1)}>{copy("editChoices")}</button>}</div>
+              {pricingOnly&&step<5?<div className="builder-controls"><button type="button" className="button button-outline" onClick={()=>window.location.assign(isEnglish?"/en#packages":"/#packages")}>{t("تغيير الباقة","Change package")}</button><button type="button" className="button" onClick={()=>setStep(5)}>{t("متابعة الطلب","Continue request")} ←</button></div>:<div className="builder-controls"><button type="button" className="button button-outline" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step <= 1}>{copy("previousStep")}</button><span>{step + 1} / {steps.length}</span>{step < steps.length - 1 ? <button type="button" className="button" onClick={() => { if (step === 5 && (!customer.name || !customer.email || !customer.phone)) return; setStep((current) => Math.min(steps.length - 1, current + 1)); }} disabled={(step === 5 && (!customer.name || !customer.email || !customer.phone))}>{copy("nextStep")} <span>←</span></button> : <button type="button" className="button button-outline" onClick={() => setStep(1)}>{copy("editChoices")}</button>}</div>}
             </form>
           </div>
         <aside className="quote-sidebar">
