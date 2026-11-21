@@ -481,3 +481,19 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .platform[lang="ar"] .quote-summary-card,.platform[lang="en"] .quote-summary-card{min-width:0}
  .platform[lang="ar"] .platform-footer,.platform[lang="en"] .platform-footer{gap:9px}
 }
+
+/* One shared visual contract for Arabic and English at tablet/desktop sizes. */
+@media(min-width:641px){
+ .platform[lang="ar"] .platform-header,.platform[lang="en"] .platform-header{min-width:0;gap:12px}
+ .platform[lang="ar"] .platform-header-actions,.platform[lang="en"] .platform-header-actions{min-width:0;flex-wrap:wrap;gap:9px}
+ .platform[lang="ar"] .build-hero,.platform[lang="en"] .build-hero{min-height:0;gap:clamp(16px,3vw,32px);padding-block:20px 32px}
+ .platform[lang="ar"] .build-hero-copy,.platform[lang="en"] .build-hero-copy{min-width:0}
+ .platform[lang="ar"] .hero-actions,.platform[lang="en"] .hero-actions{gap:10px;margin-top:12px}
+ .platform[lang="ar"] .section-heading,.platform[lang="en"] .section-heading{margin-bottom:16px;gap:12px}
+ .platform[lang="ar"] .package-grid,.platform[lang="en"] .package-grid{gap:13px;align-items:start}
+ .platform[lang="ar"] .package-card,.platform[lang="en"] .package-card{min-width:0;min-height:0;padding:16px}
+ .platform[lang="ar"] .package-card>p,.platform[lang="en"] .package-card>p{min-height:0;line-height:1.6}
+ .platform[lang="ar"] .package-card ul,.platform[lang="en"] .package-card ul{margin-block:9px 11px;gap:5px}
+ .platform[lang="ar"] .package-price,.platform[lang="en"] .package-price{padding-block:9px}
+ .platform[lang="ar"] .builder-layout,.platform[lang="en"] .builder-layout{min-width:0;gap:14px}
+}
