@@ -182,6 +182,9 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         const draft=result.projectDraft?.draft;
         if(!draft)return;
         setSelectedProjectDraftId(draftId);
+        // Resume the saved project at its add-ons, not the package-selection screen.
+        setStep(3);
+        setShowConfigurator(true);
         if(draft.sectorSlug&&draft.sectorName)setSelectedSector({slug:draft.sectorSlug,name:draft.sectorName});
         if(draft.packageId)setPackageId(draft.packageId);
         setSectorAddonCodes(Array.isArray(draft.sectorAddonCodes)?draft.sectorAddonCodes:[]);
@@ -267,13 +270,19 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
       const current=await fetch(endpoint,{credentials:"include",cache:"no-store"});
       const body=await current.json().catch(()=>({}));
       if(!current.ok||!body.projectDraft)throw Error(t("تعذر قراءة مسودة المشروع؛ تحقق من الجلسة.","Unable to access the project draft. Verify your sign-in."));
-      const patch={...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes}:{}),...(packageId?{packageId}:{}),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||body.projectDraft.draft?.businessName||""};
+      const patch={...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes,source:"catalog" as const}:{}),...(packageId?{packageId,source:"configurator" as const}:{}),options:[...addons,...selectedExtraOptionIds].slice(0,30),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||body.projectDraft.draft?.businessName||"",requirements:customer.details||body.projectDraft.draft?.requirements||""};
       const response=await fetch(endpoint,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({expectedRevision:Number(body.projectDraft.revision),patch})});
       const result=await response.json().catch(()=>({}));
       if(!response.ok)throw Error(isEnglish?"Unable to save the current project draft":result.error||"تعذر حفظ المسودة؛ راجع التعديلات الجديدة.");
       setRequestMessage(t("تم حفظ اختيارات النموذج وإضافاته في حسابك. يمكن استكمال معاينتها من لوحة العميل.","Your project choices are saved to your account. Continue from your client dashboard."));
       setRequestState("idle");
     }catch(error){setRequestMessage(error instanceof Error?error.message:t("فشل حفظ الاختيارات","Unable to save selections"));setRequestState("error");}
+  };
+  const finishSavedDraft=async()=>{
+    if(!selectedProjectDraftId)return;
+    await saveProjectChoices();
+    // Stay in the customer account for explicit review and management submission.
+    // A failed save must never be presented as a completed submission.
   };
   const toggleAddon = (id: AddonId) => setAddons((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   const toggleExtraOption = (id: string) => setSelectedExtraOptionIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -444,7 +453,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
 
       {showConfigurator&&<section className="configurator-section" id="configurator">
         {configuratorOnly&&<div style={{marginBottom:20}}><a href={isEnglish?"/en#packages":"/#packages"} className="button button-outline">{t("← العودة للباقات","← Back to packages")}</a></div>}
-        {selectedProjectDraftId&&<div role="group" aria-label={t("حفظ اختيارات المشروع","Save project selections")} style={{background:"#eaf8ee",color:"#166534",padding:12,borderRadius:10,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}><span>{t("أنت تستكمل مسودة مشروع محفوظة في حسابك. سيتم ربط الطلب النهائي بهذه المسودة فقط.","You are editing a saved project draft in your account. The final request will be linked only to this draft.")}</span><button type="button" onClick={()=>void saveProjectChoices()} style={{background:"#203958",color:"white",border:0,borderRadius:9,padding:"10px 13px",cursor:"pointer"}}>حفظ الاختيارات والإضافات في مشروعي</button></div>}
+        {selectedProjectDraftId&&<div role="group" aria-label={t("حفظ اختيارات المشروع","Save project selections")} style={{background:"#eaf8ee",color:"#166534",padding:12,borderRadius:10,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}><span>{t("أنت تستكمل مسودة مشروع محفوظة في حسابك. سيتم ربط الطلب النهائي بهذه المسودة فقط.","You are editing a saved project draft in your account. The final request will be linked only to this draft.")}</span><button type="button" onClick={()=>void finishSavedDraft()} style={{background:"#203958",color:"white",border:0,borderRadius:9,padding:"10px 13px",cursor:"pointer"}}>{t("حفظ الإضافات","Save add-ons")}</button><a href={isEnglish?"/en/account/dashboard":"/account/dashboard"} style={{fontWeight:700,color:"#203958"}}>{t("مراجعة الطلب وإرساله للإدارة","Review and submit to management")}</a></div>}
         <div className="section-heading configurator-title"><div><span className="section-kicker">{copy("configuratorKicker")}</span><h2>{copy("configuratorTitle")}</h2></div><p>{copy("configuratorDescription")}</p></div>
         <div className="builder-layout">
           <div className="builder-main">
