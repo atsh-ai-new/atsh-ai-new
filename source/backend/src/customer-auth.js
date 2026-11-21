@@ -145,14 +145,12 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  }).strict();
  // Multi-project drafts: customer ownership and optimistic revision are enforced server-side.
  router.get('/project-drafts',requireCustomer,safe(async(req,res)=>{
-  const result=await pool.query("SELECT id,title,draft,revision,linked_journey_id,updated_at,created_at FROM customer_project_drafts WHERE customer_id=$1 ORDER BY updated_at DESC LIMIT 100",[req.customer.id]);
+  const result=await pool.query("SELECT id,title,draft,revision,linked_journey_id,updated_at,created_at FROM customer_project_drafts WHERE customer_id=$1 ORDER BY updated_at DESC",[req.customer.id]);
   res.set('Cache-Control','private, no-store').json({drafts:result.rows});
  }));
  router.post('/project-drafts',requireCustomer,safe(async(req,res)=>{
   const parsed=z.object({title:z.string().trim().min(1).max(120).default('مشروع جديد'),draft:draftSchema.default({})}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:'Invalid project draft'});
-  const count=await pool.query("SELECT count(*)::int AS count FROM customer_project_drafts WHERE customer_id=$1 AND linked_journey_id IS NULL",[req.customer.id]);
-  if(count.rows[0].count>=100)return res.status(409).json({error:'Maximum number of drafts reached'});
   const result=await pool.query("INSERT INTO customer_project_drafts(customer_id,title,draft) VALUES($1,$2,$3::jsonb) RETURNING id,title,draft,revision,linked_journey_id,updated_at",[req.customer.id,parsed.data.title,JSON.stringify(parsed.data.draft)]);
   res.status(201).set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
  }));
