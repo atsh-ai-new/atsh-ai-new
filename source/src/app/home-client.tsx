@@ -29,8 +29,8 @@ const builtInOptionCodes = new Set(["language", "logo", "brand", "writing", "seo
 export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
   const isEnglish=locale==="en";
   const money=(value:number)=>isEnglish?englishPrice(value):formatEgp(value);
-  const localizeOption=(code:string,original:string,type:"name"|"description"="name")=>isEnglish?(englishOptions[code]?.[type] || (type==="name" ? "Additional feature" : "Available on request")):original;
-  const localizePackage=(id:string,original:string,type:"name"|"short"|"description")=>isEnglish?(englishPackages[id]?.[type] || (type==="name" ? "Custom package" : "Tailored to your requirements")):original;
+  const localizeOption=(code:string,original:string,type:"name"|"description"="name")=>isEnglish?(englishOptions[code]?.[type] || (type==="name" ? original : "Available on request")):original;
+  const localizePackage=(id:string,original:string,type:"name"|"short"|"description")=>isEnglish?(englishPackages[id]?.[type] || original):original;
   const t=(ar:string,en:string)=>isEnglish?en:ar;
   const [step, setStep] = useState(0);
   const [packageId, setPackageId] = useState<PackageId | null>(null);
@@ -64,7 +64,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
   const [sectorPricedAddons,setSectorPricedAddons]=useState<Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>>([]);
   const [sectorAddonCodes,setSectorAddonCodes]=useState<string[]>([]);
   const [sectorPrice,setSectorPrice]=useState<{subtotal:number;monthly:number;yearly:number;needsCustomQuote:boolean;items:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>}|null>(null);
-  const copy=(key:string)=>{const content=siteConfig.page?.content;const value=content?.[key];if(typeof value==="string")return value;return isEnglish ? siteCopyEn[key] ?? key : siteCopyDefaults[key] ?? "";};
+  const copy=(key:string)=>{const content=siteConfig.page?.content;const value=content?.[key];if(typeof value==="string")return value;return isEnglish ? siteCopyEn[key] ?? "" : siteCopyDefaults[key] ?? "";};
   const steps = Array.from({ length: 8 }, (_, index) => copy(`stepper${index}`));
   const startWindowLabel = ({ soon: copy("startSoon"), month: copy("startInMonth"), twoMonths: copy("startInTwoMonths"), exploring: copy("startExploring") } as Record<string, string>)[startWindow] ?? copy("startInMonth");
   const contactWindowLabel = ({ anytime: copy("contactAnytime"), morning: copy("contactMorning"), afternoon: copy("contactAfternoon"), evening: copy("contactEvening") } as Record<string, string>)[contactWindow] ?? copy("contactAnytime");
