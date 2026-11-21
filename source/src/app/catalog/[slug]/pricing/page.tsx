@@ -1,2 +1,2 @@
 import CatalogPricingClient from "./pricing-client";
-export default function CatalogPricingPage({params}:{params:Promise<{slug:string}>}){return <CatalogPricingClient params={params}/>;}
+export default async function CatalogPricingPage({params}:{params:Promise<{slug:string}>}){const {slug}=await params;return <CatalogPricingClient slug={slug}/>;}
