@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useState,type FormEvent} from "react";
+import {useEffect,useState} from "react";
 import {loadGuestWorkspace,saveGuestWorkspace} from "@/lib/customer-workspace";
 
 type Lookup = {
@@ -45,8 +45,7 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
   onDomainChange?.(domain);
   saveGuestWorkspace({domainName:domain,source:"configurator"});
  };
- const check=async(event:FormEvent)=>{
-  event.preventDefault();
+ const check=async()=>{
   const names=candidatesFromInput(name);
   setResults([]);setMessage("");
   if(!names.length){
@@ -101,15 +100,15 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
    {t("اكتب الاسم فقط مثل atsh للبحث في عدة امتدادات، أو اكتب الدومين كاملًا مثل atsh.com.",
     "Enter a name like atsh to check several extensions, or a complete domain like atsh.com.")}
   </p>
-  <form onSubmit={e=>void check(e)} style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+  <div role="search" style={{display:"flex",gap:8,flexWrap:"wrap"}}>
    <input required aria-label={t("اسم المشروع أو الدومين","Name or domain")} type="text"
     autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="atsh"
     value={name} onChange={e=>change(e.target.value)} maxLength={253}
     style={{padding:12,minWidth:0,flex:"1 1 165px",border:"1px solid #cbd5e1",borderRadius:10,fontSize:16,direction:"ltr"}}/>
-   <button disabled={checking} type="submit" style={{background:"#203958",color:"white",border:0,padding:"11px 17px",borderRadius:10,fontSize:15,cursor:"pointer"}}>
+   <button disabled={checking} type="button" onClick={()=>void check()} style={{background:"#203958",color:"white",border:0,padding:"11px 17px",borderRadius:10,fontSize:15,cursor:"pointer"}}>
     {checking?t("جارٍ البحث…","Searching…"):t("ابحث","Search")}
    </button>
-  </form>
+  </div>
   {message&&<p role="status" style={{color:"#875b14",fontSize:13,lineHeight:1.6,margin:"10px 0 0"}}>{message}</p>}
   {results.length>0&&<div aria-live="polite" aria-busy={checking} style={{display:"grid",gap:8,marginTop:12}}>
    {results.map(item=><div key={item.domain} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,
