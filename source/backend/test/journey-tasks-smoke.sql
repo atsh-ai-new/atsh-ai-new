@@ -24,4 +24,24 @@ BEGIN
   RAISE EXCEPTION 'Task unassignment failed';
  END IF;
 END $$;
+-- Reject invalid states and orphan references.
+DO $
+BEGIN
+ BEGIN
+  UPDATE customer_journey_tasks SET status='invalid' WHERE title='CI smoke task';
+  RAISE EXCEPTION 'Invalid task status was accepted';
+ EXCEPTION WHEN check_violation THEN NULL;
+ END;
+ BEGIN
+  UPDATE customer_journey_tasks SET assigned_to='11111111-1111-4111-8111-111111111111' WHERE title='CI smoke task';
+  RAISE EXCEPTION 'Unknown team member was accepted';
+ EXCEPTION WHEN foreign_key_violation THEN NULL;
+ END;
+ BEGIN
+  INSERT INTO customer_journey_tasks(project_id,title,created_by,updated_by)
+  VALUES('11111111-1111-4111-8111-111111111111','orphan','ci','ci');
+  RAISE EXCEPTION 'Unknown project was accepted';
+ EXCEPTION WHEN foreign_key_violation THEN NULL;
+ END;
+END $;
 ROLLBACK;
