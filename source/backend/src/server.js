@@ -1481,7 +1481,10 @@ app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requireRo
    VALUES($1,$2,$3::jsonb,$4,'EGP',$5) RETURNING id,revision,status,total_piasters,valid_until`,
    [d.email,d.account_id,JSON.stringify(pricedItems),grossTotal,parsed.data.validUntil||new Date(Date.now()+14*86400000).toISOString()]);
   await client.query("INSERT INTO commercial_custom_quote_links(quote_id,draft_id,project_id,customer_account_id) VALUES($1,$2,$3,$4)",[q.rows[0].id,d.id,projectId,d.account_id]);
-  await client.query("UPDATE customer_journey_projects SET status='quoted',updated_at=now() WHERE id=$1 AND status IN ('draft','configured')",[projectId]);
+  if(d.linked_journey_id){
+    const moved=await transitionJourneyProject(client,{projectId,next:'quoted',actor:req.admin.email});
+    if(!moved.ok){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage changed before custom quote",reason:moved.reason});}
+  }
   await queueJourneyEvent(client,"quote.created",`quote.created:${q.rows[0].id}`,{quoteId:q.rows[0].id,projectId,custom:true,totalPiasters:grossTotal});
   await client.query("COMMIT");res.status(201).json({quote:q.rows[0],projectId,requiresAdminIssue:true});
  }catch(error){await client.query("ROLLBACK");if(error.code==="23505")return res.status(409).json({error:"Concurrent custom quote already exists"});throw error;}finally{client.release();}
@@ -1511,7 +1514,8 @@ app.post("/api/admin/commercial/orders/:orderId/quote",requireAdmin,requireRole(
     VALUES($1,$2,$3::jsonb,$4,$5,now()+interval '14 days') RETURNING id,revision,status,total_piasters,valid_until`,
     [selected.customer_email,selected.customer_account_id,JSON.stringify(priced.items),priced.totalPiasters,priced.currency]);
   await client.query("INSERT INTO commercial_order_quote_links(order_id,quote_id,project_id,draft_id) VALUES($1,$2,$3,$4)",[selected.id,quote.rows[0].id,selected.project_id,draft.rows[0].id]);
-  await client.query("UPDATE customer_journey_projects SET status='quoted',updated_at=now() WHERE id=$1 AND status IN ('draft','configured')",[selected.project_id]);
+  const moved=await transitionJourneyProject(client,{projectId:selected.project_id,next:'quoted',actor:req.admin.email});
+  if(!moved.ok){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage changed before order quote",reason:moved.reason});}
   await queueJourneyEvent(client,"quote.created",`quote.created:${quote.rows[0].id}`,{quoteId:quote.rows[0].id,orderId:selected.id,projectId:selected.project_id,totalPiasters:priced.totalPiasters});
   await client.query("COMMIT");
   res.status(201).json({quote:quote.rows[0],orderId:selected.id,requiresAdminIssue:true});
