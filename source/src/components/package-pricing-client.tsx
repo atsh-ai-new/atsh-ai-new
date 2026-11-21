@@ -16,7 +16,6 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  const [selected,setSelected]=useState<string[]>([]);
  const [quantities,setQuantities]=useState<Record<string,number>>({});
  const [error,setError]=useState("");
- const [copied,setCopied]=useState(false);
  const [customer,setCustomer]=useState({name:"",phone:"",email:"",notes:""});
  
  const [submission,setSubmission]=useState("");
@@ -37,7 +36,6 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  const money=(n:number)=>new Intl.NumberFormat(en?"en-EG":"ar-EG",{maximumFractionDigits:2,minimumFractionDigits:0}).format(n)+" "+t("ج.م","EGP");
  const toggle=(id:string)=>setSelected(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id]);
  const submit=(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();if(!pkg||invalid||vat===null)return;setSubmission("");try{const details=[`الباقة: ${pkg.name}`,`رقم الباقة: ${pkg.id}`,...lines.map(l=>`إضافة: ${l.name} | ID: ${l.id} | الكمية: ${l.quantity} | نوع التسعير: ${l.pricing_type} | السعر المعروض: ${l.amount}`),`تنفيذ: ${oneTime}`,`شهري: ${monthly}`,`سنوي: ${yearly}`,`ضريبة التنفيذ: ${tax??"غير محددة"}`,`الإجمالي التقديري: ${total??"غير محدد"}`,`ملاحظات المشروع: ${customer.notes}`].join("\\n");saveGuestWorkspace({packageId:pkg.id,requirements:details,options:lines.map(l=>l.id),source:"configurator",projectMode:"custom"});window.location.assign(en?"/en/account/register":"/account/register");}catch{setSubmission(t("تعذر حفظ الاختيارات على هذا المتصفح. حاول مجددًا.","Unable to save selections in this browser. Please retry."));}};
- const summary=[pkg?.name??"",...lines.map(l=>`${l.name} × ${l.quantity}: ${money(l.amount)} (${l.pricing_type})`),`${t("تكلفة التنفيذ","One-time")}: ${money(oneTime)}`,`${t("شهريًا","Monthly")}: ${money(monthly)}`,`${t("سنويًا","Yearly")}: ${money(yearly)}`,tax===null?t("الضريبة تُحدد عند اعتماد العرض","Tax to be confirmed"):`${t("ضريبة التنفيذ","One-time VAT")}: ${money(tax)}`,total===null?"":`${t("إجمالي التنفيذ","One-time total")}: ${money(total)}`].filter(Boolean).join("\n");
  return <main dir={en?"ltr":"rtl"} style={{minHeight:"100vh",background:"#f8f7f3",color:"#203958",padding:"28px 16px",fontFamily:"inherit"}}>
   <div style={{maxWidth:1040,margin:"auto"}}>
    <nav style={{display:"flex",justifyContent:"space-between",gap:12,marginBottom:22}}><Link href={en?"/en#packages":"/#packages"}>{t("← العودة للباقات","← Back to packages")}</Link><Link href={en?`/packages/${params.packageId}/pricing`:`/en/packages/${params.packageId}/pricing`}>{en?"العربية":"English"}</Link></nav>
@@ -70,10 +68,8 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
      <p>{t("اشتراكات سنوية","Yearly recurring")}: <strong>{money(yearly)}</strong></p>
      <p>{t("ضريبة التنفيذ","One-time VAT")}: <strong>{tax===null?t("تحدد لاحقًا","To be confirmed"):money(tax)}</strong></p>
      <h3>{t("إجمالي التنفيذ شامل الضريبة","One-time total incl. VAT")}: {total===null?t("بانتظار تحديد الضريبة","Pending tax rate"):money(total)}</h3>
-     <small style={{display:"block",marginBottom:18}}>{t("الاشتراكات المتكررة منفصلة عن إجمالي التنفيذ. التقدير غير ملزم حتى تأكيد الطلب من الخادم.","Recurring charges are separate. This estimate is not a binding server-confirmed order.")}</small>
      {pkg.is_custom_quote&&<p>{t("الباقة تتطلب عرض سعر مخصصًا.","This package requires a custom quote.")}</p>}
-     <button type="button" disabled={invalid} onClick={async()=>{try{await navigator.clipboard.writeText(summary);setCopied(true)}catch{setCopied(false)}}} style={{padding:"12px 18px",background:"#203958",color:"white",border:0,borderRadius:10,width:"100%",cursor:"pointer"}}>{copied?t("تم نسخ التفاصيل","Copied"):t("نسخ تفاصيل الفاتورة","Copy itemized estimate")}</button>
-     <form onSubmit={submit} style={{marginTop:20,display:"grid",gap:10}}><h3>{t("احفظ اختياراتك وأنشئ حسابك","Save your selections and create an account")}</h3>{pkg.is_custom_quote?<p>{t("هذه الباقة تحتاج عرض سعر معتمد. انسخ التفاصيل للتواصل مع المبيعات.","This package requires an approved custom quote. Copy the estimate and contact sales.")}</p>:<><button type="submit" disabled={invalid||vat===null} style={{padding:12,borderRadius:8,border:0,background:"#203958",color:"white"}}>{t("حفظ المتطلبات وإنشاء حساب","Save requirements and create account")}</button></>}{submission&&<p role="status">{submission}</p>}</form>
+     <form onSubmit={submit} style={{marginTop:20,display:"grid",gap:10}}><h3>{t("احفظ اختياراتك وأنشئ حسابك","Save your selections and create an account")}</h3>{pkg.is_custom_quote?<p>{t("هذه الباقة تحتاج عرض سعر معتمد. تواصل مع المبيعات للحصول على عرض معتمد.","This package requires an approved custom quote. Contact sales for an approved quote.")}</p>:<><button type="submit" disabled={invalid||vat===null} style={{padding:12,borderRadius:8,border:0,background:"#203958",color:"white"}}>{t("حفظ المتطلبات وإنشاء حساب","Save requirements and create account")}</button></>}{submission&&<p role="status">{submission}</p>}</form>
     </aside>
    </div>}
   </div>
