@@ -1517,8 +1517,11 @@ app.post("/api/admin/commercial/orders/:orderId/quote",requireAdmin,requireRole(
     VALUES($1,$2,$3::jsonb,$4,$5,now()+interval '14 days') RETURNING id,revision,status,total_piasters,valid_until`,
     [selected.customer_email,selected.customer_account_id,JSON.stringify(priced.items),priced.totalPiasters,priced.currency]);
   await client.query("INSERT INTO commercial_order_quote_links(order_id,quote_id,project_id,draft_id) VALUES($1,$2,$3,$4)",[selected.id,quote.rows[0].id,selected.project_id,draft.rows[0].id]);
-  const moved=await transitionJourneyProject(client,{projectId:selected.project_id,next:'quoted',actor:req.admin.email});
-  if(!moved.ok){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage changed before order quote",reason:moved.reason});}
+  const stage=await client.query("SELECT status FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[selected.project_id]);
+  if(stage.rows[0]?.status!=='quoted'){
+    const moved=await transitionJourneyProject(client,{projectId:selected.project_id,next:'quoted',actor:req.admin.email});
+    if(!moved.ok){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage changed before order quote",reason:moved.reason});}
+  }
   await queueJourneyEvent(client,"quote.created",`quote.created:${quote.rows[0].id}`,{quoteId:quote.rows[0].id,orderId:selected.id,projectId:selected.project_id,totalPiasters:priced.totalPiasters});
   await client.query("COMMIT");
   res.status(201).json({quote:quote.rows[0],orderId:selected.id,requiresAdminIssue:true});
