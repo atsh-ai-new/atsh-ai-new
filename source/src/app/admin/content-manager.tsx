@@ -37,6 +37,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
   const [activeSlug, setActiveSlug] = useState("home");
   const [activeLocale,setActiveLocale]=useState<"ar"|"en">("ar");
   const [draft, setDraft] = useState<PageRecord | null>(null);
+  const [arabicHomeReference, setArabicHomeReference] = useState<Record<string, unknown> | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [newSlug, setNewSlug] = useState("");
   const [projectDraft, setProjectDraft] = useState<Project>({ id: "", title: "", client: "", category: "", description: "", imageUrl: "", projectUrl: "", isPublished: false, sortOrder: 0 });
@@ -48,6 +49,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
     const result = await adminApi("pages");
     const nextPages = (result.pages ?? []) as PageRecord[];
     setPages(nextPages);
+    setArabicHomeReference(nextPages.find(item=>item.slug==="home"&&item.locale==="ar")?.content ?? null);
     const selected=nextPages.find(item=>item.slug===preferredSlug&&item.locale===preferredLocale);
     if(selected){setActiveSlug(selected.slug);setDraft(selected);}
     else {setActiveSlug(preferredSlug);setDraft({slug:preferredSlug,locale:preferredLocale,content:preferredSlug==="home"?(preferredLocale==="en"?{...siteCopyEn}:{...siteCopyDefaults}):{title:"",description:"",sections:[]},is_published:false});}
@@ -127,6 +129,14 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
   const removeProject = (id: string) => updateContent("projects", (Array.isArray(draft?.content.projects) ? draft.content.projects : []).map(normalizeProject).filter((item) => item.id !== id));
 
   const homeCollection=(key:string,fallback:CMSCard[]):CMSCard[]=>Array.isArray(draft?.content[key])?(draft?.content[key] as unknown[]).map(normalizeCard):activeLocale==="en"?fallback.map(item=>{const match=/^(benefit|step|faq|hero-trust|trust)-(\d+)$/.exec(item.id||"");if(!match)return item;const kind=match[1],num=match[2];const titleKey=kind==="faq"?"faq"+num+"Question":kind==="hero-trust"?"heroTrust"+num:kind==="trust"?"trust"+num:kind+num+"Title";const descriptionKey=kind==="faq"?"faq"+num+"Answer":kind+num+"Description";return {...item,title:siteCopyEn[titleKey]||item.title,description:siteCopyEn[descriptionKey]||item.description};}):fallback;
+  // The published Arabic page is the source of truth for which English card editors remain relevant.
+  const visibleHomeCollection = (key:string,fallback:CMSCard[]):CMSCard[] => {
+    const items=homeCollection(key,fallback);
+    const reference=arabicHomeReference?.[key];
+    if(activeLocale!=="en" || !Array.isArray(reference))return items;
+    const visibleIds=new Set(reference.filter((item):item is CMSCard=>!!item && typeof item==="object" && typeof item.id==="string" && !!item.title?.trim()).map(item=>item.id));
+    return items.filter(item=>!item.id || visibleIds.has(item.id));
+  };
   const updateHomeCollection = (key: string, values: CMSCard[]) => updateContent(key, values);
 
   if (!draft) return <section className="admin-content-card"><p>جارٍ تحميل الصفحات…</p>{error && <p className="error-message">{error}</p>}</section>;
@@ -151,11 +161,11 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
     {activeSlug === "home" ? <>
       <section className="admin-content-card">
         <div className="admin-content-title"><div><h2>بطاقات الصفحة الرئيسية</h2><p>عدّل وأضف واحذف مزايا الصفحة ومراحل العمل والأسئلة الشائعة. القيم الأصلية المعروضة هي الحالية.</p></div></div>
-        <HomeCardCollection title="بطاقات المزايا" value={homeCollection("benefitCards", defaultBenefits)} onChange={(value) => updateHomeCollection("benefitCards", value)} />
-        <HomeCardCollection title="بطاقات مراحل العمل" value={homeCollection("processCards", defaultSteps)} onChange={(value) => updateHomeCollection("processCards", value)} />
-        <HomeCardCollection title="الأسئلة الشائعة" value={homeCollection("faqEntries", defaultFaq)} onChange={(value) => updateHomeCollection("faqEntries", value)} secondLabel="الإجابة" />
-        <HomeCardCollection title="رسائل الثقة أعلى الواجهة" value={homeCollection("heroTrustItems", defaultHeroTrust)} onChange={(value) => updateHomeCollection("heroTrustItems", value)} />
-        <div className="cms-list-editor"><h3>شريط المزايا السريع</h3>{homeCollection("trustItems", [1,2,3,4].map((n) => ({ id: `trust-${n}`, title: siteCopyDefaults[`trust${n}`], description: "", imageUrl: "", href: "", linkLabel: "" }))).map((item, index, list) => <div className="cms-inline-card" key={item.id}><input aria-label="نص الميزة" value={item.title} onChange={(event) => updateHomeCollection("trustItems", list.map((row, rowIndex) => rowIndex === index ? { ...row, title: event.target.value } : row))} /><button type="button" className="inline-add" onClick={() => updateHomeCollection("trustItems", list.filter((_, rowIndex) => rowIndex !== index))}>حذف</button></div>)}<button type="button" className="inline-add" onClick={() => updateHomeCollection("trustItems", [...homeCollection("trustItems", [1,2,3,4].map((n) => ({ id: `trust-${n}`, title: siteCopyDefaults[`trust${n}`], description: "", imageUrl: "", href: "", linkLabel: "" }))), { id: newId(), title: "ميزة جديدة", description: "", imageUrl: "", href: "", linkLabel: "" }])}>+ إضافة ميزة</button></div>
+        <HomeCardCollection title="بطاقات المزايا" value={visibleHomeCollection("benefitCards", defaultBenefits)} onChange={(value) => updateHomeCollection("benefitCards", value)} />
+        <HomeCardCollection title="بطاقات مراحل العمل" value={visibleHomeCollection("processCards", defaultSteps)} onChange={(value) => updateHomeCollection("processCards", value)} />
+        <HomeCardCollection title="الأسئلة الشائعة" value={visibleHomeCollection("faqEntries", defaultFaq)} onChange={(value) => updateHomeCollection("faqEntries", value)} secondLabel="الإجابة" />
+        <HomeCardCollection title="رسائل الثقة أعلى الواجهة" value={visibleHomeCollection("heroTrustItems", defaultHeroTrust)} onChange={(value) => updateHomeCollection("heroTrustItems", value)} />
+        <div className="cms-list-editor"><h3>شريط المزايا السريع</h3>{visibleHomeCollection("trustItems", [1,2,3,4].map((n) => ({ id: `trust-${n}`, title: siteCopyDefaults[`trust${n}`], description: "", imageUrl: "", href: "", linkLabel: "" }))).map((item, index, list) => <div className="cms-inline-card" key={item.id}><input aria-label="نص الميزة" value={item.title} onChange={(event) => updateHomeCollection("trustItems", list.map((row, rowIndex) => rowIndex === index ? { ...row, title: event.target.value } : row))} /><button type="button" className="inline-add" onClick={() => updateHomeCollection("trustItems", list.filter((_, rowIndex) => rowIndex !== index))}>حذف</button></div>)}<button type="button" className="inline-add" onClick={() => updateHomeCollection("trustItems", [...visibleHomeCollection("trustItems", [1,2,3,4].map((n) => ({ id: `trust-${n}`, title: siteCopyDefaults[`trust${n}`], description: "", imageUrl: "", href: "", linkLabel: "" }))), { id: newId(), title: "ميزة جديدة", description: "", imageUrl: "", href: "", linkLabel: "" }])}>+ إضافة ميزة</button></div>
       </section>
       <section className="admin-content-card"><div className="admin-content-title"><div><h2>أقسام إضافية للرئيسية</h2><p>أضف أقسام نصية أو شبكات بطاقات قابلة للتنسيق، ورتبها أو أخفها دون حذف بياناتها.</p></div><button type="button" className="inline-add" onClick={addSection}>+ قسم جديد</button></div>{sections.length ? sections.map((section, index) => <SectionEditor key={section.id} section={section} index={index} count={sections.length} onChange={(patch) => updateSection(section.id, patch)} onMove={(direction) => moveSection(section.id, direction)} onDelete={() => updateContent("sections", sections.filter((item) => item.id !== section.id))} onAddCard={() => addBlockCard(section)} onCardChange={(id, patch) => updateBlockCard(section, id, patch)} onCardDelete={(id) => updateSection(section.id, { cards: section.cards.filter((card) => card.id !== id) })} onUpload={(event, callback) => void uploadImage(event, callback)} busy={busy} />) : <p className="field-hint">لم تتم إضافة أقسام إضافية بعد. الأقسام الحالية تظل كما هي.</p>}</section>
     </> : activeSlug === "works" ? <>

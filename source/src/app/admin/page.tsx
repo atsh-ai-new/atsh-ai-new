@@ -68,6 +68,7 @@ export default function AdminPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [audit, setAudit] = useState<Audit[]>([]);
   const [page, setPage] = useState<PageContent>(siteCopyDefaults);
+  const [hiddenHomeFields, setHiddenHomeFields] = useState<Set<string>>(new Set());
   const [theme, setTheme] = useState<Theme>(defaultTheme);
   const [vatRate, setVatRate] = useState(14);
   const [memberName, setMemberName] = useState("");
@@ -83,7 +84,9 @@ export default function AdminPage() {
     ]);
     setPackages(catalog.packages ?? []); setOptions(catalog.options ?? []); setOrders(inbox.orders ?? []);
     setVatRate(Number(settings.settings?.vat_rate ?? 14)); setTheme({ ...defaultTheme, ...(settings.settings?.theme ?? {}) });
-    setPage({ ...siteCopyDefaults, ...(pages.pages?.find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar")?.content ?? {}) });
+    const publishedArabicHome = pages.pages?.find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar")?.content ?? {};
+    setPage({ ...siteCopyDefaults, ...publishedArabicHome });
+    setHiddenHomeFields(new Set(Object.entries(publishedArabicHome).filter(([, value]) => typeof value === "string" && value.trim() === "").map(([key]) => key)));
     setMembers(team.members ?? []); setAudit(changes.logs ?? []);
     setEmailStatus({
       configured: Boolean(email.configured),
@@ -159,7 +162,7 @@ export default function AdminPage() {
     // Preserve structured CMS sections/cards when the quick text editor publishes.
     const current = await api("pages");
     const home = (current.pages ?? []).find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar");
-    const textChanges = Object.fromEntries(siteCopyFields.map(([key]) => [key, page[key] ?? siteCopyDefaults[key] ?? ""]));
+    const textChanges = Object.fromEntries(siteCopyFields.filter(([key]) => !hiddenHomeFields.has(key)).map(([key]) => [key, page[key] ?? siteCopyDefaults[key] ?? ""]));
     const content: Record<string, unknown> = { ...(home?.content ?? {}), ...textChanges };
     // Synchronize only built-in cards, preserving custom cards and metadata.
     const sync = (key: string, prefix: string, count: number) => {
@@ -241,7 +244,7 @@ export default function AdminPage() {
 
         {view === "overview" && <><div className="admin-stats"><article className="admin-stat"><span>كل الطلبات</span><strong>{orders.length}</strong><small>محفوظة على خادم المنصة</small></article><article className="admin-stat"><span>طلبات جديدة</span><strong>{newOrders}</strong><small>تحتاج إلى متابعة</small></article><article className="admin-stat"><span>الباقات المنشورة</span><strong>{packages.filter((item) => item.is_published).length}</strong><small>بالجنيه المصري</small></article><article className="admin-stat"><span>أعضاء الفريق</span><strong>{members.filter((item) => item.is_active).length}</strong><small>حسابات نشطة</small></article></div><section className="admin-content-card"><div className="admin-content-title"><div><h2>أحدث الطلبات</h2><p>تصل بيانات العميل والبريد والهاتف إلى صندوق الإدارة.</p></div><button className="inline-add" onClick={() => setView("inbox")}>فتح الطلبات ←</button></div><OrderTable orders={orders.slice(0, 6)} members={members} onChange={updateOrder} onSendEmail={sendCustomerEmail} canSend={canEditOrders && emailStatus.configured} readOnly={!canEditOrders} /></section></>}
 
-        {view === "content" && <section className="admin-content-card"><div className="admin-content-title"><div><h2>نصوص الصفحة الرئيسية</h2><p>كل العناوين والأوصاف والأزرار والشارات الظاهرة في الواجهة الحالية قابلة للتحرير.</p></div></div><div className="admin-form-grid">{siteCopyFields.map(([key, label, multiline]) => <label className="admin-field" key={key} style={multiline ? { gridColumn: "1 / -1" } : undefined}>{label}{multiline ? <textarea rows={3} value={page[key] ?? ""} onChange={(event) => setPage({ ...page, [key]: event.target.value })} /> : <input value={page[key] ?? ""} onChange={(event) => setPage({ ...page, [key]: event.target.value })} />}</label>)}</div><div className="admin-actions"><button className="button" disabled={busy} onClick={savePage}>حفظ ونشر النصوص ✓</button><button className="button button-outline" onClick={() => setView("pages")}>تحرير البطاقات والأقسام ←</button></div></section>}
+        {view === "content" && <section className="admin-content-card"><div className="admin-content-title"><div><h2>نصوص الصفحة الرئيسية</h2><p>كل العناوين والأوصاف والأزرار والشارات الظاهرة في الواجهة الحالية قابلة للتحرير.</p></div></div><div className="admin-form-grid">{siteCopyFields.filter(([key]) => !hiddenHomeFields.has(key)).map(([key, label, multiline]) => <label className="admin-field" key={key} style={multiline ? { gridColumn: "1 / -1" } : undefined}>{label}{multiline ? <textarea rows={3} value={page[key] ?? ""} onChange={(event) => setPage({ ...page, [key]: event.target.value })} /> : <input value={page[key] ?? ""} onChange={(event) => setPage({ ...page, [key]: event.target.value })} />}</label>)}</div><div className="admin-actions"><button className="button" disabled={busy} onClick={savePage}>حفظ ونشر النصوص ✓</button><button className="button button-outline" onClick={() => setView("pages")}>تحرير البطاقات والأقسام ←</button></div></section>}
 
         {view === "integrations" && canEditCatalog && <IntegrationStatus />}
         {view === "catalogs" && canEditCatalog && <CatalogManager />}
