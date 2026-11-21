@@ -150,7 +150,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  router.post('/project-drafts',requireCustomer,safe(async(req,res)=>{
   const parsed=z.object({title:z.string().trim().min(1).max(120).default('مشروع جديد'),draft:draftSchema.default({})}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:'Invalid project draft'});
-  const count=await pool.query("SELECT count(*)::int AS count FROM customer_project_drafts WHERE customer_id=$1",[req.customer.id]);
+  const count=await pool.query("SELECT count(*)::int AS count FROM customer_project_drafts WHERE customer_id=$1 AND linked_journey_id IS NULL",[req.customer.id]);
   if(count.rows[0].count>=100)return res.status(409).json({error:'Maximum number of drafts reached'});
   const result=await pool.query("INSERT INTO customer_project_drafts(customer_id,title,draft) VALUES($1,$2,$3::jsonb) RETURNING id,title,draft,revision,linked_journey_id,updated_at",[req.customer.id,parsed.data.title,JSON.stringify(parsed.data.draft)]);
   res.status(201).set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
@@ -209,10 +209,10 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   if(!parsed.success||(!parsed.data.title&&!parsed.data.patch))return res.status(400).json({error:'Invalid project draft update'});
   const result=await pool.query(`UPDATE customer_project_drafts SET
     title=COALESCE($3,title),draft=draft||$4::jsonb,revision=revision+1,updated_at=now()
-    WHERE id=$1 AND customer_id=$2 AND revision=$5
+    WHERE id=$1 AND customer_id=$2 AND revision=$5 AND linked_journey_id IS NULL
     RETURNING id,title,draft,revision,linked_journey_id,updated_at`,
     [req.params.id,req.customer.id,parsed.data.title??null,JSON.stringify(parsed.data.patch??{}),parsed.data.expectedRevision]);
-  if(!result.rowCount)return res.status(409).json({error:'Draft missing or changed on another device; reload before saving'});
+  if(!result.rowCount)return res.status(409).json({error:'Draft missing, already submitted, or changed on another device; reload before saving'});
   res.set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
  }));
  // Immutable preview revision generated from an account-owned project draft.
