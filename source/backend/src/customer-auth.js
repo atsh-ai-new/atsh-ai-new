@@ -155,6 +155,26 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   const result=await pool.query("INSERT INTO customer_project_drafts(customer_id,title,draft) VALUES($1,$2,$3::jsonb) RETURNING id,title,draft,revision,linked_journey_id,updated_at",[req.customer.id,parsed.data.title,JSON.stringify(parsed.data.draft)]);
   res.status(201).set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
  }));
+ // Customer-initiated handoff: atomically create an admin-visible journey and link the owned draft.
+ router.post('/project-drafts/:id/submit',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Project not found'});
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   const draft=await client.query('SELECT id,title,draft,linked_journey_id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 FOR UPDATE',[req.params.id,req.customer.id]);
+   if(!draft.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Project not found'});}
+   const item=draft.rows[0];
+   if(item.linked_journey_id){await client.query('COMMIT');return res.json({projectId:item.linked_journey_id,alreadySubmitted:true});}
+   if(!item.draft?.packageId||!item.draft?.requirements){await client.query('ROLLBACK');return res.status(422).json({error:'Complete package requirements before submission'});}
+   const customer=await client.query('SELECT email,name FROM customer_accounts WHERE id=$1',[req.customer.id]);
+   const created=await client.query('INSERT INTO customer_journey_projects(customer_name,customer_email,created_by,customer_account_id) VALUES($1,$2,$3,$4) RETURNING id,status',[item.title,customer.rows[0]?.email??null,'customer-portal',req.customer.id]);
+   const projectId=created.rows[0].id;
+   await client.query('UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2',[projectId,item.id]);
+   await client.query('INSERT INTO customer_journey_messages(project_id,actor,body) VALUES($1,$2,$3)',[projectId,'customer',String(item.draft.requirements).slice(0,4000)]);
+   await client.query('COMMIT');
+   res.status(201).json({projectId,status:created.rows[0].status});
+  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+ }));
  router.get('/project-drafts/:id',requireCustomer,safe(async(req,res)=>{
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Not found'});
   const result=await pool.query("SELECT id,title,draft,revision,linked_journey_id,updated_at FROM customer_project_drafts WHERE id=$1 AND customer_id=$2",[req.params.id,req.customer.id]);
