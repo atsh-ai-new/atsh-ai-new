@@ -196,7 +196,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
       description: localizePackage(local?.id ?? backend.id,backend.description,"description"),
       price: backend.is_custom_quote || local?.price === null ? null : Number(backend.price),
       includedPages: local?.includedPages ?? null,
-      features: isEnglish ? (englishPackages[local?.id ?? backend.id]?.features || []) : (backend.features ?? local?.features ?? []),
+      features: isEnglish ? (englishPackages[local?.id ?? backend.id]?.features ?? backend.features ?? local?.features ?? []) : (backend.features ?? local?.features ?? []),
       recommended: backend.is_featured || (local?.recommended ?? false)
     };
   }) : (isEnglish ? packages.map(item=>({...item,...englishPackages[item.id],features:englishPackages[item.id]?.features || []})) : packages);
