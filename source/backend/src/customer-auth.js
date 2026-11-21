@@ -139,6 +139,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   solutionType:z.enum(['website','store','mobile','management','ai','other']).optional(),
   requirements:z.string().trim().max(4000).optional(),
   deliveryMethod:z.enum(['managed','source-code','undecided']).optional(),
+  assistantMessages:z.array(z.object({who:z.enum(['assistant','customer']),text:z.string().trim().min(1).max(2000)}).strict()).max(80).optional(),
   source:z.enum(['catalog','configurator','concierge','preview','account']).optional()
  }).strict();
  // Multi-project drafts: customer ownership and optimistic revision are enforced server-side.
