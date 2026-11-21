@@ -147,3 +147,19 @@ CREATE TABLE IF NOT EXISTS project_visual_edits (
  created_by text NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Internal project work assignments. Separate from customer-visible order ownership.
+CREATE TABLE IF NOT EXISTS customer_journey_tasks (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ project_id uuid NOT NULL REFERENCES customer_journey_projects(id) ON DELETE CASCADE,
+ title varchar(180) NOT NULL,
+ description text NOT NULL DEFAULT '',
+ status varchar(24) NOT NULL DEFAULT 'todo' CHECK (status IN ('todo','in_progress','blocked','done')),
+ assigned_to uuid REFERENCES team_members(id) ON DELETE SET NULL,
+ created_by varchar(254) NOT NULL,
+ updated_by varchar(254) NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS customer_journey_tasks_project_idx ON customer_journey_tasks(project_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS customer_journey_tasks_assignee_idx ON customer_journey_tasks(assigned_to,status);
