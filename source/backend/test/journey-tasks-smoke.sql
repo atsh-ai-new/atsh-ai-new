@@ -25,7 +25,7 @@ BEGIN
  END IF;
 END $$;
 -- Reject invalid states and orphan references.
-DO $
+DO $$
 BEGIN
  BEGIN
   UPDATE customer_journey_tasks SET status='invalid' WHERE title='CI smoke task';
