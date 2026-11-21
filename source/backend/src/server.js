@@ -2,6 +2,7 @@ import {validCalendarDate} from './invoice-ledger-rules.js';
 import { deliveryAdminRouter, deliveryCustomerRouter } from "./delivery-control.js";
 import { customerCommercialRouter } from "./customer-commercial.js";
 import { customerAuthRouter } from "./customer-auth.js";
+import {createCustomerJourneyProject} from './customer-project-service.js';
 import {quoteTotal,installments,validateTicketTransition,validateDeliveryMethod} from "./commercial-rules.js";
 import express from "express";
 import helmet from "helmet";
@@ -608,12 +609,10 @@ app.post("/api/orders", route(async (req,res) => {
       if(draft.rows[0].linked_journey_id){await client.query("ROLLBACK");return res.status(409).json({error:"This project draft already has an order"});}
     }
     if(ownedCustomer){
-      const project=await client.query(`INSERT INTO customer_journey_projects(customer_name,customer_email,template_id,created_by,customer_account_id)
-        VALUES($1,$2,$3,$4,$5) RETURNING id`,
-        [input.customerName,ownedCustomer.email,input.sectorSlug||null,ownedCustomer.email,ownedCustomer.id]);
-      await client.query("INSERT INTO customer_journey_order_links(project_id,order_id,linked_by) VALUES($1,$2,$3)",[project.rows[0].id,saved.rows[0].id,ownedCustomer.email]);
-      saved.rows[0].projectId=project.rows[0].id;
-      if(input.projectDraftId){await client.query("UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2 AND customer_id=$3",[project.rows[0].id,input.projectDraftId,ownedCustomer.id]);}
+      const project=await createCustomerJourneyProject(client,{customerName:input.customerName,customerEmail:ownedCustomer.email,templateId:input.sectorSlug||null,createdBy:ownedCustomer.email,customerAccountId:ownedCustomer.id});
+      await client.query("INSERT INTO customer_journey_order_links(project_id,order_id,linked_by) VALUES($1,$2,$3)",[project.id,saved.rows[0].id,ownedCustomer.email]);
+      saved.rows[0].projectId=project.id;
+      if(input.projectDraftId){await client.query("UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2 AND customer_id=$3",[project.id,input.projectDraftId,ownedCustomer.id]);}
     }
     await client.query("COMMIT");
     res.status(201).json({order:saved.rows[0]});
