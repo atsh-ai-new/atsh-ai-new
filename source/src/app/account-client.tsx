@@ -126,7 +126,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    setSelectedProjectDraft(body.projectDraft.id);setDraftTitle("");await loadDrafts();
    if(fromGuest){try{sessionStorage.removeItem("atsh_customer_workspace_v1");}catch{}setGuestPending(false)}
    setHubTab("projects");setMessage(fromGuest?"تم إنشاء مشروع مستقل بجميع اختياراتك السابقة.":"تم إنشاء مسودة مستقلة للمشروع");
-  }catch(e){setMessage(e instanceof Error?e.message:"تعذر الإنشاء");}
+  }catch(e){if(fromGuest)autoImported.current=false;setMessage(e instanceof Error?e.message:"تعذر الإنشاء");}
  };
  const autoImported=useRef(false);
  useEffect(()=>{if(action!=="dashboard"||accountStatus!=="authenticated"||!guestPending||autoImported.current)return;const guest=loadGuestWorkspace();if((!guest.packageId&&!guest.sectorSlug)||!["configurator","catalog"].includes(guest.source||""))return;autoImported.current=true;void createProjectDraft(true);},[action,accountStatus,guestPending]);
