@@ -356,7 +356,9 @@ app.post("/api/admin/journey/projects/:id/guide",requireAdmin,requireRole("owner
 const customerIdSchema=z.string().uuid();
 const customerTokenSchema=z.string().regex(/^[a-f0-9]{64}$/);
 const customerChatSchema=z.object({message:z.string().trim().min(1).max(2000)}).strict();
-const portalRate=rateLimit({windowMs:60*1000,limit:6,standardHeaders:"draft-8",legacyHeaders:false});
+// Customer project reads and edits are authenticated by a project access token.
+// Do not impose a shared-IP request ceiling on normal portal navigation.
+const portalRate=(_req,_res,next)=>next();
 const portalHash=token=>createHash("sha256").update(token).digest("hex");
 async function requireCustomerProject(req,res,next){
  const token=(req.get("authorization")||"").match(/^Bearer ([a-f0-9]{64})$/i)?.[1];
