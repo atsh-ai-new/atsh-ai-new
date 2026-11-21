@@ -211,15 +211,19 @@ app.get("/api/admin/journey/projects",requireAdmin,requireRole("owner","admin","
 }));
 app.get("/api/admin/journey/projects/:id",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
- const [project,messages,drafts]=await Promise.all([
+ const [project,messages,drafts,assignments]=await Promise.all([
   pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at FROM customer_journey_projects WHERE id=$1",[req.params.id]),
   pool.query("SELECT id,actor,body,created_at FROM customer_journey_messages WHERE project_id=$1 ORDER BY id LIMIT 200",[req.params.id]),
-  pool.query("SELECT id,title,draft,revision,updated_at FROM customer_project_drafts WHERE linked_journey_id=$1 ORDER BY updated_at DESC LIMIT 1",[req.params.id])
+  pool.query("SELECT id,title,draft,revision,updated_at FROM customer_project_drafts WHERE linked_journey_id=$1 ORDER BY updated_at DESC LIMIT 1",[req.params.id]),
+  pool.query(`SELECT o.id,o.reference,o.status,o.assigned_to,t.display_name AS assigned_to_name,t.is_active AS assignee_active
+    FROM customer_journey_order_links l JOIN orders o ON o.id=l.order_id
+    LEFT JOIN team_members t ON t.id=o.assigned_to
+    WHERE l.project_id=$1 ORDER BY o.created_at DESC LIMIT 20`,[req.params.id])
  ]);
  if(!project.rowCount)return res.status(404).json({error:"Project not found"});
  // Return the exact customer-submitted configurator snapshot for admin review.
  // The draft remains account-owned and is never modified by this read-only endpoint.
- res.set('Cache-Control','private, no-store').json({project:project.rows[0],messages:messages.rows,submittedDraft:drafts.rows[0]||null});
+ res.set('Cache-Control','private, no-store').json({project:project.rows[0],messages:messages.rows,submittedDraft:drafts.rows[0]||null,linkedOrderAssignments:assignments.rows});
 }));
 app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
