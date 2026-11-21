@@ -27,7 +27,8 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
   fetch(`/api/site-content/home?locale=${en?"en":"ar"}`,{cache:"no-store"}).then(async r=>r.ok?r.json():null).catch(()=>null)
  ]).then(([data,config])=>{if(!active)return;setCatalog(data);const rate=Number(config?.vatRate);setVat(Number.isFinite(rate)&&rate>=0&&rate<=100?rate:null);}).catch(()=>{if(active)setError(t("تعذر تحميل الأسعار المعتمدة. حاول مجددًا.","Unable to load current prices. Please retry."))});return()=>{active=false}},[en]);
  const pkg=catalog?.packages.find(p=>p.id===(aliases[params.packageId]??params.packageId));
- const options=useMemo(()=>catalog?.options.filter(o=>o.package_id===pkg?.id)??[],[catalog,pkg?.id]);
+ // Domain registration is requested via the live domain lookup above, not as a duplicate priced add-on.
+ const options=useMemo(()=>catalog?.options.filter(o=>o.package_id===pkg?.id&&!(/(?:^|[_-])domain(?:[_-]|$)/i.test(o.code)||/^(?:نطاق|دومين)\s*\.(?:com|eg)\b/i.test(o.name)||/^(?:نطاق|دومين)\s+(?:com|eg)\b/i.test(o.name)))??[],[catalog,pkg?.id]);
  const lines=options.filter(o=>o.is_required||selected.includes(o.id)).map(o=>{const unit=Number(o.price);const quantity=o.pricing_type==="per_page"?Math.max(1,Math.min(50,quantities[o.id]??1)):1;return {...o,quantity,amount:round(unit*quantity)};});
  const invalid=Boolean(pkg&&!pkg.is_custom_quote&&(!Number.isFinite(Number(pkg.price))||Number(pkg.price)<0))||lines.some(l=>!Number.isFinite(l.amount)||l.amount<0);
  const base=pkg&&!pkg.is_custom_quote?Number(pkg.price):0;
