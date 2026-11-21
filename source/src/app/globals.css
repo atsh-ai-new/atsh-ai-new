@@ -403,3 +403,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .packages-section+.configurator-section{margin-top:0}
 @media(max-width:840px){.packages-section{padding-block:22px 26px}.package-grid{gap:12px}.package-card{padding:16px 15px 15px}.package-card ul{margin:9px 0 11px;gap:5px}}
 @media(max-width:620px){.packages-section{padding-block:16px 20px}.packages-section .section-heading{margin-bottom:12px}.package-grid{grid-template-columns:minmax(0,1fr);gap:12px}.package-card{min-height:0;padding:15px 15px 14px}.package-card>p{min-height:0}.package-card ul{margin:8px 0 10px;gap:4px}.package-price{padding:9px 0 8px}.package-recommended{transform:none}}
+
+/* Tighten the gap above integration add-ons, including the heading-to-first-row gap. */
+.builder-layout>.catalog-optional-addons{padding-block:12px!important}
+.builder-layout>.catalog-optional-addons h3{margin:0 0 5px!important;line-height:1.4}
+.builder-layout>.catalog-optional-addons label{padding-block:6px!important}
+@media(max-width:899px){.builder-layout{gap:10px!important}.builder-layout>.catalog-optional-addons{padding:10px 12px!important}.builder-layout>.catalog-optional-addons h3{margin-bottom:2px!important}}
