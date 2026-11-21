@@ -120,24 +120,9 @@ app.use("/api/internal/verified-payments",express.raw({type:"application/json",l
 app.use("/api/admin/pages/catalog",express.json({limit:"1mb"}));
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
-// Allow exhaustive isolated CI smoke tests to exceed visitor throttling without changing production limits.
-const isolatedCiRate=process.env.ATSH_CI_TEST_RATE_LIMIT==="true"&&process.env.NODE_ENV!=="production";
-// Keep CMS requests independent of public visitor traffic; cap login attempts separately.
-const publicApiLimiter = rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?600:120, standardHeaders: "draft-8", legacyHeaders: false });
-// Login has a single failed-attempt limiter on its route (below), not stacked global limits.
-const adminWriteLimiter = rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?1200:600, standardHeaders: "draft-8", legacyHeaders: false });
-// Authenticated CMS reads must not exhaust a shared-IP quota during dashboard refreshes.
-// Keep the separate, stricter login limiter and protect state-changing admin requests.
-app.use("/api/admin", (req,res,next) => (req.method === "GET" || req.method === "HEAD" || req.path === "/login") ? next() : adminWriteLimiter(req,res,next));
-// High-traffic read-only catalog/pricing endpoints get a separate shared-IP quota.
-// Keep write/auth/visitor endpoints on the original restrictive limiter.
-const publicCatalogLimiter = rateLimit({ windowMs: 15*60*1000, limit: isolatedCiRate?12000:3000, standardHeaders: "draft-8", legacyHeaders: false });
-app.use("/api", (req,res,next) => {
- if(req.path === "/admin" || req.path.startsWith("/admin/") || req.path === "/customer/auth" || req.path.startsWith("/customer/auth/"))return next();
- const publicRead=req.method==="GET"||req.method==="HEAD";
- if(publicRead && (req.path==="/site-content/catalog" || req.path==="/sector-price"))return publicCatalogLimiter(req,res,next);
- return publicApiLimiter(req,res,next);
-});
+// Normal browsing, authenticated dashboard actions and customer workflows have no
+// shared-IP request quota. Authentication and sensitive recovery routes retain
+// their own dedicated abuse protection below.
 
 async function requireAdmin(req,res,next) {
   try {
@@ -181,17 +166,16 @@ async function sendTransactionalEmail({to,toName,subject,textContent}) {
 }
 
 // Session reads and authenticated project drafts must not consume the login quota.
-const customerLoginLimiter=rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?600:20,standardHeaders:"draft-8",legacyHeaders:false,skipSuccessfulRequests:true});
-const customerAuthWriteLimiter=rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?1200:120,standardHeaders:"draft-8",legacyHeaders:false});
+const customerLoginLimiter=rateLimit({windowMs:15*60*1000,limit:20,standardHeaders:"draft-8",legacyHeaders:false,skipSuccessfulRequests:true});
+
 app.use("/api/customer/auth",(req,res,next)=>{
  if(req.path==="/login" && req.method==="POST")return customerLoginLimiter(req,res,next);
- if(req.method==="GET"||req.method==="HEAD")return next();
- return customerAuthWriteLimiter(req,res,next);
+ return next();
 },customerAuthRouter({pool,sendEmail:sendTransactionalEmail,allowedOrigins:origins}));
 app.use("/api/customer/deliverables",deliveryCustomerRouter({pool,allowedOrigins:origins}));
 app.use("/api/admin/deliverables",requireAdmin,requireRole("owner","admin","editor"),deliveryAdminRouter({pool}));
 app.use("/api/admin/operations",requireAdmin,requireRole("owner","admin"),deliveryAdminRouter({pool,operationsOnly:true}));
-app.use("/api/customer/commercial",rateLimit({windowMs:15*60*1000,limit:60,standardHeaders:"draft-8",legacyHeaders:false}),customerCommercialRouter({pool,allowedOrigins:origins,queueJourneyEvent}));
+app.use("/api/customer/commercial",customerCommercialRouter({pool,allowedOrigins:origins,queueJourneyEvent}));
 
 // Enforce central operations flags on actual write entry points (not just dashboard state).
 app.use('/api/orders', (req,res,next)=>req.method==='POST'?operationGuard(pool,'new_orders')(req,res,next):next());
