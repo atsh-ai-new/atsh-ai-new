@@ -151,6 +151,45 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
  useEffect(()=>{if(action==="dashboard"){void loadProjects();void loadDrafts();}},[action,loadProjects,loadDrafts]);
  useEffect(()=>{if(action==="dashboard"&&selectedProjectDraft)void loadPreviews(selectedProjectDraft);},[action,selectedProjectDraft]);
  useEffect(()=>{if(action!=="login"&&action!=="register")return;const clientId=process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;if(!clientId)return;let cancelled=false;const script=document.createElement("script");script.src="https://accounts.google.com/gsi/client";script.async=true;script.defer=true;script.onload=()=>{if(cancelled||!googleContainer.current||!window.google)return;window.google.accounts.id.initialize({client_id:clientId,callback:({credential})=>{void request("google",{credential});}});window.google.accounts.id.renderButton(googleContainer.current,{theme:"outline",size:"large",text:"continue_with",locale:locale});};document.head.appendChild(script);return()=>{cancelled=true;script.remove();};},[action,request]);
+ const isAuthEntry=action==="login"||action==="forgot";
+ if(isAuthEntry)return <main lang={locale} dir={en?"ltr":"rtl"} className="atsh-auth-page">
+  <style>{`
+   .atsh-auth-page{width:100%;max-width:100%;min-height:calc(100svh - 110px);padding:clamp(22px,5vw,68px) 16px 48px;display:grid;place-items:center;font-family:var(--site-font,"IBM Plex Sans Arabic",system-ui,sans-serif)}
+   .atsh-auth-page[lang="en"]{font-family:Inter,system-ui,sans-serif}
+   .atsh-auth-card{width:min(100%,460px);padding:clamp(24px,5vw,40px);background:#fff;border:1px solid #e2e6eb;border-radius:22px;box-shadow:0 18px 48px rgba(32,57,88,.09);min-width:0}
+   .atsh-auth-eyebrow{display:inline-block;color:#3c5f8d;font-size:12px;font-weight:700;letter-spacing:.03em;margin-bottom:12px}
+   .atsh-auth-card h1{font-size:clamp(25px,4vw,32px);line-height:1.4;color:#203958;margin:0 0 10px;font-weight:700}
+   .atsh-auth-intro{font-size:14px;line-height:1.8;color:#667587;margin:0 0 26px}
+   .atsh-auth-form{display:grid;gap:18px}
+   .atsh-auth-field{display:grid;gap:9px;color:#34445a;font-size:14px;font-weight:600}
+   .atsh-auth-field input{width:100%;min-width:0;height:50px;padding:0 15px;border:1px solid #cbd5e1;border-radius:11px;background:#fff;color:#203047;font-size:16px;direction:ltr;text-align:left;outline:none;transition:border-color .15s,box-shadow .15s}
+   .atsh-auth-field input:focus{border-color:#4c78ae;box-shadow:0 0 0 3px rgba(76,120,174,.15)}
+   .atsh-auth-submit{width:100%;min-height:50px;padding:12px 16px;border:0;border-radius:11px;background:#203958;color:#fff;font-size:15px;font-weight:700;cursor:pointer}
+   .atsh-auth-submit:hover{background:#304f76}
+   .atsh-auth-links{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-top:23px;font-size:13px;line-height:1.7}
+   .atsh-auth-links a{color:#305d91;font-weight:600;text-decoration:none}
+   .atsh-auth-links a:hover{text-decoration:underline}
+   .atsh-auth-google{display:flex;justify-content:center;max-width:100%;overflow:hidden;margin-top:20px}
+   .atsh-auth-status{margin:18px 0 0;font-size:13px;line-height:1.7;color:#284c73;overflow-wrap:anywhere}
+   .atsh-auth-status:empty{display:none}
+   @media(max-width:420px){.atsh-auth-page{padding:20px 12px 32px;min-height:auto}.atsh-auth-card{border-radius:16px;padding:23px 18px}.atsh-auth-links{gap:10px}}
+  `}</style>
+  <section className="atsh-auth-card" aria-label={action==="login"?t("تسجيل دخول العملاء","Customer sign in"):t("استعادة كلمة المرور","Password recovery")}>
+   <span className="atsh-auth-eyebrow">ATSH AI · {t("حساب العملاء","Customer account")}</span>
+   <h1>{action==="login"?t("تسجيل الدخول","Welcome back"):t("استعادة كلمة المرور","Reset your password")}</h1>
+   <p className="atsh-auth-intro">{action==="login"?t("ادخل إلى حسابك لمتابعة مشروعاتك وطلباتك.","Sign in to manage your projects and requests."):t("أدخل بريدك الإلكتروني وسنرسل لك تعليمات إعادة تعيين كلمة المرور.","Enter your email address to receive password reset instructions.")}</p>
+   <form className="atsh-auth-form" onSubmit={e=>{e.preventDefault();void request(action==="login"?"login":"password/forgot",action==="login"?{email,password}:{email});}}>
+    <label className="atsh-auth-field">{t("البريد الإلكتروني","Email address")}<input type="email" name="email" autoComplete="email" inputMode="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com"/></label>
+    {action==="login"&&<label className="atsh-auth-field">{t("كلمة المرور","Password")}<input type="password" name="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)} placeholder={t("أدخل كلمة المرور","Enter your password")}/></label>}
+    <button className="atsh-auth-submit" type="submit">{action==="login"?t("تسجيل الدخول","Sign in"):t("إرسال رابط الاستعادة","Send reset link")}</button>
+   </form>
+   <nav className="atsh-auth-links" aria-label={t("روابط الحساب","Account links")}>
+    {action==="login"?<><a href={`${base}/account/forgot`}>{t("نسيت كلمة المرور؟","Forgot password?")}</a><a href={`${base}/account/register`}>{t("إنشاء حساب جديد","Create account")}</a></>:<a href={`${base}/account/login`}>{t("العودة لتسجيل الدخول","Back to sign in")}</a>}
+   </nav>
+   {action==="login"&&<div className="atsh-auth-google" ref={googleContainer} aria-label={t("تسجيل الدخول باستخدام Google","Sign in with Google")}/>}
+   <p className="atsh-auth-status" role="status" aria-live="polite">{message}</p>
+  </section>
+ </main>;
  return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:action==="dashboard"?1120:540,margin:action==="dashboard"?"1rem auto":"5rem auto",padding:action==="dashboard"?"clamp(12px,3vw,24px)":24,background:action==="dashboard"?"#f6f8fb":undefined}}><h1>{(en?{"register":"Create an account","login":"Sign in","resend-verification":"Resend verification email","forgot":"Reset password","reset-password":"Choose a new password","verify":"Verify email","dashboard":"My projects"}:({register:"إنشاء حساب",login:"تسجيل الدخول", "resend-verification":"إعادة إرسال تأكيد البريد",forgot:"استعادة كلمة المرور","reset-password":"تعيين كلمة مرور جديدة",verify:"تأكيد البريد",dashboard:"مشروعاتي"} as Record<string,string>))[action]||t("حساب العميل","Customer account")}</h1>
  {! ["verify","dashboard"].includes(action)&&<form onSubmit={e=>{e.preventDefault();const token=search.get("token")||"";
     const route=({register:"register",login:"login","resend-verification":"verification/resend",forgot:"password/forgot","reset-password":"password/reset"} as Record<string,string>)[action]||"login";
