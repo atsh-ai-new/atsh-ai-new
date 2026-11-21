@@ -565,6 +565,13 @@ app.post("/api/orders", route(async (req,res) => {
   const client=await pool.connect();
   try {
     await client.query("BEGIN");
+    // Lock the owned draft before creating any order: concurrent submissions must serialize.
+    if(input.projectDraftId){
+      if(!ownedCustomer){await client.query("ROLLBACK");return res.status(401).json({error:"Account required for project draft"});}
+      const ownedDraft=await client.query("SELECT id,linked_journey_id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 FOR UPDATE",[input.projectDraftId,ownedCustomer.id]);
+      if(!ownedDraft.rowCount){await client.query("ROLLBACK");return res.status(403).json({error:"Project draft is not owned by this account"});}
+      if(ownedDraft.rows[0].linked_journey_id){await client.query("ROLLBACK");return res.status(409).json({error:"This project draft already has an order or submission"});}
+    }
     const p=await client.query("SELECT p.id,p.name,p.description,u.amount AS price,p.currency FROM packages p JOIN unified_price_items u ON u.scope='package' AND u.owner_key=p.id::text AND u.code='base' WHERE p.id=$1 AND p.is_published=true FOR SHARE OF p",[input.packageId]);
     if(!p.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"Package unavailable"});}
     const pkg=p.rows[0];
@@ -602,12 +609,6 @@ app.post("/api/orders", route(async (req,res) => {
       VALUES($1,$2,$3,$4,$5,$6,'new',$7,$8,$9,$10,$11,$12)
       RETURNING id,reference,status,total,currency,created_at`,
       [reference,input.customerName,input.phone,input.email||null,input.notes,pkg.id,pkg.currency,subtotal,vatRate,vatAmount,total,snapshot]);
-    if(input.projectDraftId&&!ownedCustomer){await client.query("ROLLBACK");return res.status(401).json({error:"Account required for project draft"});}
-    if(input.projectDraftId&&ownedCustomer){
-      const draft=await client.query("SELECT id,linked_journey_id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 FOR UPDATE",[input.projectDraftId,ownedCustomer.id]);
-      if(!draft.rowCount){await client.query("ROLLBACK");return res.status(403).json({error:"Project draft is not owned by this account"});}
-      if(draft.rows[0].linked_journey_id){await client.query("ROLLBACK");return res.status(409).json({error:"This project draft already has an order"});}
-    }
     if(ownedCustomer){
       const project=await createCustomerJourneyProject(client,{customerName:input.customerName,customerEmail:ownedCustomer.email,templateId:input.sectorSlug||null,createdBy:ownedCustomer.email,customerAccountId:ownedCustomer.id});
       await client.query("INSERT INTO customer_journey_order_links(project_id,order_id,linked_by) VALUES($1,$2,$3)",[project.id,saved.rows[0].id,ownedCustomer.email]);
