@@ -438,10 +438,6 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
       </section>
 
       {showConfigurator&&<section className="configurator-section" id="configurator">
-        <details style={{margin:"12px 0",padding:"12px 14px",border:"1px solid #e2e8f0",borderRadius:12,background:"#fff"}}>
-          <summary style={{cursor:"pointer",fontWeight:700}}>{t("فحص توافر الدومين الحقيقي قبل الشراء","Check domain availability before purchase")}</summary>
-          <DomainLookup locale={locale} onDomainChange={setRequestedDomainName}/>
-        </details>
         {selectedProjectDraftId&&<div role="group" aria-label={t("حفظ اختيارات المشروع","Save project selections")} style={{background:"#eaf8ee",color:"#166534",padding:12,borderRadius:10,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}><span>{t("أنت تستكمل مسودة مشروع محفوظة في حسابك. سيتم ربط الطلب النهائي بهذه المسودة فقط.","You are editing a saved project draft in your account. The final request will be linked only to this draft.")}</span><button type="button" onClick={()=>void saveProjectChoices()} style={{background:"#203958",color:"white",border:0,borderRadius:9,padding:"10px 13px",cursor:"pointer"}}>حفظ الاختيارات والإضافات في مشروعي</button></div>}
         <div className="section-heading configurator-title"><div><span className="section-kicker">{copy("configuratorKicker")}</span><h2>{copy("configuratorTitle")}</h2></div><p>{copy("configuratorDescription")}</p></div>
         <div className="builder-layout">
@@ -463,6 +459,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
               {step === 1 && <div className="form-stack">
                 <label className="field-label">{copy("requestedPagesLabel")}<input type="number" min="1" max="50" value={pages} onChange={(event) => setPages(Math.max(1, Number(event.target.value) || 1))} /></label>
                 <p className="field-hint">{includedPages ? `${copy("includedPagesLead")} ${includedPages} ${copy(includedPages === 1 ? "includedOnePage" : "includedManyPages")}.` : copy("scopeReviewText")} {copy("extraPagesReviewText")}</p>
+                <div style={{padding:"14px",border:"1px solid #dbe4ee",borderRadius:12,background:"#fff"}}><h4 style={{margin:"0 0 10px"}}>{t("البحث الحي عن الدومين","Live domain availability search")}</h4><DomainLookup locale={locale} onDomainChange={setRequestedDomainName}/></div>
                 <div className="choice-row"><div><strong>{copy("languageChoiceTitle")}</strong><small>{copy("languageIncluded")}</small></div><div className="choice-toggle"><button type="button" className={!bilingual ? "selected" : ""} onClick={() => setBilingual(false)}>{copy("languageArabic")}</button><button type="button" className={bilingual ? "selected" : ""} onClick={() => setBilingual(true)}>{copy("languageBilingual")} <b>+{money(Number(serverOptions.find((option) => option.code === "language")?.price ?? 900))}</b></button></div></div>
                 <label className="field-label">{copy("colorPreferenceLabel")}<textarea value={stylePreference} onChange={(event) => setStylePreference(event.target.value)} placeholder={copy("colorPreferencePlaceholder")} rows={3} /></label>
                 <div className="field-label">{copy("inspirationLabel")} <small>{copy("optionalLabel")}</small>{inspirationLinks.map((link, index) => <input key={index} value={link} onChange={(event) => setInspiration(index, event.target.value)} placeholder={copy("inspirationPlaceholder")} type="url" />)}<button type="button" className="inline-add" onClick={addInspiration}>{copy("addLink")}</button></div>
