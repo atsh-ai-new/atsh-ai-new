@@ -3,7 +3,7 @@ import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
 import { sectorTemplates, interactiveDemoPaths, type SectorTemplate } from "@/lib/sector-catalog";
 import { normalizeCatalogSectors, defaultCatalogPlacements, resolvePlacement, validCatalogId, canRemoveSector, canRemoveSubcategory, type CatalogSector } from "@/lib/catalog-sectors";
 
-type PricedAddon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
+type PricedAddon={code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
 type CatalogItem = SectorTemplate & {published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; demoSlug?:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[];sectorId?:string;subcategoryId?:string};
 const defaultPricedAddons=():PricedAddon[]=>[
  {code:"extra_page",name:"صفحة إضافية (لكل صفحة)",price:1000,pricingType:"fixed"},
@@ -26,7 +26,7 @@ export default function CatalogManager() {
   const [error,setError]=useState("");
   const [ready,setReady]=useState(false);
   const [uploading,setUploading]=useState(false);
-  const [addonText,setAddonText]=useState(defaultPricedAddons().map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\n"));
+  const [addonText,setAddonText]=useState(defaultPricedAddons().map(x=>[x.code,x.name,x.price,x.pricingType,x.description??""].join(" | ")).join("\n"));
   const [version,setVersion]=useState(0);
   const [updatedAt,setUpdatedAt]=useState<string|null>(null);
   const [pageWasPublished,setPageWasPublished]=useState(true);
@@ -81,12 +81,12 @@ export default function CatalogManager() {
     const pricedAddons:PricedAddon[]=[];
     const codes=new Set<string>();
     for(const raw of addonText.split("\n").map(x=>x.trim()).filter(Boolean)){
-      const [code,name,priceText,type]=raw.split("|").map(x=>x.trim());
+      const [code,name,priceText,type,description=""]=raw.split("|").map(x=>x.trim());
       const amount=Number(priceText);
       if(!/^[a-z0-9_-]{1,80}$/.test(code)||!name||codes.has(code)||!Number.isFinite(amount)||amount<0||Math.round(amount*100)!==Math.round(amount*10000)/100||!["fixed","monthly","yearly"].includes(type)){
         setError("صيغة الإضافة: code | اسم الإضافة | السعر | fixed أو monthly أو yearly. يجب عدم تكرار الرمز.");return;
       }
-      codes.add(code);pricedAddons.push({code,name,price:amount,pricingType:type as PricedAddon["pricingType"]});
+      codes.add(code);pricedAddons.push({code,name,description,price:amount,pricingType:type as PricedAddon["pricingType"]});
     }
     if(draft.previewUrl.trim()){try{const url=new URL(draft.previewUrl.trim());if(url.protocol!=="https:")throw Error();}catch{setError("رابط المعاينة يجب أن يكون رابط HTTPS صالحًا للنظام المنشور.");return;}}
     if(draft.basePrice!==null&&(!Number.isFinite(draft.basePrice)||draft.basePrice<0)){setError("أدخل سعر بيع صحيحًا للكتالوج، أو اتركه فارغًا حتى تحديد السعر.");return;}
@@ -98,7 +98,7 @@ export default function CatalogManager() {
     updated.category=placement.subcategory?.name||placement.sector.name;
     const next=originalSlug?items.map(x=>x.slug===originalSlug?updated:x):[...items,updated];
     if(await saveAll(next,"تم حفظ الكتالوج وتحديث حالته.")){
-      setDraft(empty());setAddonText(defaultPricedAddons().map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\n"));setOriginalSlug("");
+      setDraft(empty());setAddonText(defaultPricedAddons().map(x=>[x.code,x.name,x.price,x.pricingType,x.description??""].join(" | ")).join("\n"));setOriginalSlug("");
     }
   };
   const applyDemoPrices=async()=>{
@@ -113,7 +113,7 @@ export default function CatalogManager() {
     if(!window.confirm("استيراد نماذج توضيحية ناقصة بدون استبدال بياناتك أو أسعارك؟"))return;
     await saveAll([...items,...starter],"تم استيراد نماذج توضيحية مبدئية. لا تمثل أنظمة تجارية جاهزة.");
   };
-  const edit=(item:CatalogItem)=>{const place=resolvePlacement(item,sectors);setDraft({...item,sectorId:place.sector?.id,subcategoryId:place.subcategory?.id});setAddonText(item.pricedAddons.map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\n"));setOriginalSlug(item.slug);setError("");setNotice("");};
+  const edit=(item:CatalogItem)=>{const place=resolvePlacement(item,sectors);setDraft({...item,sectorId:place.sector?.id,subcategoryId:place.subcategory?.id});setAddonText(item.pricedAddons.map(x=>[x.code,x.name,x.price,x.pricingType,x.description??""].join(" | ")).join("\n"));setOriginalSlug(item.slug);setError("");setNotice("");};
   const update=(key:keyof CatalogItem,value:unknown)=>setDraft(d=>({...d,[key]:value}));
   const toggle=async(item:CatalogItem,patch:Partial<CatalogItem>)=>saveAll(items.map(x=>x.slug===item.slug?{...x,...patch}:x),"تم تحديث حالة الكتالوج.");
   const archive=async(item:CatalogItem)=>{
@@ -194,7 +194,7 @@ export default function CatalogManager() {
       {notice&&<p role="status" className="success-message">{notice}</p>}{error&&<p role="alert" className="error-message">{error}</p>}
       {!ready?<p>جارٍ تحميل الكتالوجات…</p>:<>
         <div className="admin-actions">
-          <button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());setAddonText(defaultPricedAddons().map(x=>[x.code,x.name,x.price,x.pricingType].join(" | ")).join("\n"));}}>+ كتالوج جديد</button>
+          <button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());setAddonText(defaultPricedAddons().map(x=>[x.code,x.name,x.price,x.pricingType,x.description??""].join(" | ")).join("\n"));}}>+ كتالوج جديد</button>
           <button type="button" className="button button-outline" disabled={busy} onClick={()=>void importStarter()}>استيراد النماذج الأربعة المبدئية دون تكرار</button>
           <button type="button" className="button button-outline" disabled={busy} onClick={()=>void applyDemoPrices()}>تطبيق الأسعار التجريبية على الكتالوجات الحالية (٥٠٠٠ + إضافات ١٠٠٠)</button>
           <a className="inline-add" href="/catalog" target="_blank" rel="noreferrer">عرض المعرض ↗</a>
@@ -287,16 +287,17 @@ export default function CatalogManager() {
           <p>كل إضافة لها اسم وسعر وطريقة احتساب مستقلة. تعديلها هنا يُحدّث الكتالوج الحالي عند الحفظ، ولا يغيّر إضافات الباقات الأخرى.</p>
           {addonText.split("\n").filter(line=>line.trim()).map((line,index)=>{
             const parts=line.split("|").map(part=>part.trim());
-            const updatePart=(partIndex:number,value:string)=>setAddonText(previous=>previous.split("\n").map((entry,i)=>{if(i!==index)return entry;const fields=entry.split("|").map(field=>field.trim());while(fields.length<4)fields.push("");fields[partIndex]=value;return fields.join(" | ");}).join("\n"));
+            const updatePart=(partIndex:number,value:string)=>setAddonText(previous=>previous.split("\n").map((entry,i)=>{if(i!==index)return entry;const fields=entry.split("|").map(field=>field.trim());while(fields.length<5)fields.push("");fields[partIndex]=value;return fields.join(" | ");}).join("\n"));
             return <div key={index} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:8,marginBottom:12,padding:10,background:"#f6f9fd",borderRadius:10}}>
               <label className="admin-field">رمز الربط<input value={parts[0]||""} onChange={e=>updatePart(0,e.target.value)} /></label>
               <label className="admin-field">اسم الإضافة<input value={parts[1]||""} onChange={e=>updatePart(1,e.target.value)} /></label>
+              <label className="admin-field">المواصفات والوصف<input value={parts[4]||""} onChange={e=>updatePart(4,e.target.value)} /></label>
               <label className="admin-field">السعر بالجنيه<input type="number" min="0" step="0.01" value={parts[2]||""} onChange={e=>updatePart(2,e.target.value)} /></label>
               <label className="admin-field">طريقة الحساب<select value={parts[3]||"fixed"} onChange={e=>updatePart(3,e.target.value)}><option value="fixed">مرة واحدة</option><option value="monthly">شهري</option><option value="yearly">سنوي</option></select></label>
               <button type="button" className="button button-outline button-small" onClick={()=>setAddonText(previous=>previous.split("\n").filter((_,i)=>i!==index).join("\n"))}>حذف الإضافة</button>
             </div>;
           })}
-          <button type="button" className="button button-outline button-small" onClick={()=>setAddonText(previous=>[previous.trim(),"new_addon | إضافة جديدة | 0 | fixed"].filter(Boolean).join("\n"))}>+ إضافة جديدة</button>
+          <button type="button" className="button button-outline button-small" onClick={()=>setAddonText(previous=>[previous.trim(),"new_addon | إضافة جديدة | 0 | fixed | مواصفات الإضافة"].filter(Boolean).join("\n"))}>+ إضافة جديدة</button>
         </section>
         <label className="admin-field">ترتيب الظهور<input type="number" value={draft.sortOrder} onChange={e=>update("sortOrder",Number(e.target.value))}/></label>
         <label className="check-row"><input type="checkbox" checked={draft.published} onChange={e=>update("published",e.target.checked)}/> منشور في المعرض</label>
