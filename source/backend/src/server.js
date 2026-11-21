@@ -1477,9 +1477,8 @@ app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requireRo
     const priorOrder=await client.query("SELECT 1 FROM customer_journey_order_links WHERE project_id=$1",[projectId]);
     if(priorOrder.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Use the existing verified order quotation path for this project"});}
   }else{
-    const created=await client.query(`INSERT INTO customer_journey_projects(customer_name,customer_email,template_id,created_by,customer_account_id,status)
-      VALUES($1,$2,$3,$4,$5,'quoted') RETURNING id`,[d.name,d.email,d.draft?.sectorSlug||null,req.admin.email,d.account_id]);
-    projectId=created.rows[0].id;
+    const created=await createCustomerJourneyProject(client,{customerName:d.title||d.name,customerEmail:d.email,templateId:d.draft?.sectorSlug||null,createdBy:req.admin.email,customerAccountId:d.account_id,status:'quoted'});
+    projectId=created.id;
     await client.query("UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2 AND customer_id=$3",[projectId,d.id,d.account_id]);
   }
   const config=await client.query("SELECT vat_rate FROM site_settings WHERE id=1");
