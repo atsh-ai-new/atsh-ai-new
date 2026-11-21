@@ -501,13 +501,29 @@ app.get("/api/domains/check",rateLimit({windowMs:60*1000,limit:10,standardHeader
   return res.status(invalid?400:502).json({error:invalid?"Invalid domain":"Domain availability could not be verified"});
  }
 }));
+
+// The unified ledger is authoritative for amounts; catalog JSON supplies presentation and availability.
+async function pricedSectorCatalog(db,items){
+  if(!Array.isArray(items))return items;
+  const result=await db.query("SELECT scope,owner_key,code,amount,pricing_type FROM unified_price_items WHERE scope IN ('sector','sector_addon')");
+  const prices=new Map(result.rows.map(row=>[row.scope+":"+row.owner_key+":"+row.code,row]));
+  return items.map(item=>{
+    const base=prices.get("sector:"+item.slug+":base");
+    return {...item,basePrice:base?Number(base.amount):null,
+      pricedAddons:(Array.isArray(item.pricedAddons)?item.pricedAddons:[]).map(addon=>{
+        const price=prices.get("sector_addon:"+item.slug+":"+addon.code);
+        return price?{...addon,price:Number(price.amount),pricingType:price.pricing_type}:{...addon,price:null};
+      })};
+  });
+}
+
 app.get("/api/sector-price",route(async(req,res)=>{
   const slug=typeof req.query.slug==="string"?req.query.slug:"";
   const addons=typeof req.query.addons==="string"&&req.query.addons
     ? req.query.addons.split(","): [];
   const result=await pool.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true LIMIT 1");
   try{
-    const price=priceSectorSelection(result.rows[0]?.content?.items,slug,addons);
+    const price=priceSectorSelection(await pricedSectorCatalog(pool,result.rows[0]?.content?.items),slug,addons);
     res.set("Cache-Control","no-store").json(price);
   }catch{return res.status(400).json({error:"Sector unavailable or pricing not configured"});}
 }));
@@ -565,7 +581,7 @@ app.post("/api/orders", rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"
     let sectorPrice=null;
     if(input.sectorSlug){
       const catalog=await client.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true FOR SHARE");
-      try{sectorPrice=priceSectorSelection(catalog.rows[0]?.content?.items,input.sectorSlug,input.sectorAddonCodes);}
+      try{sectorPrice=priceSectorSelection(await pricedSectorCatalog(client,catalog.rows[0]?.content?.items),input.sectorSlug,input.sectorAddonCodes);}
       catch{await client.query("ROLLBACK");return res.status(400).json({error:"Selected sector or addon unavailable"});}
       if(sectorPrice.needsCustomQuote){await client.query("ROLLBACK");return res.status(409).json({error:"تخصيص هذا القطاع يتطلب اعتماد عرض سعر قبل تسجيل طلب شراء.",needsCustomQuote:true});}
     }
