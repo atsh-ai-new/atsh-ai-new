@@ -73,7 +73,7 @@ export async function loadAccountWorkspace():Promise<CustomerWorkspace|null>{
 export function replaceGuestWorkspace(value:CustomerWorkspace):CustomerWorkspace {
  const next=Object.fromEntries(Object.entries(value).filter(([key])=>allowed.has(key))) as CustomerWorkspace;
  if(typeof window!=="undefined"){
-  try{window.localStorage.setItem(WORKSPACE_KEY,JSON.stringify(next));window.dispatchEvent(new CustomEvent("atsh-workspace-updated",{detail:next}));}catch{/* restricted storage */}
+  try{guestStorage()?.setItem(WORKSPACE_KEY,JSON.stringify(next));window.dispatchEvent(new CustomEvent("atsh-workspace-updated",{detail:next}));}catch{/* restricted storage */}
  }
  return next;
 }
