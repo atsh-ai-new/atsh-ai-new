@@ -512,7 +512,7 @@ export default function HomePage({locale="ar"}:{locale?:"ar"|"en"}) {
             </form>
           </div>
         {selectedSector && sectorPricedAddons.length>0 && <section className="catalog-optional-addons" style={{border:"1px solid #d5e1ef",background:"#fff",padding:16,borderRadius:12,marginBottom:14}}>
-          <h3>{t("الإضافات الاختيارية","Optional add-ons")}</h3>
+          <h3>{t("الإضافات التكاملية","Integration add-ons")}</h3>
           {sectorPricedAddons.map(option=><label key={option.code} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"9px 0"}}>
             <span><input type="checkbox" checked={sectorAddonCodes.includes(option.code)} onChange={event=>setSectorAddonCodes(current=>{const next=event.target.checked?[...new Set([...current,option.code])]:current.filter(x=>x!==option.code);saveGuestWorkspace({sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes:next,source:"configurator"});return next;})}/> {localizeOption(option.code,option.name)}</span>
             <b>{money(option.price)} {option.pricingType==="monthly"?t("/ شهري","/ month"):option.pricingType==="yearly"?t("/ سنوي","/ year"):""}</b>
