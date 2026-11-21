@@ -82,7 +82,7 @@ export default function AdminPage() {
     const [catalog, inbox, settings, pages, team, changes, email] = await Promise.all([
       api("packages"), api("orders"), api("settings"), api("pages"), api("team"), api("audit"), api("email-status")
     ]);
-    setPackages(catalog.packages ?? []); setOptions(catalog.options ?? []); setOrders(inbox.orders ?? []);
+    setPackages(catalog.packages ?? []); setOptions((catalog.options ?? []).filter((option: Option) => !["logo_design", "visual_identity"].includes(option.code))); setOrders(inbox.orders ?? []);
     setVatRate(Number(settings.settings?.vat_rate ?? 14)); setTheme({ ...defaultTheme, ...(settings.settings?.theme ?? {}) });
     const publishedArabicHome = pages.pages?.find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar")?.content ?? {};
     setPage({ ...siteCopyDefaults, ...publishedArabicHome });
@@ -215,7 +215,9 @@ export default function AdminPage() {
   };
 
   const addOption = async (event: FormEvent) => {
-    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    event.preventDefault();
+    if (["logo_design", "visual_identity"].includes(optionDraft.code.trim())) { setError("هذا الرمز قديم ومكرر. استخدم خيارات الشعار والهوية الموجودة في خطوة الشعار والهوية."); return; }
+    setBusy(true); setError(""); setNotice("");
     try {
       await api("options", { method: "POST", body: JSON.stringify({ ...optionDraft, price: Number(optionDraft.price), sortOrder: options.filter((item) => item.package_id === optionDraft.packageId).length * 10 + 10 }) });
       setOptionDraft((current) => ({ ...current, code: "", name: "", description: "", price: "", unitLabel: "" })); await loadData(); setNotice("تمت إضافة الخيار للباقة.");
