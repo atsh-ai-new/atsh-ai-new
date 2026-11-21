@@ -7,11 +7,26 @@ export type CustomerWorkspace = {
   source?:"catalog"|"configurator"|"concierge"|"preview"|"account";
 };
 export const WORKSPACE_KEY="atsh_customer_workspace_v1";
+// Guest selections survive same-tab page navigation (e.g. to registration), not a reload.
+// The customer account workspace is saved separately on the server after authentication.
+let guestStorageInitialized=false;
+function guestStorage():Storage|null{
+  if(typeof window==="undefined")return null;
+  try{
+    if(!guestStorageInitialized){
+      guestStorageInitialized=true;
+      window.localStorage.removeItem(WORKSPACE_KEY); // Purge persistent guest data from older releases.
+      const navigation=window.performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming|undefined;
+      if(navigation?.type==="reload")window.sessionStorage.removeItem(WORKSPACE_KEY);
+    }
+    return window.sessionStorage;
+  }catch{return null;}
+}
 const allowed=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","brandColor","options","sectorAddonCodes","projectMode","solutionType","requirements","deliveryMethod","domainName","source"]);
 export function loadGuestWorkspace():CustomerWorkspace {
   if(typeof window==="undefined")return {};
   try{
-    const raw=window.localStorage.getItem(WORKSPACE_KEY);
+    const raw=guestStorage()?.getItem(WORKSPACE_KEY);
     if(!raw)return {};
     const obj=JSON.parse(raw) as Record<string,unknown>;
     return Object.fromEntries(Object.entries(obj).filter(([key])=>allowed.has(key))) as CustomerWorkspace;
@@ -20,7 +35,7 @@ export function loadGuestWorkspace():CustomerWorkspace {
 export function saveGuestWorkspace(patch:CustomerWorkspace):CustomerWorkspace {
   const next={...loadGuestWorkspace(),...patch};
   if(typeof window!=="undefined"){
-    try{window.localStorage.setItem(WORKSPACE_KEY,JSON.stringify(next));window.dispatchEvent(new CustomEvent("atsh-workspace-updated",{detail:next}));}catch{/* restricted storage */ }
+    try{guestStorage()?.setItem(WORKSPACE_KEY,JSON.stringify(next));window.dispatchEvent(new CustomEvent("atsh-workspace-updated",{detail:next}));}catch{/* restricted storage */ }
   }
   return next;
 }
@@ -39,7 +54,7 @@ export async function syncCustomerWorkspace():Promise<CustomerWorkspace|null> {
   const data=await merged.json();
   const result=data.workspace?.draft as CustomerWorkspace;
   // Remove local guest copy after server confirms the merge; avoid cross-account leakage on shared devices.
-  try{window.localStorage.removeItem(WORKSPACE_KEY);}catch{}
+  try{guestStorage()?.removeItem(WORKSPACE_KEY);}catch{}
   return result;
 }
 
