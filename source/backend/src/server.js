@@ -213,12 +213,13 @@ app.get("/api/admin/journey/projects",requireAdmin,requireRole("owner","admin","
 }));
 app.get("/api/admin/journey/projects/:id",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
- const [project,messages]=await Promise.all([
+ const [project,messages,draft]=await Promise.all([
   pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at FROM customer_journey_projects WHERE id=$1",[req.params.id]),
-  pool.query("SELECT id,actor,body,created_at FROM customer_journey_messages WHERE project_id=$1 ORDER BY id LIMIT 200",[req.params.id])
+  pool.query("SELECT id,actor,body,created_at FROM customer_journey_messages WHERE project_id=$1 ORDER BY id LIMIT 200",[req.params.id]),
+  pool.query("SELECT title,draft,revision FROM customer_project_drafts WHERE linked_journey_id=$1 ORDER BY updated_at DESC LIMIT 1",[req.params.id])
  ]);
  if(!project.rowCount)return res.status(404).json({error:"Project not found"});
- res.json({project:project.rows[0],messages:messages.rows});
+ res.json({project:project.rows[0],messages:messages.rows,customerDraft:draft.rows[0]||null});
 }));
 app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
