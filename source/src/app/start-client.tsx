@@ -48,6 +48,12 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
    const res=await fetch("/api/customer/auth/project-drafts",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:businessName.trim(),draft:loadGuestWorkspace()})});
    const data=await res.json().catch(()=>({}));
    if(!res.ok||!data.projectDraft?.id)throw Error((en?"Unable to save your project draft":data.error||"تعذر حفظ مسودة المشروع"));
+   // A completed custom brief is a customer submission, not merely a local draft.
+   if(requirements.trim()){
+    const sent=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(data.projectDraft.id)}/submit`,{method:"POST",credentials:"include"});
+    const confirmation=await sent.json().catch(()=>({}));
+    if(!sent.ok||!confirmation.projectId)throw Error(confirmation.error||tr("تم حفظ المسودة لكن تعذر إرسال الطلب للإدارة. افتح حسابك وأعد الإرسال.","Draft saved, but submission failed. Open your account and retry."));
+   }
    try{sessionStorage.removeItem("atsh_customer_workspace_v1");}catch{}
    window.location.assign(`${root}/account/project-preview/${encodeURIComponent(data.projectDraft.id)}`);
   }catch(e){setError(e instanceof Error?e.message:tr("تعذر حفظ المشروع","Unable to save your project"));}finally{setSaving(false)}
