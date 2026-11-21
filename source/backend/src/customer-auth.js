@@ -170,7 +170,16 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    const created=await client.query('INSERT INTO customer_journey_projects(customer_name,customer_email,created_by,customer_account_id) VALUES($1,$2,$3,$4) RETURNING id,status',[item.title,customer.rows[0]?.email??null,'customer-portal',req.customer.id]);
    const projectId=created.rows[0].id;
    await client.query('UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2',[projectId,item.id]);
-   await client.query('INSERT INTO customer_journey_messages(project_id,actor,body) VALUES($1,$2,$3)',[projectId,'customer',String(item.draft.requirements).slice(0,4000)]);
+   const summary=[
+    'Project: '+item.title,
+    'Package: '+(item.draft.packageId||'Custom'),
+    'Sector: '+(item.draft.sectorName||item.draft.sectorSlug||'—'),
+    'Solution: '+(item.draft.solutionType||'—'),
+    'Features: '+[...(item.draft.options||[]),...(item.draft.sectorAddonCodes||[])].join(', '),
+    'Delivery: '+(item.draft.deliveryMethod||'undecided'),
+    'Requirements: '+String(item.draft.requirements||'')
+   ].join('\\n').slice(0,4000);
+   await client.query('INSERT INTO customer_journey_messages(project_id,actor,body) VALUES($1,$2,$3)',[projectId,'customer',summary]);
    await client.query('COMMIT');
    res.status(201).json({projectId,status:created.rows[0].status});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
