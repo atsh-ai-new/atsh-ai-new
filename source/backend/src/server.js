@@ -3,6 +3,7 @@ import { deliveryAdminRouter, deliveryCustomerRouter } from "./delivery-control.
 import { customerCommercialRouter } from "./customer-commercial.js";
 import { customerAuthRouter } from "./customer-auth.js";
 import {createCustomerJourneyProject} from './customer-project-service.js';
+import {canJourneyTransition} from './customer-journey-state.js';
 import {quoteTotal,installments,validateTicketTransition,validateDeliveryMethod} from "./commercial-rules.js";
 import express from "express";
 import helmet from "helmet";
@@ -227,11 +228,6 @@ app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requireRole("ow
 }));
 
 // Stage 4: authoritative catalog guidance and audited, restricted lifecycle transitions.
-const journeyTransitions = Object.freeze({
- draft:["configured"], configured:["quoted"], quoted:["payment_pending"],
- payment_pending:[], paid:["building"], building:["preview_ready"],
- preview_ready:["building","approved"], approved:["delivered"], delivered:["support"], support:[]
-});
 app.get("/api/admin/journey/catalog",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
  const [packages,options]=await Promise.all([
   pool.query("SELECT id,name,description,price,currency,is_custom_quote FROM packages WHERE is_published=true ORDER BY sort_order LIMIT 100"),
@@ -250,7 +246,7 @@ app.post("/api/admin/journey/projects/:id/transition",requireAdmin,requireRole("
   const current=await client.query("SELECT id,status FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
   if(!current.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
   const previous=current.rows[0].status,next=parsed.data.status;
-  if(!journeyTransitions[previous]?.includes(next)){
+  if(!canJourneyTransition(previous,next,{manual:true,note:parsed.data.note})){
    await client.query("ROLLBACK");return res.status(409).json({error:"Transition not permitted",currentStatus:previous});
   }
   // Payment verification is never inferred from a manually entered status.
