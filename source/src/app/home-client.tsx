@@ -427,7 +427,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
             <span className="package-kicker">{item.short}</span><h3>{item.name}</h3><p>{item.description}</p>
             <ul>{item.features.map((feature) => <li key={feature}><span>✓</span>{feature}</li>)}</ul>
             <div className="package-price">{item.price === null ? <><strong>{copy("customQuoteLabel")}</strong><small>{copy("customQuoteDescription")}</small></> : <><strong>{copy("packagePricePrefix")} {money(item.price)}</strong><small>{copy("packagePriceFootnote")}</small></>}</div>
-            <a className={item.recommended ? "button package-cta" : "button button-outline package-cta"} href={`/${locale}/packages/${encodeURIComponent(item.id)}/pricing`}>{t("تخصيص الباقة وحساب السعر","Customize package and calculate price")} ←</a>
+            <a className={item.recommended ? "button package-cta" : "button button-outline package-cta"} href={`${isEnglish?"/en":""}/packages/${encodeURIComponent(item.id)}/pricing`}>{t("تخصيص الباقة وحساب السعر","Customize package and calculate price")} ←</a>
           </article>)}
         </div>
 
