@@ -33,6 +33,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
  const [guestPending,setGuestPending]=useState(false);
  const [merging,setMerging]=useState(false);
  const [hubTab,setHubTab]=useState<HubTab>("overview");
+ const [assistantOpen,setAssistantOpen]=useState(false);
  const [accountStatus,setAccountStatus]=useState<"checking"|"authenticated"|"guest">("checking");
  const previewRequestRef=useRef(0);
  useEffect(()=>{
@@ -176,7 +177,9 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
   currentPreviewStatus={selectedProjectDraft&&previewVersions.length?previewVersions[0].approval_status:undefined}
   currentJourneyStatus={projects.find(project=>project.id===projectDrafts.find(draft=>draft.id===selectedProjectDraft)?.linked_journey_id)?.status}/>
  {message&&<p role="status" aria-live="polite" style={{padding:12,borderRadius:10,background:"#eaf2ff",color:"#1f4166"}}>{message}</p>}
- {hubTab==="assistant"&&<section aria-label={t("محادثاتي مع المساعد الذكي","My AI assistant conversations")} style={{padding:16,background:"white",border:"1px solid #dce4ef",borderRadius:14,marginBottom:18}}><h2>{t("مساعد ATSH AI ومحادثاتي","ATSH AI assistant & my conversations")}</h2><p>{t("محادثاتك المحفوظة مرتبطة بحسابك. محادثات الزائر لا تنتقل إلا عند تسجيل الدخول في نفس الجلسة.","Saved conversations belong to your account. Guest conversations transfer only when you sign in during the same session.")}</p><Concierge locale={locale} embedded /></section>}
+ <style>{`.atsh-customer-assistant{position:fixed;inset:auto 18px 88px auto;width:min(440px,calc(100vw - 24px));height:min(680px,calc(100dvh - 115px));z-index:1000;background:white;border:1px solid #d5e2f1;border-radius:18px;box-shadow:0 18px 65px #102c4b38;overflow:hidden;display:flex;flex-direction:column}.atsh-customer-assistant-body{flex:1;overflow:auto;min-height:0}.atsh-customer-assistant-launch{position:fixed;bottom:18px;right:18px;z-index:1001;border:0;border-radius:99px;padding:13px 18px;background:#203958;color:white;font:inherit;font-weight:800;box-shadow:0 7px 24px #102c4b40;cursor:pointer}@media(max-width:600px){.atsh-customer-assistant{right:8px;left:8px;bottom:76px;width:auto;height:min(620px,calc(100dvh - 95px))}.atsh-customer-assistant-launch{bottom:12px;right:12px}}`}</style>
+ <button type="button" className="atsh-customer-assistant-launch" aria-expanded={assistantOpen} aria-controls="atsh-customer-assistant-panel" onClick={()=>setAssistantOpen(value=>!value)}>{assistantOpen?t("إغلاق المساعد ×","Close assistant ×"):t("✦ اسأل مساعد ATSH","✦ Ask ATSH AI")}</button>
+ {assistantOpen&&<aside id="atsh-customer-assistant-panel" className="atsh-customer-assistant" role="dialog" aria-modal="false" aria-label={t("مساعد ATSH AI","ATSH AI assistant")} dir={en?"ltr":"rtl"}><header style={{padding:"12px 16px",background:"#203958",color:"white",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><strong>{t("مساعد ATSH AI","ATSH AI assistant")}</strong><button type="button" aria-label={t("إغلاق المساعد","Close assistant")} onClick={()=>setAssistantOpen(false)} style={{background:"transparent",border:"1px solid #9eb4cb",color:"white",borderRadius:8,padding:"5px 10px",cursor:"pointer"}}>×</button></header><div className="atsh-customer-assistant-body"><Concierge locale={locale} embedded /></div></aside>}
   {hubTab==="settings"&&<section style={{border:"1px solid #d4e2ef",borderRadius:12,padding:16,background:"#f5faff",marginBottom:18}}>
    <h2>{t("اختياراتي المحفوظة من جميع مسارات المنصة","My saved project preferences")}</h2>
    {guestPending&&<div style={{padding:12,background:"#fff4db",borderRadius:10,marginBottom:12}}>
