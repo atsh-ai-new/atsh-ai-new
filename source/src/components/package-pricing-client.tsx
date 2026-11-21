@@ -7,9 +7,9 @@ type Package={id:string;name:string;description:string;price:number|string;is_cu
 type Option={id:string;package_id:string;code:string;name:string;description:string;price:number|string;pricing_type:string;unit_label?:string;is_required:boolean};
 const aliases:Record<string,string>={landing:"11111111-1111-4111-8111-111111111111",multi:"22222222-2222-4222-8222-222222222222",dynamic:"33333333-3333-4333-8333-333333333333",enterprise:"44444444-4444-4444-8444-444444444444"};
 const round=(n:number)=>Math.round(n*100)/100;
-export default function PackagePricingPage(){
- const params=useParams<{locale:string;packageId:string}>();
- const en=params.locale==="en";const t=(ar:string,english:string)=>en?english:ar;
+export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
+ const params=useParams<{packageId:string}>();
+ const en=locale==="en";const t=(ar:string,english:string)=>en?english:ar;
  const [catalog,setCatalog]=useState<{packages:Package[];options:Option[]}|null>(null);
  const [vat,setVat]=useState<number|null>(null);
  const [selected,setSelected]=useState<string[]>([]);
@@ -39,7 +39,7 @@ export default function PackagePricingPage(){
  const summary=[pkg?.name??"",...lines.map(l=>`${l.name} × ${l.quantity}: ${money(l.amount)} (${l.pricing_type})`),`${t("تكلفة التنفيذ","One-time")}: ${money(oneTime)}`,`${t("شهريًا","Monthly")}: ${money(monthly)}`,`${t("سنويًا","Yearly")}: ${money(yearly)}`,tax===null?t("الضريبة تُحدد عند اعتماد العرض","Tax to be confirmed"):`${t("ضريبة التنفيذ","One-time VAT")}: ${money(tax)}`,total===null?"":`${t("إجمالي التنفيذ","One-time total")}: ${money(total)}`].filter(Boolean).join("\n");
  return <main dir={en?"ltr":"rtl"} style={{minHeight:"100vh",background:"#f8f7f3",color:"#203958",padding:"28px 16px",fontFamily:"inherit"}}>
   <div style={{maxWidth:1040,margin:"auto"}}>
-   <nav style={{display:"flex",justifyContent:"space-between",gap:12,marginBottom:22}}><Link href={en?"/en#packages":"/ar#packages"}>{t("← العودة للباقات","← Back to packages")}</Link><Link href={en?`/ar/packages/${params.packageId}/pricing`:`/en/packages/${params.packageId}/pricing`}>{en?"العربية":"English"}</Link></nav>
+   <nav style={{display:"flex",justifyContent:"space-between",gap:12,marginBottom:22}}><Link href={en?"/en#packages":"/#packages"}>{t("← العودة للباقات","← Back to packages")}</Link><Link href={en?`/packages/${params.packageId}/pricing`:`/en/packages/${params.packageId}/pricing`}>{en?"العربية":"English"}</Link></nav>
    <h1 style={{fontSize:"clamp(26px,4vw,40px)",marginBottom:6}}>{t("تخصيص الباقة وحساب التكلفة","Customize your package and calculate cost")}</h1>
    <p>{t("اختر الإضافات والكميات، وشاهد تفصيل الأسعار مباشرة.","Select add-ons and quantities to see an instant itemized estimate.")}</p>
    {error&&<p role="alert" style={{color:"#b42318"}}>{error}</p>}
