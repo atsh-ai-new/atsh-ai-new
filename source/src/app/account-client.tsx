@@ -105,6 +105,8 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    setHubTab("projects");setMessage(fromGuest?"تم إنشاء مشروع مستقل بجميع اختياراتك السابقة.":"تم إنشاء مسودة مستقلة للمشروع");
   }catch(e){setMessage(e instanceof Error?e.message:"تعذر الإنشاء");}
  };
+ const autoImported=useRef(false);
+ useEffect(()=>{if(action!=="dashboard"||accountStatus!=="authenticated"||!guestPending||autoImported.current)return;const guest=loadGuestWorkspace();if(!guest.packageId||guest.source!=="configurator")return;autoImported.current=true;void createProjectDraft(true);},[action,accountStatus,guestPending]);
  const importGuestToProjectDraft=async()=>{
   const guest=loadGuestWorkspace();
   const target=projectDrafts.find(d=>d.id===selectedProjectDraft);
@@ -181,6 +183,8 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
     <p style={{fontSize:12,color:"#64748b"}}>{t("هذا ملخص تفضيلات وليس عرض سعر أو عقدًا أو إثبات شراء.","These are preferences only, not a quote, contract or proof of purchase.")}</p>
    </>:<p>{t("لم تتوفر مسودة محفوظة بعد.","No saved draft available yet.")}</p>}
  </section>}
+ {hubTab==="overview"&&guestPending&&<section style={{padding:18,background:"#fff4db",border:"1px solid #e7c97d",borderRadius:14,marginBottom:16}}><h2>{t("متطلبات الباقة محفوظة","Your package requirements are saved")}</h2><p>{t("جارٍ نقل الاختيارات إلى مشروعك داخل الحساب. إذا لم يتم النقل، يمكنك إكماله يدويًا.","Your selections are being added to your account project. If needed, you can import them manually.")}</p><button type="button" onClick={()=>setHubTab("projects")}>{t("عرض متطلبات المشروع","View project requirements")}</button></section>}
+ {hubTab==="overview"&&projectDrafts.length>0&&<section style={{padding:18,background:"#fff",border:"1px solid #dce4ef",borderRadius:14,marginBottom:16}}><h2>{t("مشروعاتي ومتطلباتي","My projects and requirements")}</h2><p>{t("متطلباتك محفوظة في مشروع مستقل. راجع التفاصيل والمعاينات ثم تابع عروض الإدارة والموافقات والفواتير.","Your requirements are saved as a separate project. Review previews, management quotes, approvals, and invoices.")}</p><button type="button" onClick={()=>setHubTab("projects")}>{t("فتح متطلبات المشروع","Open project requirements")}</button> <button type="button" onClick={()=>setHubTab("quotes")}>{t("طلبات الإدارة وعروض الأسعار","Orders and quotations")}</button> <button type="button" onClick={()=>setHubTab("invoices")}>{t("الفاتورة والدفع","Invoices and payments")}</button></section>}
  {hubTab==="projects"&&<section style={{border:"1px solid #cbd5e1",borderRadius:12,padding:16,marginBottom:18,background:"white"}}>
   <h2>{t("مسودات مشروعاتي المستقلة","My independent project drafts")}</h2>
   <p>{t("كل مشروع له اختيارات منفصلة. اختر المسودة التي تريد استكمالها أو نقل اختيارات المتصفح إليها.","Each project has independent selections. Choose which draft to continue or import into.")}</p>
