@@ -282,7 +282,22 @@ export default function CatalogManager() {
         </label>
         {field("رابط النظام التفاعلي المنشور HTTPS — الصق رابط المعاينة هنا",draft.previewUrl,v=>update("previewUrl",v))}
         <label className="admin-field">سعر بيع الكتالوج الأساسي (جنيه) — قبل إضافات محرك التسعير<input type="number" min="0" step="0.01" value={draft.basePrice??""} onChange={e=>update("basePrice",e.target.value===""?null:Number(e.target.value))}/></label>
-        {field("إضافات القطاع المسعّرة — سطر لكل إضافة: code | اسم | سعر | fixed/monthly/yearly",addonText,setAddonText,true)}
+        <section style={{gridColumn:"1 / -1",border:"1px solid #d6e0ed",borderRadius:14,padding:14}} aria-label="تسعير إضافات الكتالوج">
+          <h3 style={{marginTop:0}}>إضافات هذا الكتالوج وأسعارها</h3>
+          <p>كل إضافة لها اسم وسعر وطريقة احتساب مستقلة. تعديلها هنا يُحدّث الكتالوج الحالي عند الحفظ، ولا يغيّر إضافات الباقات الأخرى.</p>
+          {addonText.split("\n").filter(line=>line.trim()).map((line,index)=>{
+            const parts=line.split("|").map(part=>part.trim());
+            const updatePart=(partIndex:number,value:string)=>setAddonText(previous=>previous.split("\n").map((entry,i)=>{if(i!==index)return entry;const fields=entry.split("|").map(field=>field.trim());while(fields.length<4)fields.push("");fields[partIndex]=value;return fields.join(" | ");}).join("\n"));
+            return <div key={index} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:8,marginBottom:12,padding:10,background:"#f6f9fd",borderRadius:10}}>
+              <label className="admin-field">رمز الربط<input value={parts[0]||""} onChange={e=>updatePart(0,e.target.value)} /></label>
+              <label className="admin-field">اسم الإضافة<input value={parts[1]||""} onChange={e=>updatePart(1,e.target.value)} /></label>
+              <label className="admin-field">السعر بالجنيه<input type="number" min="0" step="0.01" value={parts[2]||""} onChange={e=>updatePart(2,e.target.value)} /></label>
+              <label className="admin-field">طريقة الحساب<select value={parts[3]||"fixed"} onChange={e=>updatePart(3,e.target.value)}><option value="fixed">مرة واحدة</option><option value="monthly">شهري</option><option value="yearly">سنوي</option></select></label>
+              <button type="button" className="button button-outline button-small" onClick={()=>setAddonText(previous=>previous.split("\n").filter((_,i)=>i!==index).join("\n"))}>حذف الإضافة</button>
+            </div>;
+          })}
+          <button type="button" className="button button-outline button-small" onClick={()=>setAddonText(previous=>[previous.trim(),"new_addon | إضافة جديدة | 0 | fixed"].filter(Boolean).join("\n"))}>+ إضافة جديدة</button>
+        </section>
         <label className="admin-field">ترتيب الظهور<input type="number" value={draft.sortOrder} onChange={e=>update("sortOrder",Number(e.target.value))}/></label>
         <label className="check-row"><input type="checkbox" checked={draft.published} onChange={e=>update("published",e.target.checked)}/> منشور في المعرض</label>
         <div className="admin-actions"><button type="submit" className="button" disabled={busy||uploading}>{busy?"جارٍ الحفظ…":"حفظ الكتالوج"}</button></div>
