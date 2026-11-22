@@ -1246,13 +1246,13 @@ app.delete("/api/admin/packages/:id",requireAdmin,requirePermission("products"),
 app.post("/api/admin/options",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=optionSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:"Invalid option",details:parsed.error.issues});
   const x=parsed.data,client=await pool.connect();try{await client.query("BEGIN");const p=await client.query("SELECT id FROM packages WHERE id=$1 FOR SHARE",[x.packageId]);if(!p.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
-    const q=await client.query("INSERT INTO package_options(package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",[x.packageId,x.code,x.name,x.description,x.price,x.pricingType,x.unitLabel,x.isRequired,x.isActive,x.sortOrder,x.visibility]);
+    const q=await client.query("INSERT INTO package_options(package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,visibility) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",[x.packageId,x.code,x.name,x.description,x.price,x.pricingType,x.unitLabel,x.isRequired,x.isActive,x.sortOrder,x.visibility]);
     await auditChange(client,req.admin.email,"package_option.created","package_option",q.rows[0].id,null,q.rows[0]);await client.query("COMMIT");res.status(201).json({option:q.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.patch("/api/admin/options/:id",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=optionSchema.partial().omit({packageId:true,code:true}).strict().safeParse(req.body);if(!parsed.success||!Object.keys(req.body||{}).length||!Object.keys(parsed.data||{}).length)return res.status(400).json({error:"Invalid option update"});
-  const map={name:"name",description:"description",price:"price",pricingType:"pricing_type",unitLabel:"unit_label",isRequired:"is_required",isActive:"is_active",sortOrder:"sort_order"};
+  const map={name:"name",description:"description",price:"price",pricingType:"pricing_type",unitLabel:"unit_label",isRequired:"is_required",isActive:"is_active",sortOrder:"sort_order",visibility:"visibility"};
   const entries=Object.entries(parsed.data),client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM package_options WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Option not found"});}
     const values=[],sets=[];for(const [k,v] of entries){values.push(v);sets.push(map[k]+"=$"+values.length);}values.push(req.params.id);
     const q=await client.query("UPDATE package_options SET "+sets.join(",")+" WHERE id=$"+values.length+" RETURNING *",values);await auditChange(client,req.admin.email,"package_option.updated","package_option",req.params.id,before.rows[0],q.rows[0]);await client.query("COMMIT");res.json({option:q.rows[0]});
