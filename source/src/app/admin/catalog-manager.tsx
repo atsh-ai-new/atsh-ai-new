@@ -91,7 +91,7 @@ export default function CatalogManager() {
     if(draft.previewUrl.trim()){try{const url=new URL(draft.previewUrl.trim());if(url.protocol!=="https:")throw Error();}catch{setError("رابط المعاينة يجب أن يكون رابط HTTPS صالحًا للنظام المنشور.");return;}}
     if(draft.basePrice!==null&&(!Number.isFinite(draft.basePrice)||draft.basePrice<0)){setError("أدخل سعر بيع صحيحًا للكتالوج، أو اتركه فارغًا حتى تحديد السعر.");return;}
     const updated={...draft,previewUrl:draft.previewUrl.trim(),pricedAddons,slug,name:draft.name.trim(),description:draft.description.trim()};
-    if(!updated.name){setError("اسم الكتالوج مطلوب.");return;}
+    if(!updated.name){setError("اسم النظام المخصص مطلوب.");return;}
     const placement=resolvePlacement(updated,sectors);
     if(!placement.sector||!updated.sectorId){setError("اختر قطاعًا رئيسيًا صالحًا.");return;}
     if(updated.subcategoryId&&!placement.subcategory){setError("اختر تصنيفًا فرعيًا تابعًا لهذا القطاع.");return;}
@@ -190,7 +190,7 @@ export default function CatalogManager() {
   const field=(label:string,value:string,onChange:(value:string)=>void,area=false)=> <label className="admin-field">{label}{area?<textarea value={value} onChange={e=>onChange(e.target.value)} rows={3}/>:<input value={value} onChange={e=>onChange(e.target.value)} maxLength={2000}/>}</label>;
 
   return <div className="cms-workspace">
-    <section className="admin-content-card"><div className="admin-content-title"><div><h2>إدارة كتالوجات ومعاينات القطاعات</h2><p>إضافة وتعديل وإخفاء وأرشفة الكتالوجات. تُحفظ التغييرات على خادم المنصة عبر صلاحيات الإدارة، وليس داخل المتصفح.</p></div></div>
+    <section className="admin-content-card"><div className="admin-content-title"><div><h2>إدارة الأنظمة المخصصة ومعاينات القطاعات</h2><p>إضافة وتعديل وإخفاء وأرشفة الكتالوجات. تُحفظ التغييرات على خادم المنصة عبر صلاحيات الإدارة، وليس داخل المتصفح.</p></div></div>
       {notice&&<p role="status" className="success-message">{notice}</p>}{error&&<p role="alert" className="error-message">{error}</p>}
       {!ready?<p>جارٍ تحميل الكتالوجات…</p>:<>
         <div className="admin-actions">
@@ -253,7 +253,7 @@ export default function CatalogManager() {
         <button className="button" disabled={busy}>إضافة التصنيف</button>
       </form>
     </section>}
-    {ready&&<section className="admin-content-card"><h2>{originalSlug?"تعديل الكتالوج":"إضافة كتالوج"}</h2>
+    {ready&&<section className="admin-content-card"><h2>{originalSlug?"تعديل النظام المخصص":"إضافة نظام مخصص"}</h2>
       <form onSubmit={e=>void saveItem(e)} className="admin-form-grid">
         {field("الاسم",draft.name,v=>update("name",v))}
         <label className="admin-field">الرابط (Slug)<input required disabled={Boolean(originalSlug)} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={draft.slug} onChange={e=>update("slug",e.target.value.toLowerCase())}/></label>
