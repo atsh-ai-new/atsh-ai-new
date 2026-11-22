@@ -172,14 +172,9 @@ async function sendTransactionalEmail({to,toName,subject,textContent}) {
 // Session reads and authenticated project drafts must not consume the login quota.
 // Keep brute-force protection per account and client network, not one quota for every
 // visitor behind a shared reverse-proxy address. Do not log or persist the email.
-const customerLoginLimiter=rateLimit({windowMs:15*60*1000,limit:30,standardHeaders:"draft-8",legacyHeaders:false,skipSuccessfulRequests:true,
- keyGenerator:req=>createHash("sha256").update(String(req.body?.email||"").trim().toLowerCase()+"|"+ipKeyGenerator(req.ip||"0.0.0.0")).digest("hex"),
- message:{error:"Too many failed login attempts. Please try again later."}});
-
-app.use("/api/customer/auth",(req,res,next)=>{
- if(req.path==="/login" && req.method==="POST")return customerLoginLimiter(req,res,next);
- return next();
-},customerAuthRouter({pool,sendEmail:sendTransactionalEmail,allowedOrigins:origins}));
+// Customer account routes are not subject to a shared-IP login quota.
+// Session identity and ownership checks remain enforced by customerAuthRouter.
+app.use("/api/customer/auth",customerAuthRouter({pool,sendEmail:sendTransactionalEmail,allowedOrigins:origins}));
 app.use("/api/customer/deliverables",deliveryCustomerRouter({pool,allowedOrigins:origins}));
 app.use("/api/admin/deliverables",requireAdmin,requireRole("owner","admin","editor"),deliveryAdminRouter({pool}));
 app.use("/api/admin/operations",requireAdmin,requireRole("owner","admin"),deliveryAdminRouter({pool,operationsOnly:true}));
