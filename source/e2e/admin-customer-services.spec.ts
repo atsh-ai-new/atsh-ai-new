@@ -27,8 +27,9 @@ test("admin creates and activates a service and sees persisted server responses"
   await route.fulfill({status,contentType:"application/json",body:JSON.stringify(body)});
  });
  await page.goto("/admin");
- await page.getByRole("button",{name:/المشاريع/}).first().click();
- const section=page.getByRole("region",{name:"خدمات العملاء"}).or(page.locator('section[aria-label="خدمات العملاء"]'));
+ await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"العملاء"}).click();
+ await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:/المشاريع/}).click();
+ const section=page.locator('section[aria-label="خدمات العملاء"]');
  await expect(section).toBeVisible();
  await section.getByLabel("اختر مشروع العميل").selectOption(projectId);
  await section.getByRole("button",{name:"عرض الخدمات"}).click();
