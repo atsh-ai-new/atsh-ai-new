@@ -1,3 +1,4 @@
+import { effectivePermissions, hasPermission } from "./team-permissions.js";
 import {validCalendarDate} from './invoice-ledger-rules.js';
 import { deliveryAdminRouter, deliveryCustomerRouter } from "./delivery-control.js";
 import { customerCommercialRouter } from "./customer-commercial.js";
@@ -153,23 +154,8 @@ async function requireAdmin(req,res,next) {
     return res.status(401).json({error:"Session expired"});
   }
 }
-const permissionKeys = ["assistant","customers","content","products","settings","team","audit"];
-const rolePermissions = {
-  owner: permissionKeys,
-  admin: ["assistant","customers","content","products","settings","audit"],
-  editor: ["assistant","content"],
-  sales: ["customers"],
-  viewer: []
-};
-const effectivePermissions = (role, overrides) => {
-  const base = Object.fromEntries(permissionKeys.map(key => [key, rolePermissions[role]?.includes(key) ?? false]));
-  if (overrides && typeof overrides === "object" && !Array.isArray(overrides)) {
-    for (const key of permissionKeys) if (typeof overrides[key] === "boolean") base[key] = overrides[key];
-  }
-  return base;
-};
 const requireRole = (...roles) => (req,res,next) => roles.includes(req.admin?.role) ? next() : res.status(403).json({error:"Insufficient permissions"});
-const requirePermission = key => (req,res,next) => req.admin?.role === "owner" || req.admin?.permissions?.[key] === true ? next() : res.status(403).json({error:"Insufficient permissions"});
+const requirePermission = key => (req,res,next) => hasPermission(req.admin?.role, req.admin?.permissions, key) ? next() : res.status(403).json({error:"Insufficient permissions"});
 const escapeHtml = value => value.replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[character]);
 async function sendTransactionalEmail({to,toName,subject,textContent}) {
   if(!process.env.BREVO_API_KEY)return false;
