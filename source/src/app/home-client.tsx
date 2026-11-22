@@ -277,7 +277,12 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
        const chosenPackage=packageId||savedDraft.packageId;
        const customRequirements=(customer.details||savedDraft.requirements||"").trim();
        if(!chosenSector&&!chosenPackage&&!(savedDraft.projectMode==="custom"&&customRequirements))throw Error(t("لم يتم تحديد نوع المشروع في المسودة. ارجع لاختيار باقة أو مشروع من الكتالوج، ثم أكمل الإضافات.","No project type is selected in this draft. Choose a package or catalog project, then continue with add-ons."));
-       const patch={...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes,source:"catalog" as const}:{}),...(packageId?{packageId,source:"configurator" as const}:{}),options:[...addons,...selectedExtraOptionIds].slice(0,30),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||savedDraft.businessName||"",requirements:customRequirements};
+       const patch={...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes,source:"catalog" as const}:{}),...(packageId?{packageId,source:"configurator" as const}:{}),options:[...addons,...selectedExtraOptionIds].slice(0,30),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||savedDraft.businessName||"",requirements:customRequirements,
+        pages,bilingual,identity,contentMode:content==="writing"?"writing" as const:"provided" as const,
+        hosting,domainChoice:domain,maintenance,startWindow:startWindowLabel,contactWindow:contactWindowLabel,
+        stylePreference,inspirationLinks:inspirationLinks.filter(Boolean).slice(0,20),
+        compliance:customer.compliance,logoName,customerName:customer.name,customerEmail:customer.email,customerPhone:customer.phone,
+        optionQuantities:Object.fromEntries(selectedServerOptions.filter((option):option is BackendOption=>Boolean(option)&&option.pricing_type==="per_page").map(option=>[option.id,pages]))};
       const response=await fetch(endpoint,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({expectedRevision:Number(body.projectDraft.revision),patch})});
       const result=await response.json().catch(()=>({}));
       if(!response.ok)throw Error(isEnglish?"Unable to save the current project draft":result.error||"تعذر حفظ المسودة؛ راجع التعديلات الجديدة.");
