@@ -10,6 +10,7 @@ import IntegrationStatus from "./integration-status";
 import ContentStudio from "./content-studio";
 import JourneyManager from "./journey-manager";
 import CommercialManager from "./commercial-manager";
+import CustomerServicesAdmin from "./customer-services-admin";
 
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
 type View = "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "theme" | "inbox" | "team" | "audit";
@@ -348,6 +349,7 @@ export default function AdminPage() {
         {view === "pages" && <ContentManager onSaved={loadData} />}
         {view === "works" && <ContentManager initialSlug="works" onSaved={loadData} />}
         {view === "content-studio" && canEditContent && <ContentStudio />}
+        {view === "journey" && <CustomerServicesAdmin canEdit={canEditOrders} />}
         {view === "journey" && <JourneyManager canManageTasks={canEditCatalog} canArchive={user.role === "owner" || user.role === "admin"} canDelete={user.role === "owner"} />}
       {view === "commercial" && <CommercialManager />}
 
