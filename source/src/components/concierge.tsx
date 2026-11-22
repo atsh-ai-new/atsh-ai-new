@@ -127,6 +127,7 @@ export default function Concierge({locale="ar",embedded=false}:{locale?:"ar"|"en
        <button type="submit" disabled={!input.trim()||sending} style={{border:0,borderRadius:10,padding:"10px 14px",background:"#203958",color:"white",cursor:"pointer"}}>{sending?t("جارٍ الرد…","Replying…"):t("إرسال","Send")}</button>
      </form>
    </section>}
+   {!embedded&&<a href="https://wa.me/201007735321?text=%D9%85%D8%B1%D8%AD%D8%A8%D8%A7%D8%8C%20%D8%A3%D8%B1%D9%8A%D8%AF%20%D8%A7%D9%84%D8%A7%D8%B3%D8%AA%D9%81%D8%B3%D8%A7%D8%B1%20%D8%B9%D9%86%20%D8%AE%D8%AF%D9%85%D8%A7%D8%AA%20ATSH%20AI" target="_blank" rel="noopener noreferrer" aria-label={t("محادثة واتساب مع ATSH AI","Chat with ATSH AI on WhatsApp")} style={{position:"fixed",right:18,bottom:18,zIndex:151,display:"inline-flex",alignItems:"center",gap:7,borderRadius:99,background:"#167c4b",color:"#fff",padding:"9px 13px",boxShadow:"0 8px 24px #124e3544",fontSize:12,fontWeight:700,textDecoration:"none"}}>☎ {t("واتساب","WhatsApp")}</a>}
    {!embedded&&<button aria-expanded={open} aria-label={open?t("إغلاق مساعد ATSH AI","Close ATSH AI assistant"):t("فتح مساعد ATSH AI","Open ATSH AI assistant")} onClick={()=>setOpen(v=>!v)} style={{border:0,borderRadius:99,background:"#203958",color:"#fff",padding:"8px 12px",fontSize:12,lineHeight:1.25,boxShadow:"0 8px 30px #20395844",cursor:"pointer",fontWeight:700}}>✦ {open?t("إغلاق المساعد","Close assistant"):t("اسأل مساعد ATSH AI","Ask ATSH AI")}</button>}
  </div>;
 }
