@@ -15,7 +15,7 @@ import CustomerServicesAdmin from "./customer-services-admin";
 
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
 type View = "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "theme" | "inbox" | "team" | "audit";
-type Package = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number };
+type Package = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
 type Option = { id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number };
 type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; linked_project_id?: string | null; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
 type JourneyProject = { id:string; customer_name:string; customer_email:string|null; status:string; created_at:string };
@@ -103,7 +103,7 @@ export default function AdminPage() {
   const [memberPassword, setMemberPassword] = useState("");
   const [memberRole, setMemberRole] = useState<Member["role"]>("sales");
   const [packageDraft, setPackageDraft] = useState<PackageDraft>({ name: "", tagline: "", description: "", price: "", features: "", copyFromPackageId: "", isFeatured: false, isCustomQuote: false, isPublished: false });
-  const [optionDraft, setOptionDraft] = useState<OptionDraft>({ packageId: "", code: "", name: "", description: "", price: "", pricingType: "fixed", unitLabel: "", isRequired: false, isActive: true });
+  const [optionDraft, setOptionDraft] = useState<OptionDraft>({ packageId: "", code: "", name: "", description: "", price: "", pricingType: "fixed", unitLabel: "", isRequired: false, isActive: true, visibility: "both" as const });
 
   const loadData = useCallback(async (role: Role = "viewer") => {
     // Keep independent admin sections usable when one backend endpoint fails.
@@ -258,7 +258,7 @@ export default function AdminPage() {
   const changePackage = <K extends keyof Package,>(id: string, key: K, value: Package[K]) => setPackages((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
   const changeOption = <K extends keyof Option,>(id: string, key: K, value: Option[K]) => setOptions((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
   const savePackage = (item: Package) => save(() => api(`packages/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, tagline: item.tagline, description: item.description, price: item.is_custom_quote ? 0 : Number(item.price), currency: "EGP", features: item.features, isFeatured: item.is_featured, isCustomQuote: item.is_custom_quote, isPublished: item.is_published, sortOrder: item.sort_order }) }), "تم حفظ البطاقة وتحديثها للعملاء.");
-  const saveOption = (item: Option) => save(() => api(`options/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, description: item.description, price: Number(item.price), pricingType: item.pricing_type, unitLabel: item.unit_label, isRequired: item.is_required, isActive: item.is_active, sortOrder: item.sort_order }) }), "تم حفظ الإضافة في قاعدة البيانات.");
+  const saveOption = (item: Option) => save(() => api(`options/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, description: item.description, price: Number(item.price), pricingType: item.pricing_type, unitLabel: item.unit_label, isRequired: item.is_required, isActive: item.is_active, sortOrder: item.sort_order, visibility: item.visibility ?? "both" }) }), "تم حفظ الإضافة في قاعدة البيانات.");
   const removeOption = async (item: Option) => {
     if (!window.confirm(`إيقاف الإضافة "${item.name}"؟ ستختفي من الخيارات الجديدة مع الاحتفاظ بسجل الطلبات السابقة.`)) return;
     setBusy(true); setError(""); setNotice("");
@@ -428,6 +428,7 @@ export default function AdminPage() {
             <label className="admin-field">اسم الإضافة<input required value={optionDraft.name} onChange={(event) => setOptionDraft({ ...optionDraft, name: event.target.value })} /></label>
             <label className="admin-field">السعر<input required type="number" min="0" step="0.01" value={optionDraft.price} onChange={(event) => setOptionDraft({ ...optionDraft, price: event.target.value })} /></label>
             <label className="admin-field">طريقة الحساب<select value={optionDraft.pricingType} onChange={(event) => setOptionDraft({ ...optionDraft, pricingType: event.target.value as Option["pricing_type"] })}><option value="fixed">مرة واحدة</option><option value="per_page">لكل صفحة</option><option value="yearly">سنوي</option><option value="monthly">شهري</option></select></label>
+            <label className="admin-field">تظهر في<select value={optionDraft.visibility} onChange={(event)=>setOptionDraft({...optionDraft,visibility:event.target.value as "both"|"packages"|"systems"})}><option value="both">الباقات والأنظمة المخصصة</option><option value="packages">الباقات فقط</option><option value="systems">الأنظمة المخصصة فقط</option></select></label>
             <label className="admin-field">وحدة السعر<input maxLength={40} placeholder="مثل: صفحة" value={optionDraft.unitLabel} onChange={(event) => setOptionDraft({ ...optionDraft, unitLabel: event.target.value })} /></label>
             <label className="admin-field" style={{ gridColumn: "1 / -1" }}>الوصف<input value={optionDraft.description} onChange={(event) => setOptionDraft({ ...optionDraft, description: event.target.value })} /></label>
             <label className="check-row"><input type="checkbox" checked={optionDraft.isRequired} onChange={(event) => setOptionDraft({ ...optionDraft, isRequired: event.target.checked })} /> إلزامية</label>
@@ -439,6 +440,7 @@ export default function AdminPage() {
               <label className="admin-field">اسم الإضافة<input value={item.name} onChange={(event) => changeOption(item.id, "name", event.target.value)} /></label>
               <label className="admin-field">السعر<input type="number" min="0" step="0.01" value={item.price} onChange={(event) => changeOption(item.id, "price", Number(event.target.value))} /></label>
               <label className="admin-field">طريقة الحساب<select value={item.pricing_type} onChange={(event) => changeOption(item.id, "pricing_type", event.target.value as Option["pricing_type"])}><option value="fixed">مرة واحدة</option><option value="per_page">لكل صفحة</option><option value="yearly">سنوي</option><option value="monthly">شهري</option></select></label>
+              <label className="admin-field">تظهر في<select value={item.visibility??"both"} onChange={(event)=>changeOption(item.id,"visibility",event.target.value as Option["visibility"])}><option value="both">الباقات والأنظمة المخصصة</option><option value="packages">الباقات فقط</option><option value="systems">الأنظمة المخصصة فقط</option></select></label>
               <label className="admin-field">وحدة السعر<input value={item.unit_label} onChange={(event) => changeOption(item.id, "unit_label", event.target.value)} /></label>
               <label className="admin-field" style={{ gridColumn: "1 / -1" }}>الوصف<input value={item.description} onChange={(event) => changeOption(item.id, "description", event.target.value)} /></label>
             </div>
