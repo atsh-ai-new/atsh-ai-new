@@ -760,7 +760,7 @@ app.get("/api/admin/orders",requireAdmin,route(async(req,res)=>{
   res.json({orders:result.rows});
 }));
 app.get("/api/admin/orders/:id",requireAdmin,route(async(req,res)=>{
-  const result=await pool.query("SELECT o.id,o.reference,o.customer_name,o.phone,o.email,o.notes,o.status,o.currency,o.subtotal,o.vat_rate,o.vat_amount,o.total,o.snapshot,o.created_at,o.updated_at,o.assigned_to,t.display_name AS assigned_to_name FROM orders o LEFT JOIN team_members t ON t.id=o.assigned_to WHERE o.id=$1",[req.params.id]);
+  const result=await pool.query("SELECT o.id,o.reference,o.customer_name,o.phone,o.email,o.notes,o.status,o.currency,o.subtotal,o.vat_rate,o.vat_amount,o.total,o.snapshot,o.created_at,o.updated_at,o.assigned_to,t.display_name AS assigned_to_name,l.project_id AS linked_project_id FROM orders o LEFT JOIN team_members t ON t.id=o.assigned_to LEFT JOIN customer_journey_order_links l ON l.order_id=o.id WHERE o.id=$1",[req.params.id]);
   if(!result.rowCount)return res.status(404).json({error:"Order not found"});
   res.json({order:result.rows[0]});
 }));
