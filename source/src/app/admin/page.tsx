@@ -10,6 +10,7 @@ import IntegrationStatus from "./integration-status";
 import ContentStudio from "./content-studio";
 import JourneyManager from "./journey-manager";
 import CommercialManager from "./commercial-manager";
+import CustomerServicesAdmin from "./customer-services-admin";
 
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
 type View = "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "theme" | "inbox" | "team" | "audit";
@@ -39,10 +40,10 @@ const nav: Array<{ id: View; label: string; icon: string }> = [
 ];
 const adminGroups: Array<{label:string;views:View[]}>= [
  {label:"نظرة عامة",views:["overview"]},
- {label:"المساعد الذكي",views:["assistant-knowledge","integrations"]},
- {label:"العملاء",views:["inbox","journey","commercial"]},
- {label:"الفريق",views:["team","audit"]},
- {label:"محتوى المنصة",views:["pages","content","works","content-studio","theme"]},
+ {label:"المساعد الذكي",views:["assistant-knowledge"]},
+ {label:"العملاء",views:["inbox","journey"]},
+ {label:"الفريق",views:["team"]},
+ {label:"محتوى المنصة",views:["pages","content-studio"]},
  {label:"المنتجات",views:["options"]}
 ];
 const defaultTheme: Theme = { navy: "#203958", blue: "#4c78ae", gold: "#b59a6b", page: "#faf9f5", logoUrl: "/images/atsh-logo.jpg", heroImageUrl: "/images/atsh-hero.jpg", backgroundImageUrl: "", fontFamily: "IBM Plex Sans Arabic", cardRadius: 16 };
@@ -335,7 +336,7 @@ export default function AdminPage() {
       <aside className="admin-sidebar"><a className="admin-brand" href="/"><img src={theme.logoUrl || "/images/atsh-logo.jpg"} alt="" /><span><strong>ATSH <b>AI</b></strong><small>مركز الإدارة</small></span></a><div className="admin-nav-label">إدارة المنصة</div><nav className="admin-nav" aria-label="أقسام لوحة الإدارة">{adminGroups.map(group=>{const allowed=visibleNav.filter(item=>group.views.includes(item.id));if(!allowed.length)return null;const active=allowed.some(item=>item.id===view);return <div key={group.label}><button type="button" className={active?"active":""} style={{fontWeight:800,marginTop:10}} onClick={()=>{setView(allowed[0].id);setError("");setNotice("");}}>{group.label}</button>{active&&allowed.length>1&&<div style={{paddingInlineStart:14}}>{allowed.map(item=><button type="button" key={item.id} className={view===item.id?"active":""} onClick={()=>{setView(item.id);setError("");setNotice("");}}><span>{item.icon}</span>{item.label}</button>)}</div>}</div>})}</nav><div className="admin-sidebar-bottom"><div className="connection-pill"><i />متصل بخادم ATSH AI</div></div></aside>
       <section className="admin-main">
         <header className="admin-topbar"><div><h1>{title}</h1><p>تغييراتك تحفظ مباشرة في قاعدة بيانات المنصة مع سجل تدقيق.</p></div><div className="admin-top-actions"><a className="language-pill" href="/">عرض الموقع ↗</a><div className="admin-identity"><span className="admin-avatar">{user.email.slice(0, 1).toUpperCase()}</span><span><strong>{user.email}</strong><small>{roleLabels[user.role]}</small></span></div><button className="inline-add" onClick={logout}>خروج</button></div></header>
-        <nav aria-label="تبويبات الإدارة السريعة" style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16}}>{([{id:"content",label:"التعديلات النصية"},{id:"options",label:"المنتجات"},{id:"theme",label:"التصميم والضريبة"}] as Array<{id:View;label:string}>).filter(item=>visibleNav.some(navItem=>navItem.id===item.id)).map(item=><button key={item.id} type="button" className={view===item.id?"button button-small":"button button-outline button-small"} onClick={()=>{setView(item.id);setError("");setNotice("");}}>{item.label}</button>)}</nav>
+        
         {error && <div className="error-message" role="alert">{error}</div>}{notice && <div className="success-message" role="status">{notice}</div>}
 
         {view === "overview" && <><div className="admin-stats"><article className="admin-stat"><span>كل الطلبات</span><strong>{orders.length + journeyProjects.length}</strong><small>محفوظة على خادم المنصة</small></article><article className="admin-stat"><span>طلبات جديدة</span><strong>{newOrders + journeyProjects.filter(project => project.status === "draft" || project.status === "configured").length}</strong><small>تحتاج إلى متابعة</small></article><article className="admin-stat"><span>الباقات المنشورة</span><strong>{packages.filter((item) => item.is_published).length}</strong><small>بالجنيه المصري</small></article><article className="admin-stat"><span>أعضاء الفريق</span><strong>{members.filter((item) => item.is_active).length}</strong><small>حسابات نشطة</small></article></div><section className="admin-content-card"><div className="admin-content-title"><div><h2>أحدث الطلبات</h2><p>تصل بيانات العميل والبريد والهاتف إلى صندوق الإدارة.</p></div><button className="inline-add" onClick={() => setView("inbox")}>فتح الطلبات ←</button></div><OrderTable orders={orders.slice(0, 6)} members={members} onChange={updateOrder} onSendEmail={sendCustomerEmail} canSend={canEditOrders && emailStatus.configured} readOnly={!canEditOrders} /></section></>}
@@ -348,6 +349,7 @@ export default function AdminPage() {
         {view === "pages" && <ContentManager onSaved={loadData} />}
         {view === "works" && <ContentManager initialSlug="works" onSaved={loadData} />}
         {view === "content-studio" && canEditContent && <ContentStudio />}
+        {view === "journey" && <CustomerServicesAdmin canEdit={canEditOrders} />}
         {view === "journey" && <JourneyManager canManageTasks={canEditCatalog} canArchive={user.role === "owner" || user.role === "admin"} canDelete={user.role === "owner"} />}
       {view === "commercial" && <CommercialManager />}
 

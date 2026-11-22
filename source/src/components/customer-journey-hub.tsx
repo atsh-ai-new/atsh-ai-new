@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 
-export type HubTab="overview"|"projects"|"quotes"|"contracts"|"invoices"|"deliveries"|"assistant"|"settings";
+export type HubTab="overview"|"projects"|"messages"|"preview"|"services"|"quotes"|"contracts"|"invoices"|"deliveries"|"assistant"|"settings";
 type Props={
  locale?:"ar"|"en";
  active:HubTab;onTab:(tab:HubTab)=>void;
@@ -13,14 +13,17 @@ type Props={
 };
 const tabs:Array<{id:HubTab;label:string}>= [
  {id:"overview",label:"الرئيسية"},
- {id:"projects",label:"طلباتي"},
+ {id:"projects",label:"الباقة والمشروع"},
+ {id:"messages",label:"مراسلات الإدارة"},
+ {id:"preview",label:"معاينة المشروع"},
+ {id:"services",label:"خدماتي المستمرة"},
  {id:"quotes",label:"عروض الإدارة"},
  {id:"invoices",label:"الفواتير والدفع"},
  {id:"settings",label:"حسابي"}
 ];
 const stages=["اختيار المواصفات","تخصيص النموذج","اعتماد المعاينة","عرض السعر والعقد","المدفوعات","التنفيذ والتسليم"];
 export default function CustomerJourneyHub(props:Props){const en=props.locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
- const translatedTabs:Record<HubTab,string>={overview:"Overview",projects:"My requests",quotes:"Management offers",contracts:"Contracts",invoices:"Invoices & payments",deliveries:"Deliverables",assistant:"AI assistant",settings:"Account settings"};
+ const translatedTabs:Record<HubTab,string>={overview:"Overview",projects:"Package & project",messages:"Management messages",preview:"Project preview",services:"Ongoing services",quotes:"Management offers",contracts:"Contracts",invoices:"Invoices & payments",deliveries:"Deliverables",assistant:"AI assistant",settings:"Account settings"};
  const translatedStages=["Select requirements","Customize solution","Approve preview","Quote & contract","Payments","Build & delivery"];
  const counts=[{title:"مشروعاتي",number:props.draftCount},{title:"طلبات قيد المتابعة",number:props.projectCount},{title:"عروض أسعار",number:props.quoteCount}];
  const previewStatus=props.currentPreviewStatus;
@@ -34,7 +37,7 @@ export default function CustomerJourneyHub(props:Props){const en=props.locale===
     <div style={{display:"flex",flexWrap:"wrap",gap:9}}><Link href={`${base}/start`} style={{background:"#fff",color:"#203958",borderRadius:11,padding:"12px 16px",fontWeight:800,textDecoration:"none"}}>{t("مشروع جديد ←","New project →")}</Link><Link href={`${base}/catalog`} style={{border:"1px solid #a9bad0",color:"white",borderRadius:11,padding:"12px 16px",fontWeight:800,textDecoration:"none"}}>{t("المعرض التفاعلي","Interactive catalog")}</Link></div>
   </header>
   <nav aria-label={t("أقسام حساب العميل","Customer account navigation")} className="atsh-hub-nav">
-    {tabs.map(tab=><button key={tab.id} className="atsh-hub-tab" type="button" aria-current={props.active===tab.id?"page":undefined} onClick={()=>props.onTab(tab.id)}>{en?translatedTabs[tab.id]:tab.label}</button>)}
+    {tabs.filter(tab=>tab.id!=="services"||["delivered","support"].includes(props.currentJourneyStatus||"")).map(tab=><button key={tab.id} className="atsh-hub-tab" type="button" aria-current={props.active===tab.id?"page":undefined} onClick={()=>props.onTab(tab.id)}>{en?translatedTabs[tab.id]:tab.label}</button>)}
   </nav>
   {props.active==="overview"&&<section aria-label={t("ملخص رحلة العميل","Customer journey overview")}>
    <div className="atsh-hub-stats">

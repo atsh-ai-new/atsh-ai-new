@@ -5,6 +5,7 @@ on:
       - fix/unified-data-flows-20261121
       - audit/admin-dashboard-modernization-20261122
       - fix/admin-mobile-project-team-controls-20261122
+      - feature/unified-four-screens-20261122
   workflow_dispatch:
 
 permissions:
@@ -67,6 +68,13 @@ jobs:
         run: |
           psql -h localhost -U atsh_ci -d atsh_ci -v ON_ERROR_STOP=1 -f source/backend/db/journey_project_archive_20261122.sql
           psql -h localhost -U atsh_ci -d atsh_ci -v ON_ERROR_STOP=1 -f source/backend/db/journey_project_archive_20261122.sql
+      - name: Apply customer service entitlement migrations
+        run: |
+          psql -h localhost -U atsh_ci -d atsh_ci -v ON_ERROR_STOP=1 -f source/backend/db/customer_auth_stage15.sql
+          psql -h localhost -U atsh_ci -d atsh_ci -v ON_ERROR_STOP=1 -f source/backend/db/customer_project_drafts_stage44.sql
+          psql -h localhost -U atsh_ci -d atsh_ci -v ON_ERROR_STOP=1 -f source/backend/db/customer_service_entitlements_stage55.sql
+      - name: Test service activation pause and project deletion cascade
+        run: psql -h localhost -U atsh_ci -d atsh_ci -v ON_ERROR_STOP=1 -f source/backend/test/customer-services-smoke.sql
       - name: Exercise team and project deletion on PostgreSQL
         run: psql -h localhost -U atsh_ci -d atsh_ci -v ON_ERROR_STOP=1 -f source/backend/test/admin-deletion-smoke.sql
       - name: Exercise project task creation and updates

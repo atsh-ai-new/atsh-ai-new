@@ -71,6 +71,7 @@ await pool.query(await readFile(new URL("../db/customer_workspace_stage41.sql", 
 await pool.query(await readFile(new URL("../db/contract_templates_stage43.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_project_drafts_stage44.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_preview_stage45.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/customer_service_entitlements_stage55.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_project_logos_stage46.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/visitor_ai_usage_stage51.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql", import.meta.url), "utf8"));
@@ -1106,6 +1107,46 @@ app.patch("/api/admin/pages/:slug",requireAdmin,requirePermission("content"),rou
     const saved=await client.query("INSERT INTO site_pages(slug,locale,content,is_published,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,is_published=EXCLUDED.is_published,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING *",[req.params.slug,parsed.data.locale,JSON.stringify(parsed.data.content),parsed.data.isPublished,req.admin.email]);
     await auditChange(client,req.admin.email,"page.updated","site_page",saved.rows[0].id,before.rows[0]||null,saved.rows[0]);await client.query("COMMIT");res.json({page:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
+const entitlementPayload=z.object({
+ projectDraftId:z.string().uuid(),
+ serviceCode:z.string().trim().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/),
+ serviceName:z.string().trim().min(2).max(160),
+ description:z.string().max(4000).default(""),
+ sourceType:z.enum(["package","addon","offer","manual"]),
+ sourceId:z.string().max(120).nullable().optional(),
+ status:z.enum(["pending","active","paused","expired","cancelled"]).default("pending"),
+ expiresAt:z.string().datetime({offset:true}).nullable().optional()
+}).strict();
+app.get("/api/admin/customer-service-projects",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
+ const result=await pool.query(`SELECT d.id,d.title,d.linked_journey_id,a.name AS customer_name,a.email AS customer_email
+ FROM customer_project_drafts d JOIN customer_accounts a ON a.id=d.customer_id
+ ORDER BY d.updated_at DESC LIMIT 250`);
+ res.json({projects:result.rows});
+}));
+app.get("/api/admin/customer-services",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+ const projectId=z.string().uuid().safeParse(req.query.projectDraftId);
+ if(!projectId.success)return res.status(400).json({error:"Valid projectDraftId required"});
+ const result=await pool.query("SELECT e.id,e.project_draft_id,e.service_code,e.service_name,e.description,e.source_type,e.source_id,e.status,e.activated_at,e.expires_at FROM customer_service_entitlements e WHERE e.project_draft_id=$1 ORDER BY e.created_at DESC",[projectId.data]);
+ res.json({services:result.rows});
+}));
+app.post("/api/admin/customer-services",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+ const parsed=entitlementPayload.safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid service",details:parsed.error.issues});
+ const x=parsed.data;
+ const result=await pool.query(`INSERT INTO customer_service_entitlements(customer_id,project_draft_id,service_code,service_name,description,source_type,source_id,status,activated_at,expires_at)
+ SELECT d.customer_id,d.id,$2,$3,$4,$5,$6,$7,CASE WHEN $7='active' THEN now() ELSE NULL END,$8
+ FROM customer_project_drafts d WHERE d.id=$1 RETURNING id,service_name,status`,
+ [x.projectDraftId,x.serviceCode,x.serviceName,x.description,x.sourceType,x.sourceId??null,x.status,x.expiresAt??null]);
+ if(!result.rowCount)return res.status(404).json({error:"Project draft not found"});
+ res.status(201).json({service:result.rows[0]});
+}));
+app.patch("/api/admin/customer-services/:id",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+ const parsed=z.object({status:z.enum(["pending","active","paused","expired","cancelled"])}).strict().safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid service status"});
+ const result=await pool.query(`UPDATE customer_service_entitlements SET status=$2,activated_at=CASE WHEN $2='active' THEN COALESCE(activated_at,now()) ELSE activated_at END,updated_at=now() WHERE id=$1 RETURNING id,service_name,status,activated_at`,[req.params.id,parsed.data.status]);
+ if(!result.rowCount)return res.status(404).json({error:"Service not found"});
+ res.json({service:result.rows[0]});
 }));
 app.get("/api/admin/team",requireAdmin,requirePermission("team"),requireRole("owner","admin"),route(async(_req,res)=>{
   const result=await pool.query("SELECT id,email,display_name,role,is_active,permission_overrides,created_at,updated_at FROM team_members ORDER BY created_at");
