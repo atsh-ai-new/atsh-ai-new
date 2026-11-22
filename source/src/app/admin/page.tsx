@@ -33,14 +33,14 @@ const nav: Array<{ id: View; label: string; icon: string }> = [
   { id: "content-studio", label: "منشئ المحتوى", icon: "✦" },
   { id: "journey", label: "توجيه العملاء", icon: "◎" },
   { id: "commercial", label: "العروض والعقود", icon: "▤" },
-  { id: "options", label: "مركز التسعير والكتالوجات", icon: "▦" },
+  { id: "options", label: "المعروض", icon: "▦" },
   { id: "theme", label: "الألوان والضريبة", icon: "◉" }, { id: "inbox", label: "طلبات العملاء", icon: "✉" },
   { id: "team", label: "فريق الإدارة", icon: "♙" }, { id: "audit", label: "سجل التغييرات", icon: "≡" }
 ];
 const adminGroups: Array<{label:string;views:View[]}>= [
  {label:"الرئيسية",views:["overview","inbox"]},
  {label:"المحتوى والتصميم",views:["content","pages","works","content-studio","theme"]},
- {label:"التسعير والكتالوجات",views:["options"]},
+ {label:"المعروض",views:["options"]},
  {label:"العملاء والتشغيل",views:["journey","commercial","assistant-knowledge"]},
  {label:"الإدارة والنظام",views:["integrations","team","audit"]}
 ];
@@ -60,6 +60,7 @@ export default function AdminPage() {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [view, setView] = useState<View>("overview");
+  const [offeringTab, setOfferingTab] = useState<"packages" | "systems">("packages");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
@@ -319,7 +320,7 @@ export default function AdminPage() {
       <aside className="admin-sidebar"><a className="admin-brand" href="/"><img src={theme.logoUrl || "/images/atsh-logo.jpg"} alt="" /><span><strong>ATSH <b>AI</b></strong><small>مركز الإدارة</small></span></a><div className="admin-nav-label">إدارة المنصة</div><nav className="admin-nav" aria-label="أقسام لوحة الإدارة">{adminGroups.map(group=><div key={group.label}><div className="admin-nav-label" style={{marginTop:14,fontWeight:800}}>{group.label}</div>{visibleNav.filter(item=>group.views.includes(item.id)).map(item=><button type="button" key={item.id} className={view===item.id?"active":""} onClick={()=>{setView(item.id);setError("");setNotice("");}}><span>{item.icon}</span>{item.label}</button>)}</div>)}</nav><div className="admin-sidebar-bottom"><div className="connection-pill"><i />متصل بخادم ATSH AI</div></div></aside>
       <section className="admin-main">
         <header className="admin-topbar"><div><h1>{title}</h1><p>تغييراتك تحفظ مباشرة في قاعدة بيانات المنصة مع سجل تدقيق.</p></div><div className="admin-top-actions"><a className="language-pill" href="/">عرض الموقع ↗</a><div className="admin-identity"><span className="admin-avatar">{user.email.slice(0, 1).toUpperCase()}</span><span><strong>{user.email}</strong><small>{roleLabels[user.role]}</small></span></div><button className="inline-add" onClick={logout}>خروج</button></div></header>
-        <nav aria-label="تبويبات الإدارة السريعة" style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16}}>{([{id:"content",label:"التعديلات النصية"},{id:"options",label:"مركز التسعير والكتالوجات"},{id:"theme",label:"التصميم والضريبة"}] as Array<{id:View;label:string}>).filter(item=>visibleNav.some(navItem=>navItem.id===item.id)).map(item=><button key={item.id} type="button" className={view===item.id?"button button-small":"button button-outline button-small"} onClick={()=>{setView(item.id);setError("");setNotice("");}}>{item.label}</button>)}</nav>
+        <nav aria-label="تبويبات الإدارة السريعة" style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16}}>{([{id:"content",label:"التعديلات النصية"},{id:"options",label:"المعروض"},{id:"theme",label:"التصميم والضريبة"}] as Array<{id:View;label:string}>).filter(item=>visibleNav.some(navItem=>navItem.id===item.id)).map(item=><button key={item.id} type="button" className={view===item.id?"button button-small":"button button-outline button-small"} onClick={()=>{setView(item.id);setError("");setNotice("");}}>{item.label}</button>)}</nav>
         {error && <div className="error-message" role="alert">{error}</div>}{notice && <div className="success-message" role="status">{notice}</div>}
 
         {view === "overview" && <><div className="admin-stats"><article className="admin-stat"><span>كل الطلبات</span><strong>{orders.length + journeyProjects.length}</strong><small>محفوظة على خادم المنصة</small></article><article className="admin-stat"><span>طلبات جديدة</span><strong>{newOrders + journeyProjects.filter(project => project.status === "draft" || project.status === "configured").length}</strong><small>تحتاج إلى متابعة</small></article><article className="admin-stat"><span>الباقات المنشورة</span><strong>{packages.filter((item) => item.is_published).length}</strong><small>بالجنيه المصري</small></article><article className="admin-stat"><span>أعضاء الفريق</span><strong>{members.filter((item) => item.is_active).length}</strong><small>حسابات نشطة</small></article></div><section className="admin-content-card"><div className="admin-content-title"><div><h2>أحدث الطلبات</h2><p>تصل بيانات العميل والبريد والهاتف إلى صندوق الإدارة.</p></div><button className="inline-add" onClick={() => setView("inbox")}>فتح الطلبات ←</button></div><OrderTable orders={orders.slice(0, 6)} members={members} onChange={updateOrder} onSendEmail={sendCustomerEmail} canSend={canEditOrders && emailStatus.configured} readOnly={!canEditOrders} /></section></>}
@@ -335,9 +336,9 @@ export default function AdminPage() {
         {view === "journey" && <JourneyManager canManageTasks={canEditCatalog} canArchive={user.role === "owner" || user.role === "admin"} canDelete={user.role === "owner"} />}
       {view === "commercial" && <CommercialManager />}
 
-        {view === "options" && <section className="admin-content-card"><h2>مركز التسعير والكتالوجات</h2><p>بوابة واحدة لإدارة مواصفات وأسعار الباقات وإضافاتها والكتالوجات والضريبة. يتم الحفظ عبر الواجهات الحالية دون تغيير البيانات المخزنة.</p><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["unified-package-pricing","الباقات"],["unified-package-options","إضافات الباقات"],["unified-catalog-pricing","الكتالوجات"],["unified-vat","الضريبة"]].map(([id,label])=><button key={id} type="button" className="button button-outline button-small" onClick={()=>document.getElementById(id)?.scrollIntoView({behavior:"smooth"})}>{label}</button>)}</div></section>}
+        {view === "options" && <section className="admin-content-card" aria-label="المعروض"><h2>المعروض</h2><p>إدارة الباقات والأنظمة المخصصة من مكان واحد، دون تكرار نماذج الإنشاء.</p><div role="tablist" aria-label="أقسام المعروض" style={{display:"flex",gap:8,flexWrap:"wrap"}}><button type="button" role="tab" aria-selected={offeringTab==="packages"} className={offeringTab==="packages"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("packages")}>الباقات</button><button type="button" role="tab" aria-selected={offeringTab==="systems"} className={offeringTab==="systems"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("systems")}>أنظمة مخصصة</button></div></section>}
 
-        {view === "options" && <section id="unified-package-pricing" className="admin-content-card">
+        {view === "options" && offeringTab === "packages" && <section id="unified-package-pricing" className="admin-content-card">
           <div className="admin-content-title"><div><h2>الباقات والأسعار</h2><p>عدّل البطاقة ومزاياها، أو أنشئ باقة جديدة. السعر بالجنيه المصري، ويمكن نسخ خيارات باقة موجودة كبداية.</p></div></div>
           <form className="admin-package-create" onSubmit={addPackage}>
             <label className="admin-field">اسم الباقة<input required maxLength={160} value={packageDraft.name} onChange={(event) => setPackageDraft({ ...packageDraft, name: event.target.value })} /></label>
@@ -363,7 +364,7 @@ export default function AdminPage() {
           </article>)}
         </section>}
 
-        {view === "options" && <><section id="unified-package-options" className="admin-content-card">
+        {view === "options" && offeringTab === "packages" && <><section id="unified-package-options" className="admin-content-card">
           <div className="admin-content-title"><div><h2>خيارات الباقات وإضافاتها</h2><p>أنشئ إضافات، واربطها بباقة، وعدّل السعر أو طريقة احتسابه. رمز الربط ثابت بعد الإنشاء.</p></div></div>
           <form className="admin-team-form admin-option-create" onSubmit={addOption}>
             <label className="admin-field">الباقة<select required value={optionDraft.packageId} onChange={(event) => setOptionDraft({ ...optionDraft, packageId: event.target.value })}><option value="">اختر باقة</option>{packages.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
@@ -387,7 +388,8 @@ export default function AdminPage() {
             </div>
             <div className="admin-package-controls"><label className="check-row"><input type="checkbox" checked={item.is_required} onChange={(event) => changeOption(item.id, "is_required", event.target.checked)} /> إلزامية</label><label className="check-row"><input type="checkbox" checked={item.is_active} onChange={(event) => changeOption(item.id, "is_active", event.target.checked)} /> متاحة للعملاء</label><button className="button button-small" disabled={busy} onClick={() => saveOption(item)}>حفظ التعديلات</button></div>
           </article>)}
-        </section><div id="unified-catalog-pricing">{canEditCatalog&&<CatalogManager />}</div><section id="unified-vat" className="admin-content-card"><h2>ضريبة القيمة المضافة</h2><p>نسبة الضريبة المستخدمة في ملخص التسعير.</p><label className="admin-field">الضريبة %<input type="number" min="0" max="100" step="0.01" value={vatRate} onChange={(event)=>setVatRate(Number(event.target.value))}/></label><div className="admin-actions"><button type="button" className="button" disabled={busy} onClick={saveTheme}>حفظ نسبة الضريبة</button></div></section></>}
+        </section><section id="unified-vat" className="admin-content-card"><h2>ضريبة القيمة المضافة</h2><p>نسبة الضريبة المستخدمة في ملخص التسعير.</p><label className="admin-field">الضريبة %<input type="number" min="0" max="100" step="0.01" value={vatRate} onChange={(event)=>setVatRate(Number(event.target.value))}/></label><div className="admin-actions"><button type="button" className="button" disabled={busy} onClick={saveTheme}>حفظ نسبة الضريبة</button></div></section></>}
+        {view === "options" && offeringTab === "systems" && <div id="unified-catalog-pricing">{canEditCatalog && <CatalogManager />}</div>}
 
         {view === "theme" && <section className="admin-content-card"><div className="admin-content-title"><div><h2>هوية الموقع وتنسيقه</h2><p>تحكم في الألوان والخط والشعار وصور الواجهة والخلفية. الصور المرفوعة تحفظ في قاعدة بيانات المنصة.</p></div></div><div className="theme-swatches">{([ ["navy","الكحلي"], ["blue","الأزرق"], ["gold","الذهبي"], ["page","الخلفية"] ] as Array<["navy" | "blue" | "gold" | "page",string]>).map(([key,label]) => <label className="theme-swatch" key={key}>{label}<input type="color" value={theme[key]} onChange={(event) => setTheme({ ...theme, [key]: event.target.value })} /></label>)}</div><div className="admin-form-grid"><ImageSetting label="الشعار" value={theme.logoUrl} onChange={(value) => setTheme({ ...theme, logoUrl: value })} onUpload={(event) => void uploadThemeImage(event, "logoUrl")} busy={busy} /><ImageSetting label="صورة الواجهة الرئيسية" value={theme.heroImageUrl} onChange={(value) => setTheme({ ...theme, heroImageUrl: value })} onUpload={(event) => void uploadThemeImage(event, "heroImageUrl")} busy={busy} /><ImageSetting label="خلفية الموقع" value={theme.backgroundImageUrl} onChange={(value) => setTheme({ ...theme, backgroundImageUrl: value })} onUpload={(event) => void uploadThemeImage(event, "backgroundImageUrl")} busy={busy} /></div><div className="admin-form-grid"><label className="admin-field">الخط<select value={theme.fontFamily} onChange={(event) => setTheme({ ...theme, fontFamily: event.target.value as Theme["fontFamily"] })}><option>IBM Plex Sans Arabic</option><option>Cairo</option><option>Tajawal</option></select></label><label className="admin-field">استدارة البطاقات ({theme.cardRadius}px)<input type="range" min="0" max="32" step="1" value={theme.cardRadius} onChange={(event) => setTheme({ ...theme, cardRadius: Number(event.target.value) })} /></label></div><div className="admin-actions"><button className="button" disabled={busy} onClick={saveTheme}>حفظ الهوية والتنسيق ✓</button></div></section>}
 
