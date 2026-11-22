@@ -7,7 +7,7 @@ import {queueJourneyEvent} from './customer-event-outbox.js';
 import {createCustomerJourneyProject} from './customer-project-service.js';
 
 const emailSchema=z.string().trim().email().max(254).transform(v=>v.toLowerCase());
-const passwordSchema=z.string().min(12).max(128);
+const passwordSchema=z.string().min(6).max(128);
 const hash=v=>createHash('sha256').update(v).digest('hex');
 const secret=()=>randomBytes(32).toString('hex');
 const sessionCookie='atsh_customer';
@@ -81,7 +81,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   const p=z.object({token:z.string().regex(/^[a-f0-9]{64}$/),password:passwordSchema}).safeParse(req.body);if(!p.success)return res.status(400).json({error:'Invalid reset request'});
   const passwordHash=await bcrypt.hash(p.data.password,12);const client=await pool.connect();try{await client.query('BEGIN');const q=await client.query("UPDATE customer_auth_tokens SET used_at=now() WHERE token_hash=$1 AND purpose='reset' AND used_at IS NULL AND expires_at>now() RETURNING customer_id",[hash(p.data.token)]);
    if(!q.rowCount){await client.query('ROLLBACK');return res.status(400).json({error:'Invalid or expired token'});}
-   await client.query('UPDATE customer_accounts SET password_hash=$1,session_version=session_version+1 WHERE id=$2',[passwordHash,q.rows[0].customer_id]);await client.query('COMMIT');res.clearCookie(sessionCookie,cookieOptions);res.json({reset:true});
+   await client.query('UPDATE customer_accounts SET password_hash=$1,session_version=session_version+1 WHERE id=$2',[passwordHash,q.rows[0].customer_id]);await client.query('COMMIT');await session(res,q.rows[0].customer_id);res.json({reset:true,authenticated:true});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
  }));
  router.post('/google',safe(async(req,res)=>{
