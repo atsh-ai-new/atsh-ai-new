@@ -432,11 +432,8 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   };
 
   const continueFromContact = () => {
-    if(customer.name.trim().length<2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customer.email.trim()) || !validCustomerPhone){
-      setRequestState("error");
-      setRequestMessage(t("أكمل الاسم والبريد الإلكتروني الصحيح ورقم هاتف لا يقل عن 7 أرقام قبل المتابعة.","Enter your name, a valid email and a phone number with at least 7 digits to continue."));
-      return;
-    }
+    // Account creation is the next step. Validate contact details at final order submission,
+    // not here: an incomplete phone number must not freeze account navigation.
     setRequestMessage("");
     saveGuestWorkspace({
       packageId:packageId??undefined,domainName:requestedDomainName,
