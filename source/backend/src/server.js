@@ -202,8 +202,36 @@ app.post("/api/admin/journey/projects",requireAdmin,requireRole("owner","admin",
  const result=await pool.query("INSERT INTO customer_journey_projects(customer_name,customer_email,template_id,created_by) VALUES($1,$2,$3,$4) RETURNING id,customer_name,customer_email,template_id,status,created_at",[x.customerName,x.customerEmail||null,x.templateId||null,req.admin.email]);
  res.status(201).json({project:result.rows[0]});
 }));
+app.patch("/api/admin/journey/projects/:id/archive",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const before=await client.query("SELECT * FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
+  if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
+  if(before.rows[0].status==="archived"){await client.query("COMMIT");return res.json({project:before.rows[0]});}
+  const updated=await client.query("UPDATE customer_journey_projects SET status='archived',updated_at=now() WHERE id=$1 RETURNING *",[req.params.id]);
+  await auditChange(client,req.admin.email,"journey.project.archived","customer_journey_project",req.params.id,before.rows[0],updated.rows[0]);
+  await client.query("COMMIT");res.json({project:updated.rows[0]});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
+app.delete("/api/admin/journey/projects/:id",requireAdmin,requireRole("owner"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
+ const client=await pool.connect();try{
+  await client.query("BEGIN");
+  const before=await client.query("SELECT * FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
+  if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
+  const links=await client.query("SELECT 1 FROM customer_journey_order_links WHERE project_id=$1 LIMIT 1",[req.params.id]);
+  if(links.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"المشروع مرتبط بطلب تجاري. استخدم الأرشفة للحفاظ على الطلب والسجل المالي."});}
+  const drafts=await client.query("SELECT 1 FROM customer_project_drafts WHERE linked_journey_id=$1 LIMIT 1",[req.params.id]);
+  if(drafts.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"المشروع مرتبط بمسودة عميل. استخدم الأرشفة بدل الحذف النهائي."});}
+  await client.query("DELETE FROM customer_journey_projects WHERE id=$1",[req.params.id]);
+  await auditChange(client,req.admin.email,"journey.project.deleted","customer_journey_project",req.params.id,before.rows[0],null);
+  await client.query("COMMIT");res.json({deleted:true});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
 app.get("/api/admin/journey/projects",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
- const result=await pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at FROM customer_journey_projects ORDER BY created_at DESC LIMIT 100");
+ const result=await pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at FROM customer_journey_projects WHERE status <> 'archived' ORDER BY created_at DESC LIMIT 100");
  res.json({projects:result.rows});
 }));
 app.get("/api/admin/journey/projects/:id",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
@@ -1058,6 +1086,18 @@ app.delete("/api/admin/team/:id",requireAdmin,requireRole("owner"),route(async(r
     const saved=await client.query("UPDATE team_members SET is_active=false,updated_at=now() WHERE id=$1 RETURNING id,email,display_name,role,is_active,created_at,updated_at",[req.params.id]);
     await auditChange(client,req.admin.email,"team_member.deactivated","team_member",req.params.id,before.rows[0],saved.rows[0]);await client.query("COMMIT");res.json({member:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
+app.post("/api/admin/team/:id/purge",requireAdmin,requireRole("owner"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid member id"});
+ const client=await pool.connect();try{
+  await client.query("BEGIN");
+  const before=await client.query("SELECT * FROM team_members WHERE id=$1 FOR UPDATE",[req.params.id]);
+  if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Team member not found"});}
+  if(before.rows[0].email.toLowerCase()===req.admin.email.toLowerCase()){await client.query("ROLLBACK");return res.status(409).json({error:"لا يمكن حذف حسابك الحالي."});}
+  await client.query("DELETE FROM team_members WHERE id=$1",[req.params.id]);
+  await auditChange(client,req.admin.email,"team_member.deleted","team_member",req.params.id,before.rows[0],null);
+  await client.query("COMMIT");res.json({deleted:true});
+ }catch(e){await client.query("ROLLBACK");if(e.code==="23503")return res.status(409).json({error:"تعذر حذف العضو بسبب بيانات مرتبطة؛ أوقف الحساب بدلًا من الحذف."});throw e;}finally{client.release();}
 }));
 app.get("/api/admin/packages",requireAdmin,route(async(_req,res)=>{
   const [p,o]=await Promise.all([

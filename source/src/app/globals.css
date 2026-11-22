@@ -584,3 +584,17 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .atsh-mobile-nav[open]>nav>a+a{border-top:1px solid #eef1f5}
  .platform-header-actions .header-language-switch{display:none!important}
 }
+
+/* Journey manager: prevent narrow mobile viewports from squeezing columns and controls. */
+.journey-mobile,.journey-mobile *{box-sizing:border-box}
+.journey-mobile{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.journey-mobile .journey-columns>div{min-width:0;max-width:100%}
+.journey-mobile input,.journey-mobile select,.journey-mobile textarea{max-width:100%;min-width:0}
+.journey-mobile form label{min-width:0;max-width:100%}
+.journey-mobile pre{max-width:100%;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:720px){
+ .journey-mobile .journey-columns{grid-template-columns:minmax(0,1fr)!important}
+ .journey-mobile form input,.journey-mobile form select,.journey-mobile form textarea{width:100%;display:block}
+ .journey-mobile button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+ .journey-mobile .admin-content-title{min-width:0}
+}
