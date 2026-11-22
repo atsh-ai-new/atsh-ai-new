@@ -1416,7 +1416,7 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
  const linkedProjects=await client.query(`SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true
   UNION SELECT project_id FROM commercial_custom_quote_links WHERE quote_id=$1 AND is_current=true`,[id]);
  for(const linked of linkedProjects.rows){
-  const moved=await transitionJourneyProject(client,{projectId:linked.project_id,next:'payment_pending',expectedStatus:'quoted',actor:req.admin.email});
+  const moved=await transitionJourneyProject(client,{projectId:linked.project_id,next:'payment_pending',expectedStatus:'quoted',actor:"customer-contract-signature"});
   if(!moved.ok){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage changed before contract acceptance",reason:moved.reason});}
  }
  await queueJourneyEvent(client,"contract.signed",`contract.signed:${c.rows[0].id}`,{contractId:c.rows[0].id,quoteId:id,signedAt:c.rows[0].signed_at});
