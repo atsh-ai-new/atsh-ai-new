@@ -582,9 +582,9 @@ app.post("/api/orders", route(async (req,res) => {
   const parsed=orderSchema.safeParse(req.body);
   if(!parsed.success) return res.status(400).json({error:"Invalid order details",details:parsed.error.issues.map(x=>({path:x.path,message:x.message}))});
   const input=parsed.data;
-  // Every submission, including a customer-owned draft, must reuse its UUID on retries.
+  // Unlinked orders require a retry UUID; draft submissions can opt in without breaking existing clients.
   const submissionKey=req.get("Idempotency-Key");
-  if(!submissionKey || !z.string().uuid().safeParse(submissionKey).success)return res.status(400).json({error:"Idempotency-Key UUID header required"});
+  if((!input.projectDraftId || submissionKey) && (!submissionKey || !z.string().uuid().safeParse(submissionKey).success))return res.status(400).json({error:"Idempotency-Key UUID header required"});
   const requestHash=createHash("sha256").update(JSON.stringify(input)).digest("hex");
   let ownedCustomer=null;
   const customerCookie=req.cookies?.atsh_customer;
@@ -602,7 +602,7 @@ app.post("/api/orders", route(async (req,res) => {
   const client=await pool.connect();
   try {
     await client.query("BEGIN");
-    {
+    if(submissionKey){
       await client.query("INSERT INTO order_submission_keys(submission_key,request_hash) VALUES($1,$2) ON CONFLICT(submission_key) DO NOTHING",[submissionKey,requestHash]);
       const existing=await client.query("SELECT request_hash,response_payload FROM order_submission_keys WHERE submission_key=$1 FOR UPDATE",[submissionKey]);
       if(existing.rows[0].request_hash!==requestHash){await client.query("ROLLBACK");return res.status(409).json({error:"Idempotency-Key already used for different order details"});}
@@ -658,7 +658,7 @@ app.post("/api/orders", route(async (req,res) => {
       saved.rows[0].projectId=project.id;
       if(input.projectDraftId){await client.query("UPDATE customer_project_drafts SET linked_journey_id=$1,updated_at=now() WHERE id=$2 AND customer_id=$3",[project.id,input.projectDraftId,ownedCustomer.id]);}
     }
-    await client.query("UPDATE order_submission_keys SET order_id=$2,response_payload=$3 WHERE submission_key=$1",[submissionKey,saved.rows[0].id,JSON.stringify({order:saved.rows[0]})]);
+    if(submissionKey)await client.query("UPDATE order_submission_keys SET order_id=$2,response_payload=$3 WHERE submission_key=$1",[submissionKey,saved.rows[0].id,JSON.stringify({order:saved.rows[0]})]);
     await client.query("COMMIT");
     res.status(201).json({order:saved.rows[0]});
   } catch(e){await client.query("ROLLBACK");throw e;} finally{client.release();}
