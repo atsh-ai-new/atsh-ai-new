@@ -30,5 +30,16 @@ test("unlinked order has an idempotency barrier before INSERT INTO orders",()=>{
   const insertion=section.indexOf("INSERT INTO orders(");
   assert.ok(insertion>0);
   const before=section.slice(0,insertion);
-  assert.match(before,/idempotency|requestKey|submissionKey/i,"unlinked orders need a durable duplicate-submission guard");
+  assert.match(before,/INSERT INTO order_submission_keys/);
+  assert.match(before,/FOR UPDATE/);
+  assert.match(before,/existing\.rows\[0\]\.response_payload/);
+  assert.match(section,/UPDATE order_submission_keys SET order_id=/);
+});
+
+test("order submission migration persists unique keys and the committed order response",()=>{
+  const sql=readFileSync(new URL("../db/order_submission_idempotency_stage54.sql",import.meta.url),"utf8");
+  assert.match(sql,/submission_key uuid PRIMARY KEY/);
+  assert.match(sql,/request_hash text NOT NULL/);
+  assert.match(sql,/order_id uuid REFERENCES orders\(id\)/);
+  assert.match(sql,/response_payload jsonb/);
 });
