@@ -269,6 +269,21 @@ app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requireRole("ow
  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 
+// Each team member can see only their own assignments; owner sees the whole queue.
+app.get("/api/admin/journey/my-tasks",requireAdmin,route(async(req,res)=>{
+ const owner=req.admin.role==="owner";
+ if(!owner&&!req.admin.userId)return res.status(403).json({error:"Team account required"});
+ const tasks=await pool.query(`SELECT t.id,t.project_id,t.title,t.description,t.status,t.created_at,t.updated_at,
+  p.customer_name AS project_name,m.display_name AS assigned_to_name
+  FROM customer_journey_tasks t
+  JOIN customer_journey_projects p ON p.id=t.project_id
+  LEFT JOIN team_members m ON m.id=t.assigned_to
+  WHERE ($1::boolean OR t.assigned_to=$2::uuid)
+  ORDER BY CASE WHEN t.status='done' THEN 1 ELSE 0 END,t.updated_at DESC LIMIT 200`,
+  [owner,req.admin.userId??null]);
+ res.set("Cache-Control","private, no-store").json({tasks:tasks.rows});
+}));
+
 // Internal project tasks: only administrators assign work to active team accounts.
 app.get("/api/admin/journey/projects/:id/tasks",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
