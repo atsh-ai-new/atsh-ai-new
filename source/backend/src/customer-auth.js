@@ -164,6 +164,15 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   source:z.enum(['catalog','configurator','concierge','preview','account']).optional()
  }).strict();
  // Multi-project drafts: customer ownership and optimistic revision are enforced server-side.
+ router.get('/project-drafts/:id/services',requireCustomer,safe(async(req,res)=>{
+  const owned=await pool.query('SELECT id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2',[req.params.id,req.customer.id]);
+  if(!owned.rowCount)return res.status(404).json({error:'Project not found'});
+  const services=await pool.query(
+   "SELECT id,service_code,service_name,description,source_type,status,activated_at,expires_at FROM customer_service_entitlements WHERE customer_id=$1 AND project_draft_id=$2 AND status IN ('active','paused','expired') ORDER BY created_at DESC",
+   [req.customer.id,req.params.id]
+  );
+  res.json({services:services.rows});
+ }));
  router.get('/project-drafts',requireCustomer,safe(async(req,res)=>{
   const result=await pool.query("SELECT id,title,draft,revision,linked_journey_id,updated_at,created_at FROM customer_project_drafts WHERE customer_id=$1 ORDER BY updated_at DESC",[req.customer.id]);
   res.set('Cache-Control','private, no-store').json({drafts:result.rows});
