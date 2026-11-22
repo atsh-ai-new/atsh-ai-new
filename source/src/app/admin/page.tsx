@@ -16,7 +16,7 @@ import CustomerServicesAdmin from "./customer-services-admin";
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
 type View = "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "theme" | "inbox" | "team" | "audit";
 type Package = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
-type Option = { id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number };
+type Option = { id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
 type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; linked_project_id?: string | null; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
 type JourneyProject = { id:string; customer_name:string; customer_email:string|null; status:string; created_at:string };
 type Member = { id: string; email: string; display_name: string; role: Exclude<Role, "owner">; is_active: boolean; permission_overrides?: Record<string, boolean> | null; created_at: string };
@@ -27,7 +27,7 @@ type EmailStatus = { configured: boolean; from: string; replyTo: string };
 type PageContent = Record<string, string>;
 type ApiPayload = Record<string, any>;
 type PackageDraft = { name: string; tagline: string; description: string; price: string; features: string; copyFromPackageId: string; isFeatured: boolean; isCustomQuote: boolean; isPublished: boolean };
-type OptionDraft = { packageId: string; code: string; name: string; description: string; price: string; pricingType: Option["pricing_type"]; unitLabel: string; isRequired: boolean; isActive: boolean };
+type OptionDraft = { packageId: string; code: string; name: string; description: string; price: string; pricingType: Option["pricing_type"]; unitLabel: string; isRequired: boolean; isActive: boolean; visibility: "both" | "packages" | "systems" };
 
 const nav: Array<{ id: View; label: string; icon: string }> = [
   { id: "overview", label: "نظرة عامة", icon: "◫" }, { id: "integrations", label: "حالة الربط", icon: "🔌" }, { id:"assistant-knowledge",label:"تعريفات GPT والردود",icon:"✦" }, { id: "content", label: "تعديل المحتوى", icon: "▤" },
