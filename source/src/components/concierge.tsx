@@ -133,3 +133,4 @@ export default function Concierge({locale="ar",embedded=false}:{locale?:"ar"|"en
      <button type="button" className="atsh-fab atsh-fab-assistant" aria-expanded={open} aria-label={open?t("إغلاق المساعد الذكي","Close assistant"):t("فتح المساعد الذكي","Open assistant")} title={t("المساعد الذكي","AI assistant")} onClick={()=>setOpen(v=>!v)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3 13.9 9.1 20 11l-6.1 1.9L12 19l-1.9-6.1L4 11l6.1-1.9L12 3Z"/><path d="m19 17 .7 1.3L21 19l-1.3.7L19 21l-.7-1.3L17 19l1.3-.7L19 17Z"/></svg></button>
    </nav>}
  </div>;
+}
