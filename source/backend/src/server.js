@@ -1116,6 +1116,12 @@ app.post("/api/admin/team",requireAdmin,requireRole("owner"),route(async(req,res
     await auditChange(client,req.admin.email,"team_member.created","team_member",saved.rows[0].id,null,saved.rows[0]);await client.query("COMMIT");res.status(201).json({member:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");if(e.code==="23505")return res.status(409).json({error:"A team member with this email already exists"});throw e;}finally{client.release();}
 }));
+// Audit records must never persist password hashes or other authentication secrets.
+const safeTeamAuditRecord = member => member && ({
+  id: member.id, email: member.email, display_name: member.display_name,
+  role: member.role, is_active: member.is_active,
+  created_at: member.created_at, updated_at: member.updated_at
+});
 app.patch("/api/admin/team/:id",requireAdmin,requireRole("owner"),route(async(req,res)=>{
   const parsed=z.object({displayName:z.string().trim().min(2).max(120).optional(),role:z.enum(["admin","editor","sales","viewer"]).optional(),isActive:z.boolean().optional(),password:z.string().min(12).max(200).optional()}).strict().refine(x=>Object.keys(x).length>0).safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"Invalid team update"});
@@ -1123,13 +1129,13 @@ app.patch("/api/admin/team/:id",requireAdmin,requireRole("owner"),route(async(re
     const map={displayName:"display_name",role:"role",isActive:"is_active",password:"password_hash"},values=[],sets=[];
     for(const [key,value] of Object.entries(parsed.data)){values.push(key==="password"?await bcrypt.hash(value,12):value);sets.push(map[key]+"=$"+values.length);}
     values.push(req.params.id);const saved=await client.query("UPDATE team_members SET "+sets.join(",")+",updated_at=now() WHERE id=$"+values.length+" RETURNING id,email,display_name,role,is_active,created_at,updated_at",values);
-    await auditChange(client,req.admin.email,"team_member.updated","team_member",req.params.id,before.rows[0],saved.rows[0]);await client.query("COMMIT");res.json({member:saved.rows[0]});
+    await auditChange(client,req.admin.email,"team_member.updated","team_member",req.params.id,safeTeamAuditRecord(before.rows[0]),saved.rows[0]);await client.query("COMMIT");res.json({member:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.delete("/api/admin/team/:id",requireAdmin,requireRole("owner"),route(async(req,res)=>{
   const client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM team_members WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Team member not found"});}
     const saved=await client.query("UPDATE team_members SET is_active=false,updated_at=now() WHERE id=$1 RETURNING id,email,display_name,role,is_active,created_at,updated_at",[req.params.id]);
-    await auditChange(client,req.admin.email,"team_member.deactivated","team_member",req.params.id,before.rows[0],saved.rows[0]);await client.query("COMMIT");res.json({member:saved.rows[0]});
+    await auditChange(client,req.admin.email,"team_member.deactivated","team_member",req.params.id,safeTeamAuditRecord(before.rows[0]),saved.rows[0]);await client.query("COMMIT");res.json({member:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.post("/api/admin/team/:id/purge",requireAdmin,requireRole("owner"),route(async(req,res)=>{
@@ -1140,7 +1146,7 @@ app.post("/api/admin/team/:id/purge",requireAdmin,requireRole("owner"),route(asy
   if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Team member not found"});}
   if(before.rows[0].email.toLowerCase()===req.admin.email.toLowerCase()){await client.query("ROLLBACK");return res.status(409).json({error:"لا يمكن حذف حسابك الحالي."});}
   await client.query("DELETE FROM team_members WHERE id=$1",[req.params.id]);
-  await auditChange(client,req.admin.email,"team_member.deleted","team_member",req.params.id,before.rows[0],null);
+  await auditChange(client,req.admin.email,"team_member.deleted","team_member",req.params.id,safeTeamAuditRecord(before.rows[0]),null);
   await client.query("COMMIT");res.json({deleted:true});
  }catch(e){await client.query("ROLLBACK");if(e.code==="23503")return res.status(409).json({error:"تعذر حذف العضو بسبب بيانات مرتبطة؛ أوقف الحساب بدلًا من الحذف."});throw e;}finally{client.release();}
 }));
