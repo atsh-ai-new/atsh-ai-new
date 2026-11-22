@@ -359,7 +359,14 @@ export default function AdminPage() {
               const item = [...packages].sort((a,b)=>a.sort_order-b.sort_order)[index];
               return <article key={item?.id ?? `empty-${index}`} className="admin-package-editor" style={{margin:0,minHeight:170}}>
                 <strong>الربع {index+1}</strong>
-                {item ? <><h3>{item.name}</h3><p>{item.tagline}</p><strong>{item.is_custom_quote ? "تسعير مخصص" : formatEgp(Number(item.price))}</strong><p>{item.description}</p><small>{item.is_published ? "منشورة" : "مسودة"} · {item.features.length} مزايا</small></> : <p>ربع فارغ — أنشئ باقة جديدة لإضافتها.</p>}
+                {item ? <div className="admin-form-grid" style={{display:"grid",gridTemplateColumns:"1fr",gap:8,marginTop:8}}>
+                  <label className="admin-field">اسم الباقة<input aria-label={`اسم باقة الربع ${index+1}`} value={item.name} onChange={event=>changePackage(item.id,"name",event.target.value)} /></label>
+                  <label className="admin-field">السعر بالجنيه<input type="number" min="0" step="0.01" disabled={item.is_custom_quote} value={item.price} onChange={event=>changePackage(item.id,"price",Number(event.target.value))}/></label>
+                  <label className="admin-field">الوصف<textarea rows={2} value={item.description} onChange={event=>changePackage(item.id,"description",event.target.value)}/></label>
+                  <label className="check-row"><input type="checkbox" checked={item.is_published} onChange={event=>changePackage(item.id,"is_published",event.target.checked)}/> منشورة للعملاء</label>
+                  <small>{item.is_custom_quote ? "تسعير مخصص" : formatEgp(Number(item.price))} · {item.features.length} مزايا</small>
+                  <button type="button" className="button button-small" disabled={busy || !item.name.trim()} onClick={()=>savePackage(item)}>حفظ الربع</button>
+                </div> : <p>ربع فارغ — أنشئ باقة جديدة لإضافتها.</p>}
               </article>;
             })}
           </div>
