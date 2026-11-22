@@ -89,21 +89,57 @@ export default function AdminPage() {
   const [optionDraft, setOptionDraft] = useState<OptionDraft>({ packageId: "", code: "", name: "", description: "", price: "", pricingType: "fixed", unitLabel: "", isRequired: false, isActive: true });
 
   const loadData = useCallback(async () => {
-    const [catalog, inbox, settings, pages, team, changes, email] = await Promise.all([
-      api("packages"), api("orders"), api("settings"), api("pages"), api("team"), api("audit"), api("email-status")
-    ]);
-    try { const journeys = await api("journey/projects"); setJourneyProjects(journeys.projects ?? []); setJourneyError(""); } catch (e) { setJourneyError(e instanceof Error ? e.message : "تعذر تحميل مشروعات العملاء"); }
-    setPackages(catalog.packages ?? []); setOptions((catalog.options ?? []).filter((option: Option) => !["logo_design", "visual_identity"].includes(option.code))); setOrders(inbox.orders ?? []);
-    setVatRate(Number(settings.settings?.vat_rate ?? 14)); setTheme({ ...defaultTheme, ...(settings.settings?.theme ?? {}) });
-    const publishedArabicHome = pages.pages?.find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar")?.content ?? {};
-    setPage({ ...siteCopyDefaults, ...publishedArabicHome });
-    setHiddenHomeFields(new Set(Object.entries(publishedArabicHome).filter(([, value]) => typeof value === "string" && value.trim() === "").map(([key]) => key)));
-    setMembers(team.members ?? []); setAudit(changes.logs ?? []);
-    setEmailStatus({
+    // Keep independent admin sections usable when one backend endpoint fails.
+    const endpoints = ["packages", "orders", "settings", "pages", "team", "audit", "email-status", "journey/projects"] as const;
+    const results = await Promise.allSettled(endpoints.map((endpoint) => api(endpoint)));
+    const failed: string[] = [];
+    const getResult = (index: number): ApiPayload | null => {
+      const result = results[index];
+      if (result.status === "fulfilled") return result.value;
+      failed.push(endpoints[index]);
+      return null;
+    };
+    const catalog = getResult(0);
+    const inbox = getResult(1);
+    const settings = getResult(2);
+    const pages = getResult(3);
+    const team = getResult(4);
+    const changes = getResult(5);
+    const email = getResult(6);
+    const journeys = getResult(7);
+
+    if (catalog) {
+      setPackages(catalog.packages ?? []);
+      setOptions((catalog.options ?? []).filter((option: Option) => !["logo_design", "visual_identity"].includes(option.code)));
+    }
+    if (inbox) setOrders(inbox.orders ?? []);
+    if (settings) {
+      setVatRate(Number(settings.settings?.vat_rate ?? 14));
+      setTheme({ ...defaultTheme, ...(settings.settings?.theme ?? {}) });
+    }
+    if (pages) {
+      const publishedArabicHome = pages.pages?.find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar")?.content ?? {};
+      setPage({ ...siteCopyDefaults, ...publishedArabicHome });
+      setHiddenHomeFields(new Set(Object.entries(publishedArabicHome).filter(([, value]) => typeof value === "string" && value.trim() === "").map(([key]) => key)));
+    }
+    if (team) setMembers(team.members ?? []);
+    if (changes) setAudit(changes.logs ?? []);
+    if (email) setEmailStatus({
       configured: Boolean(email.configured),
       from: typeof email.from === "string" ? email.from : "info@atsh-ai.com",
       replyTo: typeof email.replyTo === "string" ? email.replyTo : "sales@atsh-ai.com",
     });
+    if (journeys) {
+      setJourneyProjects(journeys.projects ?? []);
+      setJourneyError("");
+    } else {
+      setJourneyError("تعذر تحميل مشروعات العملاء. حاول تحديث البيانات لاحقًا.");
+    }
+    if (failed.length) {
+      setError(`تعذر تحديث بعض أقسام الإدارة: ${failed.join("، ")}. تم عرض البيانات المتاحة دون حذف البيانات المحفوظة.`);
+    } else {
+      setError("");
+    }
   }, []);
 
   useEffect(() => {
