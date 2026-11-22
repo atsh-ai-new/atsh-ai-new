@@ -10,6 +10,10 @@ UPDATE package_options SET code='legacy-'||id::text WHERE code IS NULL OR code='
 ALTER TABLE package_options ALTER COLUMN code SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS package_options_package_code_unique ON package_options(package_id,code);
 ALTER TABLE package_options ADD COLUMN IF NOT EXISTS unit_label varchar(40) NOT NULL DEFAULT '';
+ALTER TABLE package_options ADD COLUMN IF NOT EXISTS visibility varchar(16) NOT NULL DEFAULT 'both';
+UPDATE package_options SET visibility='both' WHERE visibility NOT IN ('both','packages','systems');
+ALTER TABLE package_options DROP CONSTRAINT IF EXISTS package_options_visibility_check;
+ALTER TABLE package_options ADD CONSTRAINT package_options_visibility_check CHECK (visibility IN ('both','packages','systems'));
 ALTER TABLE package_options DROP CONSTRAINT IF EXISTS package_options_pricing_type_check;
 ALTER TABLE package_options ADD CONSTRAINT package_options_pricing_type_check CHECK(pricing_type IN ('fixed','monthly','yearly','per_page'));
 CREATE TABLE IF NOT EXISTS site_settings (id integer PRIMARY KEY DEFAULT 1 CHECK(id=1), vat_rate numeric(5,2) NULL CHECK(vat_rate IS NULL OR (vat_rate>=0 AND vat_rate<=100)), theme jsonb NOT NULL DEFAULT '{"navy":"#203958","blue":"#4c78ae","gold":"#b59a6b","page":"#faf9f5"}'::jsonb, updated_at timestamptz NOT NULL DEFAULT now());
