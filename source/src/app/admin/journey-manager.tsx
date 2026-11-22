@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 type Project = {id:string;customer_name:string;customer_email:string|null;template_id:string|null;status:string;created_at:string};
 type Message = {id:number;actor:string;body:string;created_at:string};
@@ -15,6 +15,7 @@ async function request(path:string, init?:RequestInit){
  return data;
 }
 export default function JourneyManager({canManageTasks=false,canArchive=false,canDelete=false}:{canManageTasks?:boolean;canArchive?:boolean;canDelete?:boolean}){
+ const projectLoadVersion=useRef(0);
  const [projects,setProjects]=useState<Project[]>([]),[selected,setSelected]=useState<Project|null>(null),[messages,setMessages]=useState<Message[]>([]),[submittedDraft,setSubmittedDraft]=useState<SubmittedDraft|null>(null),[orderAssignments,setOrderAssignments]=useState<OrderAssignment[]>([]);
  const [tasks,setTasks]=useState<JourneyTask[]>([]),[team,setTeam]=useState<TeamMember[]>([]),[taskTitle,setTaskTitle]=useState(""),[taskDescription,setTaskDescription]=useState(""),[taskAssignee,setTaskAssignee]=useState(""),[taskBusy,setTaskBusy]=useState(false);
  const [catalogError,setCatalogError]=useState("");const [catalog,setCatalog]=useState<Array<{id:string;name:string;price:string|number;currency:string;is_custom_quote:boolean}>>([]),[transitionNote,setTransitionNote]=useState("");
@@ -23,19 +24,22 @@ export default function JourneyManager({canManageTasks=false,canArchive=false,ca
  const [name,setName]=useState(""),[email,setEmail]=useState(""),[template,setTemplate]=useState(""),[message,setMessage]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);
  async function refresh(){const data=await request("projects");setProjects(data.projects||[]);}
  async function openProject(project:Project){
+  const loadVersion=++projectLoadVersion.current;
   setError("");
   // Clear all previous-project data before loading another customer record.
   setSelected(null);setMessages([]);setSubmittedDraft(null);setOrderAssignments([]);setLinkedOrder(null);setTasks([]);
   try{
     const data=await request(`projects/${project.id}`);
+    if(loadVersion!==projectLoadVersion.current)return;
     setSelected(data.project);setMessages(data.messages||[]);setSubmittedDraft(data.submittedDraft||null);setOrderAssignments(data.linkedOrderAssignments||[]);
     // An unavailable order or tasks endpoint must not hide the customer requirements.
     const [orderResult,tasksResult]=await Promise.allSettled([request(`projects/${project.id}/order`),request(`projects/${project.id}/tasks`)]);
+    if(loadVersion!==projectLoadVersion.current)return;
     if(orderResult.status==="fulfilled")setLinkedOrder(orderResult.value.order||null);
     if(tasksResult.status==="fulfilled")setTasks(tasksResult.value.tasks||[]);
     const failures=[orderResult.status==="rejected"?"تفاصيل الطلب":null,tasksResult.status==="rejected"?"مهام المشروع":null].filter(Boolean);
     if(failures.length)setError(`تم تحميل المشروع، لكن تعذر تحميل: ${failures.join("، ")}. أعد فتح المشروع للمحاولة.`);
-  }catch(e){setError(String(e));}
+  }catch(e){if(loadVersion===projectLoadVersion.current)setError(String(e));}
  }
  useEffect(()=>{if(canManageTasks)fetch("/api/admin/team",{credentials:"include",cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("تعذر تحميل الفريق");return r.json();}).then(d=>setTeam(d.members||[])).catch(e=>setError(String(e)));refresh().catch(e=>setError(String(e)));request("catalog").then(data=>{setCatalog(data.packages||[]);setCatalogError("");}).catch(e=>setCatalogError(String(e)));},[canManageTasks]);
  async function create(event:FormEvent){event.preventDefault();setBusy(true);setError("");try{const data=await request("projects",{method:"POST",body:JSON.stringify({customerName:name, ...(email?{customerEmail:email}:{}),...(template?{templateId:template}:{})})});setName("");setEmail("");setTemplate("");await refresh();await openProject(data.project);}catch(e){setError(String(e));}finally{setBusy(false);}}
