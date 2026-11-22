@@ -17,10 +17,10 @@ type Package = { id: string; name: string; tagline: string; description: string;
 type Option = { id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number };
 type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; linked_project_id?: string | null; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
 type JourneyProject = { id:string; customer_name:string; customer_email:string|null; status:string; created_at:string };
-type Member = { id: string; email: string; display_name: string; role: Exclude<Role, "owner">; is_active: boolean; created_at: string };
+type Member = { id: string; email: string; display_name: string; role: Exclude<Role, "owner">; is_active: boolean; permission_overrides?: Record<string, boolean> | null; created_at: string };
 type Theme = { navy: string; blue: string; gold: string; page: string; logoUrl: string; heroImageUrl: string; backgroundImageUrl: string; fontFamily: "IBM Plex Sans Arabic" | "Cairo" | "Tajawal"; cardRadius: number };
 type Audit = { id: number; actor: string; action: string; entity_type: string; created_at: string };
-type AdminUser = { email: string; role: Role };
+type AdminUser = { email: string; role: Role; permissions?: Record<string, boolean> };
 type EmailStatus = { configured: boolean; from: string; replyTo: string };
 type PageContent = Record<string, string>;
 type ApiPayload = Record<string, any>;
@@ -28,26 +28,34 @@ type PackageDraft = { name: string; tagline: string; description: string; price:
 type OptionDraft = { packageId: string; code: string; name: string; description: string; price: string; pricingType: Option["pricing_type"]; unitLabel: string; isRequired: boolean; isActive: boolean };
 
 const nav: Array<{ id: View; label: string; icon: string }> = [
-  { id: "overview", label: "نظرة عامة", icon: "◫" }, { id: "integrations", label: "حالة الربط", icon: "🔌" }, { id:"assistant-knowledge",label:"معرفة مساعد GPT",icon:"✦" }, { id: "content", label: "نصوص الرئيسية", icon: "▤" },
-  { id: "pages", label: "تحرير الصفحات والبطاقات", icon: "▧" }, { id: "works", label: "سجل الأعمال السابقة", icon: "▣" },
+  { id: "overview", label: "نظرة عامة", icon: "◫" }, { id: "integrations", label: "حالة الربط", icon: "🔌" }, { id:"assistant-knowledge",label:"تعريفات GPT والردود",icon:"✦" }, { id: "content", label: "تعديل المحتوى", icon: "▤" },
+  { id: "pages", label: "صفحات المنصة", icon: "▧" }, { id: "works", label: "سجل الأعمال السابقة", icon: "▣" },
   { id: "content-studio", label: "منشئ المحتوى", icon: "✦" },
-  { id: "journey", label: "توجيه العملاء", icon: "◎" },
+  { id: "journey", label: "المشاريع", icon: "◎" },
   { id: "commercial", label: "العروض والعقود", icon: "▤" },
-  { id: "options", label: "مركز التسعير والكتالوجات", icon: "▦" },
-  { id: "theme", label: "الألوان والضريبة", icon: "◉" }, { id: "inbox", label: "طلبات العملاء", icon: "✉" },
-  { id: "team", label: "فريق الإدارة", icon: "♙" }, { id: "audit", label: "سجل التغييرات", icon: "≡" }
+  { id: "options", label: "المنتجات", icon: "▦" },
+  { id: "theme", label: "تصميم المنصة", icon: "◉" }, { id: "inbox", label: "طلبات العملاء", icon: "✉" },
+  { id: "team", label: "إدارة الفريق", icon: "♙" }, { id: "audit", label: "سجل التغييرات", icon: "≡" }
 ];
 const adminGroups: Array<{label:string;views:View[]}>= [
- {label:"الرئيسية",views:["overview","inbox"]},
- {label:"المحتوى والتصميم",views:["content","pages","works","content-studio","theme"]},
- {label:"التسعير والكتالوجات",views:["options"]},
- {label:"العملاء والتشغيل",views:["journey","commercial","assistant-knowledge"]},
- {label:"الإدارة والنظام",views:["integrations","team","audit"]}
+ {label:"نظرة عامة",views:["overview"]},
+ {label:"المساعد الذكي",views:["assistant-knowledge","integrations"]},
+ {label:"العملاء",views:["inbox","journey","commercial"]},
+ {label:"الفريق",views:["team","audit"]},
+ {label:"محتوى المنصة",views:["pages","content","works","content-studio","theme"]},
+ {label:"المنتجات",views:["options"]}
 ];
 const defaultTheme: Theme = { navy: "#203958", blue: "#4c78ae", gold: "#b59a6b", page: "#faf9f5", logoUrl: "/images/atsh-logo.jpg", heroImageUrl: "/images/atsh-hero.jpg", backgroundImageUrl: "", fontFamily: "IBM Plex Sans Arabic", cardRadius: 16 };
 const statuses = ["new", "reviewing", "quoted", "approved", "in_progress", "completed", "cancelled"] as const;
 const statusLabels: Record<string, string> = { new: "جديد", reviewing: "قيد المراجعة", quoted: "تم إرسال عرض", approved: "موافق عليه", in_progress: "قيد التنفيذ", completed: "مكتمل", cancelled: "ملغي" };
 const roleLabels: Record<Role, string> = { owner: "مالك المنصة", admin: "مدير", editor: "محرر محتوى", sales: "متابعة العملاء", viewer: "مشاهدة فقط" };
+const roleCapabilities: Record<Role, string[]> = {
+  owner: ["نظرة عامة","المساعد الذكي","العملاء","إدارة الفريق","منشئ المحتوى","المنتجات","إعدادات المنصة"],
+  admin: ["نظرة عامة","المساعد الذكي","العملاء","منشئ المحتوى","المنتجات","إعدادات المنصة"],
+  editor: ["نظرة عامة","المساعد الذكي","منشئ المحتوى","صفحات المنصة"],
+  sales: ["نظرة عامة","طلبات العملاء","المشاريع"],
+  viewer: ["نظرة عامة"]
+};
 
 async function api(path: string, init?: RequestInit): Promise<ApiPayload> {
   const response = await fetch(`/api/admin/${path}`, { ...init, credentials: "include", cache: "no-store", headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers } });
@@ -60,6 +68,7 @@ export default function AdminPage() {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [view, setView] = useState<View>("overview");
+  const [offeringTab, setOfferingTab] = useState<"packages" | "systems" | "addons" | "preview">("packages");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
@@ -91,7 +100,7 @@ export default function AdminPage() {
   const loadData = useCallback(async (role: Role = "viewer") => {
     // Keep independent admin sections usable when one backend endpoint fails.
     const endpoints = ["packages", "orders", "settings", "pages", "team", "audit", "email-status", "journey/projects"] as const;
-    const results = await Promise.allSettled(endpoints.map((endpoint) => endpoint === "audit" && role !== "owner" && role !== "admin" ? Promise.resolve({ logs: [] }) : api(endpoint)));
+    const results = await Promise.allSettled(endpoints.map((endpoint) => (endpoint === "audit" && role !== "owner" && role !== "admin") ? Promise.resolve({ logs: [] }) : (endpoint === "team" && role !== "owner" && role !== "admin") ? Promise.resolve({ members: [] }) : api(endpoint)));
     const failed: string[] = [];
     const getResult = (index: number): ApiPayload | null => {
       const result = results[index];
@@ -144,7 +153,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     let active = true;
-    api("me").then((data) => { if (!active) return; setUser({ email: data.email, role: data.role }); return loadData(data.role); })
+    api("me").then((data) => { if (!active) return; setUser({ email: data.email, role: data.role, permissions: data.permissions }); return loadData(data.role); })
       .catch((reason) => {
         if (!active) return;
         // An expired session is normal; server/rate-limit failures must not masquerade as logout.
@@ -156,11 +165,18 @@ export default function AdminPage() {
     return () => { active = false; };
   }, [loadData]);
 
-  const canEditCatalog = user?.role === "owner" || user?.role === "admin";
-  const canEditContent = canEditCatalog || user?.role === "editor";
-  const canEditOrders = canEditCatalog || user?.role === "sales";
+  const permitted = (key: string) => user?.role === "owner" || user?.permissions?.[key] === true;
+  const canEditCatalog = permitted("products");
+  const canEditContent = permitted("content");
+  const canEditOrders = permitted("customers");
   const canManageTeam = user?.role === "owner";
-  const visibleNav = nav.filter((item) => (item.id !== "integrations" || canEditCatalog) && (item.id !== "assistant-knowledge" || canEditContent) && (item.id !== "team" || canManageTeam) && (item.id !== "audit" || canEditCatalog) && (item.id !== "options" && item.id !== "theme" ? true : canEditCatalog) && (item.id !== "content" && item.id !== "pages" && item.id !== "works" && item.id !== "content-studio" || canEditContent));
+  const viewPermissions: Partial<Record<View, string>> = {
+    integrations:"settings", "assistant-knowledge":"assistant", team:"team", audit:"audit",
+    options:"products", theme:"settings", content:"content", pages:"content",
+    works:"content", "content-studio":"assistant", journey:"customers",
+    commercial:"customers", inbox:"customers"
+  };
+  const visibleNav = nav.filter(item => !viewPermissions[item.id] || permitted(viewPermissions[item.id]!));
   const newOrders = useMemo(() => orders.filter((order) => order.status === "new").length, [orders]);
   const title = nav.find((item) => item.id === view)?.label ?? "إدارة المنصة";
 
@@ -168,7 +184,7 @@ export default function AdminPage() {
     event.preventDefault(); setBusy(true); setError("");
     try {
       const result = await api("login", { method: "POST", body: JSON.stringify({ email: loginEmail, password: loginPassword }) });
-      setUser({ email: result.email, role: result.role }); setLoginPassword(""); await loadData(result.role);
+      const session = await api("me"); setUser({ email: session.email, role: session.role, permissions: session.permissions }); setLoginPassword(""); await loadData(session.role);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر تسجيل الدخول."); }
     finally { setBusy(false); }
   };
@@ -316,10 +332,10 @@ export default function AdminPage() {
 
   return <main className="admin-page" dir="rtl" style={{ "--navy": theme.navy, "--navy-2": theme.blue, "--blue": theme.blue, "--gold": theme.gold, "--page": theme.page, "--site-font": `\"${theme.fontFamily}\", system-ui, sans-serif`, "--card-radius": `${theme.cardRadius}px` } as React.CSSProperties}>
     <div className="admin-layout">
-      <aside className="admin-sidebar"><a className="admin-brand" href="/"><img src={theme.logoUrl || "/images/atsh-logo.jpg"} alt="" /><span><strong>ATSH <b>AI</b></strong><small>مركز الإدارة</small></span></a><div className="admin-nav-label">إدارة المنصة</div><nav className="admin-nav" aria-label="أقسام لوحة الإدارة">{adminGroups.map(group=><div key={group.label}><div className="admin-nav-label" style={{marginTop:14,fontWeight:800}}>{group.label}</div>{visibleNav.filter(item=>group.views.includes(item.id)).map(item=><button type="button" key={item.id} className={view===item.id?"active":""} onClick={()=>{setView(item.id);setError("");setNotice("");}}><span>{item.icon}</span>{item.label}</button>)}</div>)}</nav><div className="admin-sidebar-bottom"><div className="connection-pill"><i />متصل بخادم ATSH AI</div></div></aside>
+      <aside className="admin-sidebar"><a className="admin-brand" href="/"><img src={theme.logoUrl || "/images/atsh-logo.jpg"} alt="" /><span><strong>ATSH <b>AI</b></strong><small>مركز الإدارة</small></span></a><div className="admin-nav-label">إدارة المنصة</div><nav className="admin-nav" aria-label="أقسام لوحة الإدارة">{adminGroups.map(group=>{const allowed=visibleNav.filter(item=>group.views.includes(item.id));if(!allowed.length)return null;const active=allowed.some(item=>item.id===view);return <div key={group.label}><button type="button" className={active?"active":""} style={{fontWeight:800,marginTop:10}} onClick={()=>{setView(allowed[0].id);setError("");setNotice("");}}>{group.label}</button>{active&&allowed.length>1&&<div style={{paddingInlineStart:14}}>{allowed.map(item=><button type="button" key={item.id} className={view===item.id?"active":""} onClick={()=>{setView(item.id);setError("");setNotice("");}}><span>{item.icon}</span>{item.label}</button>)}</div>}</div>})}</nav><div className="admin-sidebar-bottom"><div className="connection-pill"><i />متصل بخادم ATSH AI</div></div></aside>
       <section className="admin-main">
         <header className="admin-topbar"><div><h1>{title}</h1><p>تغييراتك تحفظ مباشرة في قاعدة بيانات المنصة مع سجل تدقيق.</p></div><div className="admin-top-actions"><a className="language-pill" href="/">عرض الموقع ↗</a><div className="admin-identity"><span className="admin-avatar">{user.email.slice(0, 1).toUpperCase()}</span><span><strong>{user.email}</strong><small>{roleLabels[user.role]}</small></span></div><button className="inline-add" onClick={logout}>خروج</button></div></header>
-        <nav aria-label="تبويبات الإدارة السريعة" style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16}}>{([{id:"content",label:"التعديلات النصية"},{id:"options",label:"مركز التسعير والكتالوجات"},{id:"theme",label:"التصميم والضريبة"}] as Array<{id:View;label:string}>).filter(item=>visibleNav.some(navItem=>navItem.id===item.id)).map(item=><button key={item.id} type="button" className={view===item.id?"button button-small":"button button-outline button-small"} onClick={()=>{setView(item.id);setError("");setNotice("");}}>{item.label}</button>)}</nav>
+        <nav aria-label="تبويبات الإدارة السريعة" style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16}}>{([{id:"content",label:"التعديلات النصية"},{id:"options",label:"المنتجات"},{id:"theme",label:"التصميم والضريبة"}] as Array<{id:View;label:string}>).filter(item=>visibleNav.some(navItem=>navItem.id===item.id)).map(item=><button key={item.id} type="button" className={view===item.id?"button button-small":"button button-outline button-small"} onClick={()=>{setView(item.id);setError("");setNotice("");}}>{item.label}</button>)}</nav>
         {error && <div className="error-message" role="alert">{error}</div>}{notice && <div className="success-message" role="status">{notice}</div>}
 
         {view === "overview" && <><div className="admin-stats"><article className="admin-stat"><span>كل الطلبات</span><strong>{orders.length + journeyProjects.length}</strong><small>محفوظة على خادم المنصة</small></article><article className="admin-stat"><span>طلبات جديدة</span><strong>{newOrders + journeyProjects.filter(project => project.status === "draft" || project.status === "configured").length}</strong><small>تحتاج إلى متابعة</small></article><article className="admin-stat"><span>الباقات المنشورة</span><strong>{packages.filter((item) => item.is_published).length}</strong><small>بالجنيه المصري</small></article><article className="admin-stat"><span>أعضاء الفريق</span><strong>{members.filter((item) => item.is_active).length}</strong><small>حسابات نشطة</small></article></div><section className="admin-content-card"><div className="admin-content-title"><div><h2>أحدث الطلبات</h2><p>تصل بيانات العميل والبريد والهاتف إلى صندوق الإدارة.</p></div><button className="inline-add" onClick={() => setView("inbox")}>فتح الطلبات ←</button></div><OrderTable orders={orders.slice(0, 6)} members={members} onChange={updateOrder} onSendEmail={sendCustomerEmail} canSend={canEditOrders && emailStatus.configured} readOnly={!canEditOrders} /></section></>}
@@ -335,9 +351,9 @@ export default function AdminPage() {
         {view === "journey" && <JourneyManager canManageTasks={canEditCatalog} canArchive={user.role === "owner" || user.role === "admin"} canDelete={user.role === "owner"} />}
       {view === "commercial" && <CommercialManager />}
 
-        {view === "options" && <section className="admin-content-card"><h2>مركز التسعير والكتالوجات</h2><p>بوابة واحدة لإدارة مواصفات وأسعار الباقات وإضافاتها والكتالوجات والضريبة. يتم الحفظ عبر الواجهات الحالية دون تغيير البيانات المخزنة.</p><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[["unified-package-pricing","الباقات"],["unified-package-options","إضافات الباقات"],["unified-catalog-pricing","الكتالوجات"],["unified-vat","الضريبة"]].map(([id,label])=><button key={id} type="button" className="button button-outline button-small" onClick={()=>document.getElementById(id)?.scrollIntoView({behavior:"smooth"})}>{label}</button>)}</div></section>}
+        {view === "options" && <section className="admin-content-card" aria-label="المعروض"><h2>المعروض</h2><p>إدارة الباقات والأنظمة المخصصة من مكان واحد، دون تكرار نماذج الإنشاء.</p><div role="tablist" aria-label="أقسام المعروض" style={{display:"flex",gap:8,flexWrap:"wrap"}}><button type="button" role="tab" aria-selected={offeringTab==="packages"} className={offeringTab==="packages"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("packages")}>الباقات</button><button type="button" role="tab" aria-selected={offeringTab==="systems"} className={offeringTab==="systems"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("systems")}>أنظمة مخصصة</button><button type="button" role="tab" aria-selected={offeringTab==="addons"} className={offeringTab==="addons"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("addons")}>الإضافات</button><button type="button" role="tab" aria-selected={offeringTab==="preview"} className={offeringTab==="preview"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("preview")}>معاينة</button></div></section>}
 
-        {view === "options" && <section id="unified-package-pricing" className="admin-content-card">
+        {view === "options" && offeringTab === "packages" && <section id="unified-package-pricing" className="admin-content-card">
           <div className="admin-content-title"><div><h2>الباقات والأسعار</h2><p>عدّل البطاقة ومزاياها، أو أنشئ باقة جديدة. السعر بالجنيه المصري، ويمكن نسخ خيارات باقة موجودة كبداية.</p></div></div>
           <form className="admin-package-create" onSubmit={addPackage}>
             <label className="admin-field">اسم الباقة<input required maxLength={160} value={packageDraft.name} onChange={(event) => setPackageDraft({ ...packageDraft, name: event.target.value })} /></label>
@@ -351,6 +367,28 @@ export default function AdminPage() {
             <label className="check-row"><input type="checkbox" checked={packageDraft.isPublished} onChange={(event) => setPackageDraft({ ...packageDraft, isPublished: event.target.checked })} /> نشر البطاقة فور الإنشاء</label>
             <button className="button" disabled={busy}>إنشاء الباقة</button>
           </form>
+          <div className="admin-content-title"><div><h3>معاينة الباقات في أربعة أرباع</h3><p>المعاينة تعرض أول أربع باقات حسب ترتيبها الحالي، بما فيها التعديلات غير المحفوظة. لا تنشر أي تغيير تلقائيًا.</p></div></div>
+          <div className="admin-package-quarter-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,260px),1fr))",gap:12,marginBottom:20}}>
+            {[0,1,2,3].map((index) => {
+              const item = [...packages].sort((a,b)=>a.sort_order-b.sort_order)[index];
+              return <article key={item?.id ?? `empty-${index}`} className="admin-package-editor" style={{margin:0,minHeight:170}}>
+                <strong>الربع {index+1}</strong>
+                {item ? <div className="admin-form-grid" style={{display:"grid",gridTemplateColumns:"1fr",gap:8,marginTop:8}}>
+                  <label className="admin-field">اسم الباقة<input aria-label={`اسم باقة الربع ${index+1}`} value={item.name} onChange={event=>changePackage(item.id,"name",event.target.value)} /></label>
+                  <label className="admin-field">السعر بالجنيه<input type="number" min="0" step="0.01" disabled={item.is_custom_quote} value={item.price} onChange={event=>changePackage(item.id,"price",Number(event.target.value))}/></label>
+                  <label className="admin-field">الوصف<textarea rows={2} value={item.description} onChange={event=>changePackage(item.id,"description",event.target.value)}/></label>
+                  <label className="admin-field">ترتيب الباقة<input type="number" min="0" step="1" value={item.sort_order} onChange={event=>changePackage(item.id,"sort_order",Number(event.target.value))}/></label>
+                  <label className="admin-field">شارة الباقة<input value={item.tagline} onChange={event=>changePackage(item.id,"tagline",event.target.value)}/></label>
+                  <label className="admin-field">المزايا (كل ميزة في سطر)<textarea rows={3} value={item.features.join("\n")} onChange={event=>changePackage(item.id,"features",event.target.value.split("\n").map(feature=>feature.trim()).filter(Boolean))}/></label>
+                  <label className="check-row"><input type="checkbox" checked={item.is_custom_quote} onChange={event=>changePackage(item.id,"is_custom_quote",event.target.checked)}/> تسعير مخصص</label>
+                  <label className="check-row"><input type="checkbox" checked={item.is_featured} onChange={event=>changePackage(item.id,"is_featured",event.target.checked)}/> باقة مميزة</label>
+                  <label className="check-row"><input type="checkbox" checked={item.is_published} onChange={event=>changePackage(item.id,"is_published",event.target.checked)}/> منشورة للعملاء</label>
+                  <small>{item.is_custom_quote ? "تسعير مخصص" : formatEgp(Number(item.price))} · {item.features.length} مزايا</small>
+                  <button type="button" className="button button-small" disabled={busy || !item.name.trim()} onClick={()=>savePackage(item)}>حفظ الربع</button>
+                </div> : <p>ربع فارغ — أنشئ باقة جديدة لإضافتها.</p>}
+              </article>;
+            })}
+          </div>
           {packages.map((item) => <article className="admin-package-editor" key={item.id}>
             <div className="admin-form-grid">
               <label className="admin-field">اسم البطاقة<input value={item.name} onChange={(event) => changePackage(item.id, "name", event.target.value)} /></label>
@@ -363,7 +401,7 @@ export default function AdminPage() {
           </article>)}
         </section>}
 
-        {view === "options" && <><section id="unified-package-options" className="admin-content-card">
+        {view === "options" && offeringTab === "addons" && <><section id="unified-package-options" className="admin-content-card">
           <div className="admin-content-title"><div><h2>خيارات الباقات وإضافاتها</h2><p>أنشئ إضافات، واربطها بباقة، وعدّل السعر أو طريقة احتسابه. رمز الربط ثابت بعد الإنشاء.</p></div></div>
           <form className="admin-team-form admin-option-create" onSubmit={addOption}>
             <label className="admin-field">الباقة<select required value={optionDraft.packageId} onChange={(event) => setOptionDraft({ ...optionDraft, packageId: event.target.value })}><option value="">اختر باقة</option>{packages.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
@@ -387,14 +425,16 @@ export default function AdminPage() {
             </div>
             <div className="admin-package-controls"><label className="check-row"><input type="checkbox" checked={item.is_required} onChange={(event) => changeOption(item.id, "is_required", event.target.checked)} /> إلزامية</label><label className="check-row"><input type="checkbox" checked={item.is_active} onChange={(event) => changeOption(item.id, "is_active", event.target.checked)} /> متاحة للعملاء</label><button className="button button-small" disabled={busy} onClick={() => saveOption(item)}>حفظ التعديلات</button></div>
           </article>)}
-        </section><div id="unified-catalog-pricing">{canEditCatalog&&<CatalogManager />}</div><section id="unified-vat" className="admin-content-card"><h2>ضريبة القيمة المضافة</h2><p>نسبة الضريبة المستخدمة في ملخص التسعير.</p><label className="admin-field">الضريبة %<input type="number" min="0" max="100" step="0.01" value={vatRate} onChange={(event)=>setVatRate(Number(event.target.value))}/></label><div className="admin-actions"><button type="button" className="button" disabled={busy} onClick={saveTheme}>حفظ نسبة الضريبة</button></div></section></>}
+        </section><section id="unified-vat" className="admin-content-card"><h2>ضريبة القيمة المضافة</h2><p>نسبة الضريبة المستخدمة في ملخص التسعير.</p><label className="admin-field">الضريبة %<input type="number" min="0" max="100" step="0.01" value={vatRate} onChange={(event)=>setVatRate(Number(event.target.value))}/></label><div className="admin-actions"><button type="button" className="button" disabled={busy} onClick={saveTheme}>حفظ نسبة الضريبة</button></div></section></>}
+        {view === "options" && offeringTab === "systems" && <div id="unified-catalog-pricing">{canEditCatalog && <CatalogManager />}</div>}
+        {view === "options" && offeringTab === "preview" && <section className="admin-content-card"><h2>معاينة المنتجات</h2><p>افتح العرض المنشور لمراجعة الباقات والأنظمة المخصصة كما يراها العميل.</p><div className="admin-actions"><a className="button" href="/#packages" target="_blank" rel="noopener noreferrer">معاينة الباقات</a><a className="button button-outline" href="/catalog" target="_blank" rel="noopener noreferrer">معاينة الأنظمة المخصصة</a></div></section>}
 
         {view === "theme" && <section className="admin-content-card"><div className="admin-content-title"><div><h2>هوية الموقع وتنسيقه</h2><p>تحكم في الألوان والخط والشعار وصور الواجهة والخلفية. الصور المرفوعة تحفظ في قاعدة بيانات المنصة.</p></div></div><div className="theme-swatches">{([ ["navy","الكحلي"], ["blue","الأزرق"], ["gold","الذهبي"], ["page","الخلفية"] ] as Array<["navy" | "blue" | "gold" | "page",string]>).map(([key,label]) => <label className="theme-swatch" key={key}>{label}<input type="color" value={theme[key]} onChange={(event) => setTheme({ ...theme, [key]: event.target.value })} /></label>)}</div><div className="admin-form-grid"><ImageSetting label="الشعار" value={theme.logoUrl} onChange={(value) => setTheme({ ...theme, logoUrl: value })} onUpload={(event) => void uploadThemeImage(event, "logoUrl")} busy={busy} /><ImageSetting label="صورة الواجهة الرئيسية" value={theme.heroImageUrl} onChange={(value) => setTheme({ ...theme, heroImageUrl: value })} onUpload={(event) => void uploadThemeImage(event, "heroImageUrl")} busy={busy} /><ImageSetting label="خلفية الموقع" value={theme.backgroundImageUrl} onChange={(value) => setTheme({ ...theme, backgroundImageUrl: value })} onUpload={(event) => void uploadThemeImage(event, "backgroundImageUrl")} busy={busy} /></div><div className="admin-form-grid"><label className="admin-field">الخط<select value={theme.fontFamily} onChange={(event) => setTheme({ ...theme, fontFamily: event.target.value as Theme["fontFamily"] })}><option>IBM Plex Sans Arabic</option><option>Cairo</option><option>Tajawal</option></select></label><label className="admin-field">استدارة البطاقات ({theme.cardRadius}px)<input type="range" min="0" max="32" step="1" value={theme.cardRadius} onChange={(event) => setTheme({ ...theme, cardRadius: Number(event.target.value) })} /></label></div><div className="admin-actions"><button className="button" disabled={busy} onClick={saveTheme}>حفظ الهوية والتنسيق ✓</button></div></section>}
 
         {view === "inbox" && <section className="admin-content-card" aria-label="مشروعات العملاء المقدمة"><div className="admin-content-title"><div><h2>مشروعات العملاء المقدمة من حساباتهم</h2><p>الطلبات التي تم إرسالها من حساب العميل وتظهر في محرك توجيه العملاء.</p></div><span className="status-chip">{journeyProjects.length} مشروع</span></div>{journeyError && <p role="alert">{journeyError}</p>}{journeyProjects.length === 0 && !journeyError && <p>لا توجد مشروعات مقدمة حاليًا.</p>}{journeyProjects.map(project => <article key={project.id} style={{padding:14,borderBottom:"1px solid #e2e8f0"}}><strong>{project.customer_name}</strong> — {project.customer_email || "بدون بريد"} — {project.status} <small>{new Date(project.created_at).toLocaleString("ar-EG")}</small><div><button type="button" onClick={() => setView("journey")}>فتح محرك توجيه العملاء ومراجعة التفاصيل ←</button></div></article>)}</section>}
         {view === "inbox" && <section className="admin-content-card"><div className="admin-content-title"><div><h2>طلبات العملاء</h2><p>الطلب يتضمن البريد والهاتف والاختيارات والسعر الذي حسبه الخادم. {emailStatus.configured ? `المرسل: ${emailStatus.from} · الردود إلى ${emailStatus.replyTo}` : "إرسال البريد الرسمي ينتظر تفعيل مفتاح المزود المجاني."}</p></div><span className="status-chip">{orders.length} طلب</span></div><OrderTable orders={orders} members={members} onChange={updateOrder} onSendEmail={sendCustomerEmail} canSend={canEditOrders && emailStatus.configured} detailed readOnly={!canEditOrders} /></section>}
 
-        {view === "team" && canManageTeam && <section className="admin-content-card"><div className="admin-content-title"><div><h2>فريق الإدارة</h2><p>أنشئ حسابات بصلاحيات محدودة؛ إرسال البريد يحتاج مزود بريد متصل.</p></div></div><form className="admin-team-form" onSubmit={addMember}><label className="admin-field">الاسم<input required value={memberName} onChange={(event) => setMemberName(event.target.value)} /></label><label className="admin-field">البريد الإلكتروني<input type="email" required value={memberEmail} onChange={(event) => setMemberEmail(event.target.value)} /></label><label className="admin-field">كلمة مرور مؤقتة (12 حرفًا على الأقل)<input type="password" minLength={12} required value={memberPassword} onChange={(event) => setMemberPassword(event.target.value)} /></label><label className="admin-field">الصلاحية<select value={memberRole} onChange={(event) => setMemberRole(event.target.value as Member["role"])}><option value="admin">مدير</option><option value="editor">محرر محتوى</option><option value="sales">متابعة العملاء</option><option value="viewer">مشاهدة فقط</option></select></label><button className="button" disabled={busy}>إنشاء الحساب</button></form><div className="admin-team-list">{members.map((member) => <article className="admin-team-row" key={member.id}><span className="admin-avatar">{member.display_name.slice(0,1)}</span><strong>{member.display_name}</strong><span>{member.email}</span><label className="admin-field">الصلاحية<select aria-label={`صلاحية ${member.display_name}`} value={member.role} disabled={busy} onChange={(event) => { const role = event.target.value as Member["role"]; if (window.confirm(`تغيير صلاحية ${member.display_name} إلى ${roleLabels[role]}؟`)) void save(() => api(`team/${member.id}`, { method: "PATCH", body: JSON.stringify({role}) }), "تم تحديث الصلاحية."); }}><option value="admin">مدير</option><option value="editor">محرر محتوى</option><option value="sales">متابعة العملاء</option><option value="viewer">مشاهدة فقط</option></select></label><span>{member.is_active ? "نشط" : "موقوف"}</span><button type="button" className="inline-add" disabled={busy} onClick={() => { if (window.confirm(`${member.is_active ? "إيقاف" : "إعادة تفعيل"} حساب ${member.display_name}؟`)) void save(() => api(`team/${member.id}`, { method: "PATCH", body: JSON.stringify({isActive:!member.is_active}) }), "تم تحديث حالة الحساب."); }}>{member.is_active ? "إيقاف" : "تفعيل"}</button><button type="button" className="inline-add" disabled={busy || member.email.toLowerCase() === user.email.toLowerCase()} onClick={() => { if(window.confirm(`حذف حساب ${member.display_name} نهائيًا؟ لا يمكن التراجع عن الحذف.`)) void save(() => api(`team/${member.id}/purge`, {method:"POST"}), "تم حذف عضو الفريق نهائيًا."); }}>حذف نهائي</button></article>)}</div><p className="field-hint">أرسل بيانات الدخول للعضو عبر قناة آمنة منفصلة. لا تُرسل المنصة كلمات المرور بالبريد.</p></section>}
+        {view === "team" && canManageTeam && <section className="admin-content-card"><div className="admin-content-title"><div><h2>فريق الإدارة</h2><p>أنشئ حسابات بصلاحيات محدودة؛ إرسال البريد يحتاج مزود بريد متصل.</p></div></div><form className="admin-team-form" onSubmit={addMember}><label className="admin-field">الاسم<input required value={memberName} onChange={(event) => setMemberName(event.target.value)} /></label><label className="admin-field">البريد الإلكتروني<input type="email" required value={memberEmail} onChange={(event) => setMemberEmail(event.target.value)} /></label><label className="admin-field">كلمة مرور مؤقتة (12 حرفًا على الأقل)<input type="password" minLength={12} required value={memberPassword} onChange={(event) => setMemberPassword(event.target.value)} /></label><label className="admin-field">الصلاحية<select value={memberRole} onChange={(event) => setMemberRole(event.target.value as Member["role"])}><option value="admin">مدير</option><option value="editor">محرر محتوى</option><option value="sales">متابعة العملاء</option><option value="viewer">مشاهدة فقط</option></select></label><div className="admin-content-card" style={{gridColumn:"1 / -1",padding:12}}><strong>الصلاحيات المرتبطة بالدرجة الإدارية</strong><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>{roleCapabilities[memberRole].map(capability=><label className="check-row" key={capability}><input type="checkbox" checked readOnly disabled /> {capability}</label>)}</div><small>هذه الصلاحيات موروثة من الدرجة الإدارية ولا يمكن تخصيصها بشكل منفصل حاليًا. الحماية الفعلية تحددها صلاحيات الخادم.</small></div><button className="button" disabled={busy}>إنشاء الحساب</button></form><div className="admin-team-list">{members.map((member) => <article className="admin-team-row" key={member.id}><span className="admin-avatar">{member.display_name.slice(0,1)}</span><strong>{member.display_name}</strong><span>{member.email}</span><label className="admin-field">الصلاحية<select aria-label={`صلاحية ${member.display_name}`} value={member.role} disabled={busy} onChange={(event) => { const role = event.target.value as Member["role"]; if (window.confirm(`تغيير صلاحية ${member.display_name} إلى ${roleLabels[role]}؟`)) void save(() => api(`team/${member.id}`, { method: "PATCH", body: JSON.stringify({role}) }), "تم تحديث الصلاحية."); }}><option value="admin">مدير</option><option value="editor">محرر محتوى</option><option value="sales">متابعة العملاء</option><option value="viewer">مشاهدة فقط</option></select></label><details><summary>تعديل الصلاحيات الفردية</summary><div style={{display:"flex",gap:8,flexWrap:"wrap",padding:8}}>{([{key:"assistant",label:"المساعد الذكي"},{key:"customers",label:"العملاء"},{key:"content",label:"إنشاء المحتوى"},{key:"products",label:"المنتجات"},{key:"settings",label:"الإعدادات"},{key:"team",label:"الفريق"},{key:"audit",label:"سجل التغييرات"}] as const).map(capability=><label className="check-row" key={capability.key}><input type="checkbox" disabled={busy} checked={member.permission_overrides?.[capability.key] ?? ({admin:["assistant","customers","content","products","settings","audit"],editor:["assistant","content"],sales:["customers"],viewer:[]}[member.role]?.some((permission: string)=>permission===capability.key) ?? false)} onChange={event=>{const permissions={...member.permission_overrides,[capability.key]:event.target.checked};void save(()=>api(`team/${member.id}`,{method:"PATCH",body:JSON.stringify({permissions})}),"تم حفظ صلاحيات العضو.");}}/> {capability.label}</label>)}</div><small>يتم حفظ كل تغيير على الخادم. يجب تسجيل الدخول مجددًا لتحديث الواجهة.</small></details><span>{member.is_active ? "نشط" : "موقوف"}</span><button type="button" className="inline-add" disabled={busy} onClick={() => { if (window.confirm(`${member.is_active ? "إيقاف" : "إعادة تفعيل"} حساب ${member.display_name}؟`)) void save(() => api(`team/${member.id}`, { method: "PATCH", body: JSON.stringify({isActive:!member.is_active}) }), "تم تحديث حالة الحساب."); }}>{member.is_active ? "إيقاف" : "تفعيل"}</button><button type="button" className="inline-add" disabled={busy || member.email.toLowerCase() === user.email.toLowerCase()} onClick={() => { if(window.confirm(`حذف حساب ${member.display_name} نهائيًا؟ لا يمكن التراجع عن الحذف.`)) void save(async () => { await api(`team/${member.id}/purge`, {method:"POST"}); const verification = await api("team"); if ((verification.members ?? []).some((remaining: Member) => remaining.id === member.id)) throw new Error("أعاد الخادم نجاح الحذف، لكن الحساب لا يزال موجودًا في قاعدة البيانات. لم يتم تأكيد الحذف."); }, "تم حذف عضو الفريق والتحقق من اختفائه من قاعدة البيانات."); }}>حذف نهائي</button></article>)}</div><p className="field-hint">أرسل بيانات الدخول للعضو عبر قناة آمنة منفصلة. لا تُرسل المنصة كلمات المرور بالبريد.</p></section>}
 
         {view === "audit" && <section className="admin-content-card"><div className="admin-content-title"><div><h2>سجل التغييرات</h2><p>أحدث العمليات الإدارية التي سجلها الخادم.</p></div></div><div className="admin-audit-list">{audit.map((item) => <article key={item.id}><strong>{item.action}</strong><span>{item.entity_type}</span><span>{item.actor}</span><time>{new Date(item.created_at).toLocaleString("ar-EG")}</time></article>)}</div></section>}
 

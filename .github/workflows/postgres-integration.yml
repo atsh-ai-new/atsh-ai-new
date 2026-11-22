@@ -5,6 +5,11 @@ on:
     paths:
       - 'source/backend/**'
       - '.github/workflows/postgres-integration.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'source/backend/**'
+      - '.github/workflows/postgres-integration.yml'
   workflow_dispatch:
 permissions:
   contents: read

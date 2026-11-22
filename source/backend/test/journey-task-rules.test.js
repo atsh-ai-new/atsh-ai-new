@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {journeyTaskCreate,journeyTaskUpdate,canManageJourneyTasks,canReadJourneyTasks} from '../src/journey-task-rules.js';
+import {journeyTaskCreate,journeyTaskUpdate,canManageJourneyTasks,canReadJourneyTasks,taskInboxScope,canUpdateOwnTaskStatus} from '../src/journey-task-rules.js';
 
 const id='11111111-1111-4111-8111-111111111111';
 test('task creation trims title and defaults optional values',()=>{
@@ -27,4 +27,22 @@ test('only owner and admin can manage tasks',()=>{
 test('task read roles do not include editor or unauthenticated users',()=>{
  for(const role of ['owner','admin','sales','viewer'])assert.equal(canReadJourneyTasks(role),true);
  for(const role of ['editor',undefined])assert.equal(canReadJourneyTasks(role),false);
+});
+
+test('personal task inbox scopes employees to their authenticated identity',()=>{
+ const a='11111111-1111-4111-8111-111111111111';
+ assert.deepEqual(taskInboxScope({role:'sales',userId:a}),{owner:false,userId:a});
+ assert.deepEqual(taskInboxScope({role:'admin',userId:a}),{owner:false,userId:a});
+ assert.deepEqual(taskInboxScope({role:'owner'}),{owner:true,userId:null});
+ for(const identity of [{role:'sales'},{role:'viewer'},null,{}])assert.equal(taskInboxScope(identity),null);
+});
+
+test('employees can update only their own tasks, owner can update all',()=>{
+ const a='11111111-1111-4111-8111-111111111111';
+ const b='22222222-2222-4222-8222-222222222222';
+ assert.equal(canUpdateOwnTaskStatus({owner:false,userId:a},a),true);
+ assert.equal(canUpdateOwnTaskStatus({owner:false,userId:a},b),false);
+ assert.equal(canUpdateOwnTaskStatus({owner:false,userId:a},null),false);
+ assert.equal(canUpdateOwnTaskStatus({owner:true,userId:null},b),true);
+ assert.equal(canUpdateOwnTaskStatus(null,a),false);
 });

@@ -26,7 +26,8 @@ try{
  assert.equal(readiness.status,200,JSON.stringify(readiness));
  assert.equal(readiness.result.catalog.total,4);
  assert.equal(readiness.result.catalog.visible,4);
- assert.equal(readiness.result.domains.configured,false);
+ assert.equal(readiness.result.domains.configured,true);
+ assert.equal(readiness.result.domains.mode,"rdap-registry");
  assert.equal(readiness.result.gpt.configured,false);
  assert.equal(readiness.result.registration.ready,false);
  const unauthorizedStatus=await req("/api/admin/integrations/status");
@@ -37,8 +38,8 @@ try{
  assert.equal(unsent.rows[0].n,0,"No unusable unverified account should be persisted when email provider is missing");
  const resendUnavailable=await req("/api/customer/auth/verification/resend",{method:"POST",body:{email:`signup-${suffix}@example.test`}});
  assert.equal(resendUnavailable.status,503);
- const domainUnconfigured=await req("/api/domains/check?domain=example.com");
- assert.equal(domainUnconfigured.status,503);
+ const domainCheck=await req("/api/domains/check?domain=example.com");
+ assert.equal(domainCheck.status,200,"RDAP fallback should respond without registrar credentials");
 
  await pool.query("INSERT INTO customer_accounts(id,name,email,password_hash,email_verified_at) VALUES($1,'Client A',$2,'ci-salted-not-for-login',now()),($3,'Client B',$4,'ci-salted-not-for-login',now())",[accountA,`first-${suffix}@example.test`,accountB,`second-${suffix}@example.test`]);
  const cookieFor=id=>`atsh_customer=${jwt.sign({sub:id,kind:"customer",ver:0},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-customer",expiresIn:"10m"})}`;
@@ -281,5 +282,22 @@ try{
  assert.equal(usageGuest.status,401);
  const assistantDisabled=await req("/api/visitor/assistant",{method:"POST",body:{messages:[{role:"user",content:"كم سعر الموقع؟"}]}});
  assert.equal(assistantDisabled.status,503);
+ // Verify real PostgreSQL deletion, linked-project protection, and archive visibility.
+ const removable=await pool.query("INSERT INTO customer_journey_projects(customer_name,customer_email,created_by) VALUES('Delete CI',$1,'integration-test') RETURNING id",[`delete-${suffix}@example.test`]);
+ const removableId=removable.rows[0].id;
+ const removed=await req(`/api/admin/journey/projects/${removableId}`,{method:"DELETE",cookie:adminCookie});
+ assert.equal(removed.status,200,JSON.stringify(removed));
+ assert.equal(removed.result.deleted,true);
+ assert.equal((await pool.query("SELECT 1 FROM customer_journey_projects WHERE id=$1",[removableId])).rowCount,0,"Project must actually disappear from PostgreSQL");
+ const protectedDelete=await req(`/api/admin/journey/projects/${journey.rows[0].id}`,{method:"DELETE",cookie:adminCookie});
+ assert.equal(protectedDelete.status,409,"Linked commercial project cannot be physically deleted");
+ const archived=await req(`/api/admin/journey/projects/${journey.rows[0].id}/archive`,{method:"PATCH",cookie:adminCookie});
+ assert.equal(archived.status,200,JSON.stringify(archived));
+ assert.equal(archived.result.project.status,"archived");
+ const activeProjects=await req("/api/admin/journey/projects",{cookie:adminCookie});
+ assert.equal(activeProjects.status,200);
+ assert.equal(activeProjects.result.projects.some(p=>p.id===journey.rows[0].id),false,"Archived project must be hidden from active list");
+ assert.equal((await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id])).rows[0].status,"archived");
+ console.log("PASS: PostgreSQL physical deletion, protected commercial links, archive persistence and list filtering");
  console.log("PASS: contract revisions, immutable issuance, owner authorization, project isolation, conflict detection, customer preview approval and signed payment settlement");
 }finally{await pool.end();}

@@ -1,10 +1,11 @@
+import { effectivePermissions, hasPermission } from "./team-permissions.js";
 import {validCalendarDate} from './invoice-ledger-rules.js';
 import { deliveryAdminRouter, deliveryCustomerRouter } from "./delivery-control.js";
 import { customerCommercialRouter } from "./customer-commercial.js";
 import { customerAuthRouter } from "./customer-auth.js";
 import {createCustomerJourneyProject} from './customer-project-service.js';
 import {transitionJourneyProject} from './customer-journey-state.js';
-import {journeyTaskCreate,journeyTaskUpdate} from './journey-task-rules.js';
+import {journeyTaskCreate,journeyTaskUpdate,taskInboxScope,canUpdateOwnTaskStatus} from './journey-task-rules.js';
 import {quoteTotal,installments,validateTicketTransition,validateDeliveryMethod} from "./commercial-rules.js";
 import express from "express";
 import helmet from "helmet";
@@ -140,11 +141,13 @@ async function requireAdmin(req,res,next) {
       if ((Number.isSafeInteger(session.ownerVersion)?session.ownerVersion:0)!==currentVersion)
         throw new Error("Owner session predates password reset");
     }
+    let permissionOverrides = null;
     if (session.userId) {
-      const active = await pool.query("SELECT is_active FROM team_members WHERE id=$1",[session.userId]);
-      if (!active.rowCount || !active.rows[0].is_active) throw new Error("Session revoked");
+      const active = await pool.query("SELECT is_active,role,permission_overrides FROM team_members WHERE id=$1",[session.userId]);
+      if (!active.rowCount || !active.rows[0].is_active || active.rows[0].role !== session.role) throw new Error("Session revoked or role changed");
+      permissionOverrides = active.rows[0].permission_overrides;
     }
-    req.admin = session;
+    req.admin = { ...session, permissions: effectivePermissions(session.role, permissionOverrides) };
     next();
   } catch {
     res.clearCookie(cookie,cookieOptions);
@@ -152,6 +155,7 @@ async function requireAdmin(req,res,next) {
   }
 }
 const requireRole = (...roles) => (req,res,next) => roles.includes(req.admin?.role) ? next() : res.status(403).json({error:"Insufficient permissions"});
+const requirePermission = key => (req,res,next) => hasPermission(req.admin?.role, req.admin?.permissions, key) ? next() : res.status(403).json({error:"Insufficient permissions"});
 const escapeHtml = value => value.replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[character]);
 async function sendTransactionalEmail({to,toName,subject,textContent}) {
   if(!process.env.BREVO_API_KEY)return false;
@@ -195,14 +199,14 @@ const journeyCreateSchema = z.object({
   templateId:z.string().trim().max(120).optional()
 }).strict();
 const journeyMessageSchema = z.object({body:z.string().trim().min(1).max(4000)}).strict();
-app.post("/api/admin/journey/projects",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/journey/projects",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const parsed=journeyCreateSchema.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid project data"});
  const x=parsed.data;
  const result=await pool.query("INSERT INTO customer_journey_projects(customer_name,customer_email,template_id,created_by) VALUES($1,$2,$3,$4) RETURNING id,customer_name,customer_email,template_id,status,created_at",[x.customerName,x.customerEmail||null,x.templateId||null,req.admin.email]);
  res.status(201).json({project:result.rows[0]});
 }));
-app.patch("/api/admin/journey/projects/:id/archive",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.patch("/api/admin/journey/projects/:id/archive",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const client=await pool.connect();
  try{
@@ -215,7 +219,7 @@ app.patch("/api/admin/journey/projects/:id/archive",requireAdmin,requireRole("ow
   await client.query("COMMIT");res.json({project:updated.rows[0]});
  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.delete("/api/admin/journey/projects/:id",requireAdmin,requireRole("owner"),route(async(req,res)=>{
+app.delete("/api/admin/journey/projects/:id",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const client=await pool.connect();try{
   await client.query("BEGIN");
@@ -225,16 +229,17 @@ app.delete("/api/admin/journey/projects/:id",requireAdmin,requireRole("owner"),r
   if(links.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"المشروع مرتبط بطلب تجاري. استخدم الأرشفة للحفاظ على الطلب والسجل المالي."});}
   const drafts=await client.query("SELECT 1 FROM customer_project_drafts WHERE linked_journey_id=$1 LIMIT 1",[req.params.id]);
   if(drafts.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"المشروع مرتبط بمسودة عميل. استخدم الأرشفة بدل الحذف النهائي."});}
-  await client.query("DELETE FROM customer_journey_projects WHERE id=$1",[req.params.id]);
+  const removed=await client.query("DELETE FROM customer_journey_projects WHERE id=$1 RETURNING id",[req.params.id]);
+  if(removed.rowCount!==1)throw new Error("Project deletion was not confirmed");
   await auditChange(client,req.admin.email,"journey.project.deleted","customer_journey_project",req.params.id,before.rows[0],null);
   await client.query("COMMIT");res.json({deleted:true});
- }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+ }catch(e){await client.query("ROLLBACK");if(e.code==="23503")return res.status(409).json({error:"المشروع مرتبط بسجلات أخرى ولا يمكن حذفه نهائيًا. استخدم الأرشفة لإخفائه من المشروعات النشطة."});throw e;}finally{client.release();}
 }));
-app.get("/api/admin/journey/projects",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+app.get("/api/admin/journey/projects",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
  const result=await pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at FROM customer_journey_projects WHERE status <> 'archived' ORDER BY created_at DESC LIMIT 100");
  res.json({projects:result.rows});
 }));
-app.get("/api/admin/journey/projects/:id",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
+app.get("/api/admin/journey/projects/:id",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const [project,messages,drafts,assignments]=await Promise.all([
   pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at FROM customer_journey_projects WHERE id=$1",[req.params.id]),
@@ -250,7 +255,7 @@ app.get("/api/admin/journey/projects/:id",requireAdmin,requireRole("owner","admi
  // The draft remains account-owned and is never modified by this read-only endpoint.
  res.set('Cache-Control','private, no-store').json({project:project.rows[0],messages:messages.rows,submittedDraft:drafts.rows[0]||null,linkedOrderAssignments:assignments.rows});
 }));
-app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const parsed=journeyMessageSchema.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid message"});
@@ -269,8 +274,42 @@ app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requireRole("ow
  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 
+// Each team member can see only their own assignments; owner sees the whole queue.
+app.get("/api/admin/journey/my-tasks",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+ const scope=taskInboxScope(req.admin);
+ if(!scope)return res.status(403).json({error:"Team account required"});
+ const tasks=await pool.query(`SELECT t.id,t.project_id,t.title,t.description,t.status,t.created_at,t.updated_at,
+  p.customer_name AS project_name,m.display_name AS assigned_to_name
+  FROM customer_journey_tasks t
+  JOIN customer_journey_projects p ON p.id=t.project_id
+  LEFT JOIN team_members m ON m.id=t.assigned_to
+  WHERE ($1::boolean OR t.assigned_to=$2::uuid)
+  ORDER BY CASE WHEN t.status='done' THEN 1 ELSE 0 END,t.updated_at DESC LIMIT 200`,
+  [scope.owner,scope.userId]);
+ res.set("Cache-Control","private, no-store").json({tasks:tasks.rows});
+}));
+
+// Assigned employees can change only the status of their own task, never its owner or contents.
+app.patch("/api/admin/journey/my-tasks/:taskId/status",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+ const scope=taskInboxScope(req.admin);
+ if(!scope)return res.status(403).json({error:"Team account required"});
+ if(!z.string().uuid().safeParse(req.params.taskId).success)return res.status(400).json({error:"Invalid task"});
+ const parsed=z.object({status:z.enum(["todo","in_progress","blocked","done"])}).strict().safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid status"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const before=await client.query("SELECT * FROM customer_journey_tasks WHERE id=$1 FOR UPDATE",[req.params.taskId]);
+  if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Task not found"});}
+  if(!canUpdateOwnTaskStatus(scope,before.rows[0].assigned_to)){await client.query("ROLLBACK");return res.status(403).json({error:"Task is not assigned to your account"});}
+  const result=await client.query("UPDATE customer_journey_tasks SET status=$2,updated_by=$3,updated_at=now() WHERE id=$1 RETURNING id,status,updated_at",[req.params.taskId,parsed.data.status,req.admin.email]);
+  await auditChange(client,req.admin.email,"journey.task.status_updated","customer_journey_task",req.params.taskId,before.rows[0],{...before.rows[0],...result.rows[0]});
+  await client.query("COMMIT");res.set("Cache-Control","private, no-store").json({task:result.rows[0]});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
+
 // Internal project tasks: only administrators assign work to active team accounts.
-app.get("/api/admin/journey/projects/:id/tasks",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
+app.get("/api/admin/journey/projects/:id/tasks",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const project=await pool.query("SELECT 1 FROM customer_journey_projects WHERE id=$1",[req.params.id]);
  if(!project.rowCount)return res.status(404).json({error:"Project not found"});
@@ -278,7 +317,7 @@ app.get("/api/admin/journey/projects/:id/tasks",requireAdmin,requireRole("owner"
  FROM customer_journey_tasks t LEFT JOIN team_members m ON m.id=t.assigned_to WHERE t.project_id=$1 ORDER BY t.created_at DESC LIMIT 200`,[req.params.id]);
  res.set("Cache-Control","private, no-store").json({tasks:tasks.rows});
 }));
-app.post("/api/admin/journey/projects/:id/tasks",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.post("/api/admin/journey/projects/:id/tasks",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const parsed=journeyTaskCreate.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid task"});
@@ -293,7 +332,7 @@ app.post("/api/admin/journey/projects/:id/tasks",requireAdmin,requireRole("owner
   await client.query("COMMIT");res.status(201).json({task:task.rows[0]});
  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.patch("/api/admin/journey/projects/:id/tasks/:taskId",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.patch("/api/admin/journey/projects/:id/tasks/:taskId",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success||!z.string().uuid().safeParse(req.params.taskId).success)return res.status(400).json({error:"Invalid id"});
  const parsed=journeyTaskUpdate.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid task update"});
@@ -311,7 +350,7 @@ app.patch("/api/admin/journey/projects/:id/tasks/:taskId",requireAdmin,requireRo
 }));
 
 // Stage 4: authoritative catalog guidance and audited, restricted lifecycle transitions.
-app.get("/api/admin/journey/catalog",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+app.get("/api/admin/journey/catalog",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
  const [packages,options]=await Promise.all([
   pool.query("SELECT id,name,description,price,currency,is_custom_quote FROM packages WHERE is_published=true ORDER BY sort_order LIMIT 100"),
   pool.query("SELECT id,package_id,code,name,description,price,pricing_type,is_required FROM package_options WHERE is_active=true ORDER BY sort_order LIMIT 300")
@@ -319,7 +358,7 @@ app.get("/api/admin/journey/catalog",requireAdmin,requireRole("owner","admin","s
  res.json({packages:packages.rows,options:options.rows,authoritative:true,note:"Final totals must be calculated by the existing order pricing endpoint."});
 }));
 const journeyTransitionSchema=z.object({status:z.enum(["configured","quoted","payment_pending","building","preview_ready","approved","delivered","support"]),note:z.string().trim().max(1000).optional()}).strict();
-app.post("/api/admin/journey/projects/:id/transition",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.post("/api/admin/journey/projects/:id/transition",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const parsed=journeyTransitionSchema.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid transition request"});
@@ -334,7 +373,7 @@ app.post("/api/admin/journey/projects/:id/transition",requireAdmin,requireRole("
 
 // Stage 5: admin-reviewed link to an order priced by the existing authoritative engine.
 const journeyLinkSchema=z.object({orderReference:z.string().trim().min(5).max(40)}).strict();
-app.post("/api/admin/journey/projects/:id/link-order",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/journey/projects/:id/link-order",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const parsed=journeyLinkSchema.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid order reference"});
@@ -356,7 +395,7 @@ app.post("/api/admin/journey/projects/:id/link-order",requireAdmin,requireRole("
   res.status(201).json({link:linked.rows[0],order:{reference:order.rows[0].reference,total:order.rows[0].total,currency:order.rows[0].currency,status:order.rows[0].status},pricingSource:"orders.snapshot",paymentVerified:false});
  }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
-app.get("/api/admin/journey/projects/:id/order",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
+app.get("/api/admin/journey/projects/:id/order",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const result=await pool.query("SELECT o.reference,o.status,o.total,o.currency,o.snapshot,l.linked_at FROM customer_journey_order_links l JOIN orders o ON o.id=l.order_id WHERE l.project_id=$1",[req.params.id]);
  res.json({order:result.rows[0]||null,pricingSource:"orders.snapshot",paymentVerified:false});
@@ -364,7 +403,7 @@ app.get("/api/admin/journey/projects/:id/order",requireAdmin,requireRole("owner"
 
 // Stage 2: authenticated, admin-operated journey guidance. No customer-facing access or autonomous actions.
 const journeyGuideSchema=z.object({message:z.string().trim().min(1).max(3000)}).strict();
-app.post("/api/admin/journey/projects/:id/guide",requireAdmin,requireRole("owner","admin","sales"),rateLimit({windowMs:60*1000,limit:10,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
+app.post("/api/admin/journey/projects/:id/guide",requireAdmin,requirePermission("customers"),rateLimit({windowMs:60*1000,limit:10,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const parsed=journeyGuideSchema.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid message"});
@@ -403,7 +442,7 @@ async function requireCustomerProject(req,res,next){
   req.customerProject=result.rows[0];next();
  }catch(error){next(error);}
 }
-app.post("/api/admin/journey/projects/:id/customer-access",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.post("/api/admin/journey/projects/:id/customer-access",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!customerIdSchema.safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const parsed=z.object({expiresInDays:z.number().int().min(1).max(30).default(7)}).strict().safeParse(req.body||{});
  if(!parsed.success)return res.status(400).json({error:"Invalid expiry"});
@@ -419,7 +458,7 @@ app.post("/api/admin/journey/projects/:id/customer-access",requireAdmin,requireR
   res.set("Cache-Control","no-store").json({projectId:req.params.id,accessCode:secret,expiresInDays:parsed.data.expiresInDays,warning:"Copy this code now; it cannot be retrieved later. Previous code is revoked."});
  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.delete("/api/admin/journey/projects/:id/customer-access",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.delete("/api/admin/journey/projects/:id/customer-access",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!customerIdSchema.safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  await pool.query("UPDATE customer_journey_access SET revoked_at=now() WHERE project_id=$1",[req.params.id]);
  await pool.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id) VALUES($1,'journey.customer_access.revoked','customer_journey_project',$2)",[req.admin.email,req.params.id]);
@@ -528,10 +567,10 @@ app.get("/api/templates",route(async(_req,res)=>{
  const result=await pool.query("SELECT id,slug,title,sector,description,preview_url,updated_at FROM platform_templates WHERE is_published=true ORDER BY sector,title");
  res.set("Cache-Control","no-store").json({templates:result.rows});
 }));
-app.get("/api/admin/templates",requireAdmin,requireRole("owner","admin","editor","sales","viewer"),route(async(_req,res)=>{
+app.get("/api/admin/templates",requireAdmin,requirePermission("content"),route(async(_req,res)=>{
  const result=await pool.query("SELECT * FROM platform_templates ORDER BY updated_at DESC LIMIT 200");res.json({templates:result.rows});
 }));
-app.post("/api/admin/templates",requireAdmin,requireRole("owner","admin","editor"),route(async(req,res)=>{
+app.post("/api/admin/templates",requireAdmin,requirePermission("content"),route(async(req,res)=>{
  const parsed=templateWriteSchema.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid template"});
  const t=parsed.data;const preview=verifiedPreviewUrl(t.previewUrl);
@@ -757,9 +796,9 @@ app.post("/api/admin/login",rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?
   res.cookie(cookie,token,cookieOptions).json({authenticated:true,email:session.email,role:session.role});
 }));
 app.post("/api/admin/logout",(_req,res)=>{res.clearCookie(cookie,cookieOptions);res.json({authenticated:false});});
-app.get("/api/admin/me",requireAdmin,(req,res)=>res.json({authenticated:true,email:req.admin.email,role:req.admin.role}));
-app.get("/api/admin/email-status",requireAdmin,(_req,res)=>res.json({configured:Boolean(process.env.BREVO_API_KEY),from:process.env.BREVO_SENDER_EMAIL||"info@atsh-ai.com",replyTo:process.env.BREVO_REPLY_TO||"sales@atsh-ai.com"}));
-app.get("/api/admin/integrations/status",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{
+app.get("/api/admin/me",requireAdmin,(req,res)=>res.json({authenticated:true,email:req.admin.email,role:req.admin.role,permissions:req.admin.permissions}));
+app.get("/api/admin/email-status",requireAdmin,requirePermission("settings"),(_req,res)=>res.json({configured:Boolean(process.env.BREVO_API_KEY),from:process.env.BREVO_SENDER_EMAIL||"info@atsh-ai.com",replyTo:process.env.BREVO_REPLY_TO||"sales@atsh-ai.com"}));
+app.get("/api/admin/integrations/status",requireAdmin,requirePermission("settings"),route(async(_req,res)=>{
   const [catalog,packages]=await Promise.all([
     pool.query(`SELECT is_published,
       CASE WHEN jsonb_typeof(content->'items')='array' THEN jsonb_array_length(content->'items') ELSE 0 END AS count,
@@ -788,21 +827,21 @@ app.get("/api/admin/integrations/status",requireAdmin,requireRole("owner","admin
   });
 }));
 
-app.get("/api/admin/visitor-ai-usage",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{
+app.get("/api/admin/visitor-ai-usage",requireAdmin,requirePermission("assistant"),route(async(_req,res)=>{
  const result=await pool.query("SELECT day,requests,input_tokens,output_tokens FROM visitor_ai_daily_usage ORDER BY day DESC LIMIT 31");
  res.set("Cache-Control","private, no-store").json({days:result.rows});
 }));
-app.get("/api/admin/orders",requireAdmin,route(async(req,res)=>{
+app.get("/api/admin/orders",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
   const status=typeof req.query.status==="string"?req.query.status:null;
   const result=await pool.query("SELECT o.id,o.reference,o.customer_name,o.phone,o.email,o.status,o.currency,o.total,o.created_at,o.assigned_to,t.display_name AS assigned_to_name,p.name AS package_name FROM orders o LEFT JOIN team_members t ON t.id=o.assigned_to LEFT JOIN packages p ON p.id=o.package_id WHERE ($1::text IS NULL OR o.status=$1) ORDER BY o.created_at DESC LIMIT 200",[status]);
   res.json({orders:result.rows});
 }));
-app.get("/api/admin/orders/:id",requireAdmin,route(async(req,res)=>{
+app.get("/api/admin/orders/:id",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
   const result=await pool.query("SELECT o.id,o.reference,o.customer_name,o.phone,o.email,o.notes,o.status,o.currency,o.subtotal,o.vat_rate,o.vat_amount,o.total,o.snapshot,o.created_at,o.updated_at,o.assigned_to,t.display_name AS assigned_to_name,l.project_id AS linked_project_id FROM orders o LEFT JOIN team_members t ON t.id=o.assigned_to LEFT JOIN customer_journey_order_links l ON l.order_id=o.id WHERE o.id=$1",[req.params.id]);
   if(!result.rowCount)return res.status(404).json({error:"Order not found"});
   res.json({order:result.rows[0]});
 }));
-app.post("/api/admin/orders/:id/email",requireAdmin,requireRole("owner","admin","sales"),rateLimit({windowMs:60*60*1000,limit:40,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
+app.post("/api/admin/orders/:id/email",requireAdmin,requirePermission("customers"),rateLimit({windowMs:60*60*1000,limit:40,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
   const parsed=z.object({subject:z.string().trim().min(2).max(180),message:z.string().trim().min(1).max(10000)}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"اكتب عنوانًا ونصًا للرسالة قبل الإرسال."});
   if(!process.env.BREVO_API_KEY)return res.status(503).json({error:"إرسال البريد غير مفعّل بعد. أكمل ربط مزود SMTP المجاني أولًا."});
@@ -814,7 +853,7 @@ app.post("/api/admin/orders/:id/email",requireAdmin,requireRole("owner","admin",
   await pool.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'customer.email.sent','order',$2,$3)",[req.admin.email,order.id,JSON.stringify({to:order.email,subject:parsed.data.subject})]);
   res.status(202).json({message:`تم تسليم الرسالة إلى خدمة الإرسال للعميل ${order.customer_name}.`});
 }));
-app.get("/api/admin/audit",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{ const result=await pool.query("SELECT id,actor,action,entity_type,entity_id,before_data,after_data,created_at FROM audit_logs ORDER BY created_at DESC LIMIT 200"); res.json({logs:result.rows}); }));
+app.get("/api/admin/audit",requireAdmin,requirePermission("audit"),route(async(_req,res)=>{ const result=await pool.query("SELECT id,actor,action,entity_type,entity_id,before_data,after_data,created_at FROM audit_logs ORDER BY created_at DESC LIMIT 200"); res.json({logs:result.rows}); }));
 
 const packageSchema=z.object({
   name:z.string().trim().min(2).max(160),
@@ -940,12 +979,12 @@ function openAiResponseText(data){
   if(!text)throw new Error("لم يرجع نموذج الذكاء الاصطناعي خطة قابلة للقراءة.");
   return text;
 }
-app.get("/api/admin/content-studio/status",requireAdmin,requireRole(...contentStudioRoles),(_req,res)=>res.json({aiConfigured:Boolean(process.env.OPENAI_API_KEY&&process.env.OPENAI_MODEL),aiModel:process.env.OPENAI_MODEL||null,workflowConfigured:Boolean(process.env.N8N_AD_APPROVED_PLAN_URL&&process.env.N8N_AD_APPROVED_PLAN_TOKEN)}));
-app.get("/api/admin/content-studio",requireAdmin,requireRole(...contentStudioRoles),route(async(_req,res)=>{
+app.get("/api/admin/content-studio/status",requireAdmin,requirePermission("assistant"),requireRole(...contentStudioRoles),(_req,res)=>res.json({aiConfigured:Boolean(process.env.OPENAI_API_KEY&&process.env.OPENAI_MODEL),aiModel:process.env.OPENAI_MODEL||null,workflowConfigured:Boolean(process.env.N8N_AD_APPROVED_PLAN_URL&&process.env.N8N_AD_APPROVED_PLAN_TOKEN)}));
+app.get("/api/admin/content-studio",requireAdmin,requirePermission("assistant"),requireRole(...contentStudioRoles),route(async(_req,res)=>{
   const result=await pool.query("SELECT id,title,source_filename,status,updated_at,video_generated_at,video_size,video_size AS has_video FROM content_studio_drafts ORDER BY updated_at DESC LIMIT 100");
   res.json({drafts:result.rows.map(contentStudioSummary)});
 }));
-app.post("/api/admin/content-studio/analyze",requireAdmin,requireRole(...contentStudioRoles),rateLimit({windowMs:60*60*1000,limit:12,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
+app.post("/api/admin/content-studio/analyze",requireAdmin,requirePermission("assistant"),requireRole(...contentStudioRoles),rateLimit({windowMs:60*60*1000,limit:12,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
   if(req.get("x-analysis-consent")!=="openai")return res.status(400).json({error:"أكد موافقتك على إرسال الملف إلى OpenAI للتحليل."});
   if(!process.env.OPENAI_API_KEY||!process.env.OPENAI_MODEL)return res.status(503).json({error:"خدمة تحليل المحتوى غير مهيأة في إعدادات السيرفر."});
   if(!Buffer.isBuffer(req.body)||req.body.length===0)return res.status(400).json({error:"اختر ملفًا صالحًا للتحليل."});
@@ -970,19 +1009,19 @@ app.post("/api/admin/content-studio/analyze",requireAdmin,requireRole(...content
   await pool.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'content_studio.analyzed','content_studio_draft',$2,$3::jsonb)",[req.admin.email,saved.rows[0].id,JSON.stringify({source_filename:filename,model:process.env.OPENAI_MODEL,source_bytes:req.body.length})]);
   res.status(201).json({draft:{...saved.rows[0],has_video:false}});
 }));
-app.get("/api/admin/content-studio/:id/video",requireAdmin,requireRole(...contentStudioRoles),route(async(req,res)=>{
+app.get("/api/admin/content-studio/:id/video",requireAdmin,requirePermission("assistant"),requireRole(...contentStudioRoles),route(async(req,res)=>{
   if(!contentStudioId(req))return res.status(404).end();
   const result=await pool.query("SELECT video_data,video_size FROM content_studio_drafts WHERE id=$1",[req.params.id]);
   if(!result.rowCount||!result.rows[0].video_data)return res.status(404).end();
   res.set({"Content-Type":"video/mp4","Content-Length":String(result.rows[0].video_size),"Content-Disposition":"attachment; filename=atsh-ad.mp4","Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}).send(result.rows[0].video_data);
 }));
-app.get("/api/admin/content-studio/:id",requireAdmin,requireRole(...contentStudioRoles),route(async(req,res)=>{
+app.get("/api/admin/content-studio/:id",requireAdmin,requirePermission("assistant"),requireRole(...contentStudioRoles),route(async(req,res)=>{
   if(!contentStudioId(req))return res.status(404).json({error:"المسودة غير موجودة."});
   const result=await pool.query("SELECT id,title,source_filename,brief_markdown,production_plan,status,video_size,video_generated_at,video_size AS has_video,updated_at FROM content_studio_drafts WHERE id=$1",[req.params.id]);
   if(!result.rowCount)return res.status(404).json({error:"المسودة غير موجودة."});
   const row=result.rows[0];res.json({draft:{...row,has_video:Boolean(row.video_size)}});
 }));
-app.patch("/api/admin/content-studio/:id",requireAdmin,requireRole(...contentStudioRoles),route(async(req,res)=>{
+app.patch("/api/admin/content-studio/:id",requireAdmin,requirePermission("assistant"),requireRole(...contentStudioRoles),route(async(req,res)=>{
   if(!contentStudioId(req))return res.status(404).json({error:"المسودة غير موجودة."});
   const parsed=contentStudioUpdateSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:"راجع عنوان الخطة ومحتواها والمشاهد قبل الحفظ."});
   const x=parsed.data,plan={...x.productionPlan,approved:false,campaign:{...x.productionPlan.campaign,totalDurationSeconds:x.productionPlan.scenes.reduce((seconds,scene)=>seconds+scene.seconds,0)}};
@@ -995,7 +1034,7 @@ app.patch("/api/admin/content-studio/:id",requireAdmin,requireRole(...contentStu
     await client.query("COMMIT");res.json({draft:{...updated.rows[0],has_video:false}});
   }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
-app.post("/api/admin/content-studio/:id/produce",requireAdmin,requireRole(...contentStudioRoles),rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
+app.post("/api/admin/content-studio/:id/produce",requireAdmin,requirePermission("assistant"),requireRole(...contentStudioRoles),rateLimit({windowMs:60*60*1000,limit:8,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
   if(!contentStudioId(req))return res.status(404).json({error:"المسودة غير موجودة."});
   if(!process.env.N8N_AD_APPROVED_PLAN_URL||!process.env.N8N_AD_APPROVED_PLAN_TOKEN)return res.status(503).json({error:"ورَك فلو الفيديو غير مهيأة في إعدادات السيرفر."});
   const parsed=contentStudioProduceSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:"ملف الشعار أو الصوت غير صالح."});
@@ -1035,11 +1074,11 @@ app.post("/api/admin/content-studio/:id/produce",requireAdmin,requireRole(...con
   await pool.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'content_studio.video.generated','content_studio_draft',$2,$3::jsonb)",[req.admin.email,req.params.id,JSON.stringify({title,video_size:savedVideo.length})]);
   res.set({"Content-Type":"video/mp4","Content-Length":String(savedVideo.length),"Content-Disposition":"attachment; filename=atsh-ad.mp4","Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}).send(savedVideo);
 }));
-app.get("/api/admin/pages",requireAdmin,route(async(_req,res)=>{
+app.get("/api/admin/pages",requireAdmin,requirePermission("content"),route(async(_req,res)=>{
   const result=await pool.query("SELECT id,slug,locale,content,is_published,updated_by,updated_at FROM site_pages ORDER BY slug,locale");
   res.json({pages:result.rows});
 }));
-app.post("/api/admin/media",requireAdmin,requireRole("owner","admin","editor"),express.raw({type:["image/png","image/jpeg","image/webp"],limit:"5mb"}),route(async(req,res)=>{
+app.post("/api/admin/media",requireAdmin,requirePermission("content"),express.raw({type:["image/png","image/jpeg","image/webp"],limit:"5mb"}),route(async(req,res)=>{
   if(!Buffer.isBuffer(req.body)||req.body.length===0)return res.status(400).json({error:"Choose a PNG, JPG, or WebP image first"});
   const bytes=req.body,declaredType=(req.get("content-type")||"").split(";")[0].trim().toLowerCase();
   const isPng=bytes.length>=8&&bytes.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]));
@@ -1054,7 +1093,7 @@ app.post("/api/admin/media",requireAdmin,requireRole("owner","admin","editor"),e
     await client.query("COMMIT");res.status(201).json({media:{...saved.rows[0],url:`/api/site-media/${saved.rows[0].id}`}});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.patch("/api/admin/pages/:slug",requireAdmin,requireRole("owner","admin","editor"),route(async(req,res)=>{
+app.patch("/api/admin/pages/:slug",requireAdmin,requirePermission("content"),route(async(req,res)=>{
   if(!/^[a-z0-9-]{1,100}$/.test(req.params.slug))return res.status(400).json({error:"Invalid page"});
   const parsed=z.object({locale:z.string().regex(/^[a-z]{2}(-[A-Z]{2})?$/).default("ar"),content:z.record(z.string(),z.unknown()),isPublished:z.boolean().default(true),expectedUpdatedAt:z.string().datetime({offset:true}).nullable().optional()}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"Invalid page content",details:parsed.error.issues});
@@ -1068,36 +1107,42 @@ app.patch("/api/admin/pages/:slug",requireAdmin,requireRole("owner","admin","edi
     await auditChange(client,req.admin.email,"page.updated","site_page",saved.rows[0].id,before.rows[0]||null,saved.rows[0]);await client.query("COMMIT");res.json({page:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.get("/api/admin/team",requireAdmin,route(async(_req,res)=>{
-  const result=await pool.query("SELECT id,email,display_name,role,is_active,created_at,updated_at FROM team_members ORDER BY created_at");
+app.get("/api/admin/team",requireAdmin,requirePermission("team"),requireRole("owner","admin"),route(async(_req,res)=>{
+  const result=await pool.query("SELECT id,email,display_name,role,is_active,permission_overrides,created_at,updated_at FROM team_members ORDER BY created_at");
   res.json({members:result.rows});
 }));
-app.post("/api/admin/team",requireAdmin,requireRole("owner"),route(async(req,res)=>{
+app.post("/api/admin/team",requireAdmin,requirePermission("team"),requireRole("owner"),route(async(req,res)=>{
   const parsed=z.object({email:z.string().email().max(254),displayName:z.string().trim().min(2).max(120),role:z.enum(["admin","editor","sales","viewer"]),password:z.string().min(12).max(200)}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"Invalid team member",details:parsed.error.issues});
   const x=parsed.data,client=await pool.connect();try{await client.query("BEGIN");
     const passwordHash=await bcrypt.hash(x.password,12);
-    const saved=await client.query("INSERT INTO team_members(email,display_name,role,password_hash) VALUES($1,$2,$3,$4) RETURNING id,email,display_name,role,is_active,created_at,updated_at",[x.email.trim().toLowerCase(),x.displayName,x.role,passwordHash]);
+    const saved=await client.query("INSERT INTO team_members(email,display_name,role,password_hash) VALUES($1,$2,$3,$4) RETURNING id,email,display_name,role,is_active,permission_overrides,created_at,updated_at",[x.email.trim().toLowerCase(),x.displayName,x.role,passwordHash]);
     await auditChange(client,req.admin.email,"team_member.created","team_member",saved.rows[0].id,null,saved.rows[0]);await client.query("COMMIT");res.status(201).json({member:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");if(e.code==="23505")return res.status(409).json({error:"A team member with this email already exists"});throw e;}finally{client.release();}
 }));
-app.patch("/api/admin/team/:id",requireAdmin,requireRole("owner"),route(async(req,res)=>{
-  const parsed=z.object({displayName:z.string().trim().min(2).max(120).optional(),role:z.enum(["admin","editor","sales","viewer"]).optional(),isActive:z.boolean().optional(),password:z.string().min(12).max(200).optional()}).strict().refine(x=>Object.keys(x).length>0).safeParse(req.body);
+// Audit records must never persist password hashes or other authentication secrets.
+const safeTeamAuditRecord = member => member && ({
+  id: member.id, email: member.email, display_name: member.display_name,
+  role: member.role, is_active: member.is_active, permission_overrides: member.permission_overrides,
+  created_at: member.created_at, updated_at: member.updated_at
+});
+app.patch("/api/admin/team/:id",requireAdmin,requirePermission("team"),requireRole("owner"),route(async(req,res)=>{
+  const parsed=z.object({displayName:z.string().trim().min(2).max(120).optional(),role:z.enum(["admin","editor","sales","viewer"]).optional(),isActive:z.boolean().optional(),password:z.string().min(12).max(200).optional(),permissions:z.record(z.enum(["assistant","customers","content","products","settings","team","audit"]),z.boolean()).optional()}).strict().refine(x=>Object.keys(x).length>0).safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"Invalid team update"});
   const client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM team_members WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Team member not found"});}
-    const map={displayName:"display_name",role:"role",isActive:"is_active",password:"password_hash"},values=[],sets=[];
-    for(const [key,value] of Object.entries(parsed.data)){values.push(key==="password"?await bcrypt.hash(value,12):value);sets.push(map[key]+"=$"+values.length);}
-    values.push(req.params.id);const saved=await client.query("UPDATE team_members SET "+sets.join(",")+",updated_at=now() WHERE id=$"+values.length+" RETURNING id,email,display_name,role,is_active,created_at,updated_at",values);
-    await auditChange(client,req.admin.email,"team_member.updated","team_member",req.params.id,before.rows[0],saved.rows[0]);await client.query("COMMIT");res.json({member:saved.rows[0]});
+    const map={displayName:"display_name",role:"role",isActive:"is_active",password:"password_hash",permissions:"permission_overrides"},values=[],sets=[];
+    for(const [key,value] of Object.entries(parsed.data)){values.push(key==="password"?await bcrypt.hash(value,12):key==="permissions"?JSON.stringify(value):value);sets.push(map[key]+"=$"+values.length);}
+    values.push(req.params.id);const saved=await client.query("UPDATE team_members SET "+sets.join(",")+",updated_at=now() WHERE id=$"+values.length+" RETURNING id,email,display_name,role,is_active,permission_overrides,created_at,updated_at",values);
+    await auditChange(client,req.admin.email,"team_member.updated","team_member",req.params.id,safeTeamAuditRecord(before.rows[0]),saved.rows[0]);await client.query("COMMIT");res.json({member:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.delete("/api/admin/team/:id",requireAdmin,requireRole("owner"),route(async(req,res)=>{
+app.delete("/api/admin/team/:id",requireAdmin,requirePermission("team"),requireRole("owner"),route(async(req,res)=>{
   const client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM team_members WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Team member not found"});}
-    const saved=await client.query("UPDATE team_members SET is_active=false,updated_at=now() WHERE id=$1 RETURNING id,email,display_name,role,is_active,created_at,updated_at",[req.params.id]);
-    await auditChange(client,req.admin.email,"team_member.deactivated","team_member",req.params.id,before.rows[0],saved.rows[0]);await client.query("COMMIT");res.json({member:saved.rows[0]});
+    const saved=await client.query("UPDATE team_members SET is_active=false,updated_at=now() WHERE id=$1 RETURNING id,email,display_name,role,is_active,permission_overrides,created_at,updated_at",[req.params.id]);
+    await auditChange(client,req.admin.email,"team_member.deactivated","team_member",req.params.id,safeTeamAuditRecord(before.rows[0]),saved.rows[0]);await client.query("COMMIT");res.json({member:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.post("/api/admin/team/:id/purge",requireAdmin,requireRole("owner"),route(async(req,res)=>{
+app.post("/api/admin/team/:id/purge",requireAdmin,requirePermission("team"),requireRole("owner"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid member id"});
  const client=await pool.connect();try{
   await client.query("BEGIN");
@@ -1105,18 +1150,18 @@ app.post("/api/admin/team/:id/purge",requireAdmin,requireRole("owner"),route(asy
   if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Team member not found"});}
   if(before.rows[0].email.toLowerCase()===req.admin.email.toLowerCase()){await client.query("ROLLBACK");return res.status(409).json({error:"لا يمكن حذف حسابك الحالي."});}
   await client.query("DELETE FROM team_members WHERE id=$1",[req.params.id]);
-  await auditChange(client,req.admin.email,"team_member.deleted","team_member",req.params.id,before.rows[0],null);
+  await auditChange(client,req.admin.email,"team_member.deleted","team_member",req.params.id,safeTeamAuditRecord(before.rows[0]),null);
   await client.query("COMMIT");res.json({deleted:true});
  }catch(e){await client.query("ROLLBACK");if(e.code==="23503")return res.status(409).json({error:"تعذر حذف العضو بسبب بيانات مرتبطة؛ أوقف الحساب بدلًا من الحذف."});throw e;}finally{client.release();}
 }));
-app.get("/api/admin/packages",requireAdmin,route(async(_req,res)=>{
+app.get("/api/admin/packages",requireAdmin,requirePermission("products"),route(async(_req,res)=>{
   const [p,o]=await Promise.all([
     pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote,is_published,sort_order,created_at,updated_at FROM packages ORDER BY sort_order,created_at"),
     pool.query("SELECT id,package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,created_at FROM package_options ORDER BY sort_order,created_at")
   ]);
   res.json({packages:p.rows,options:o.rows});
 }));
-app.post("/api/admin/packages",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.post("/api/admin/packages",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=packageCreateSchema.safeParse(req.body); if(!parsed.success)return res.status(400).json({error:"Invalid package",details:parsed.error.issues});
   const x=parsed.data,client=await pool.connect();
   try{await client.query("BEGIN");
@@ -1131,7 +1176,7 @@ app.post("/api/admin/packages",requireAdmin,requireRole("owner","admin"),route(a
     await client.query("COMMIT");res.status(201).json({package:q.rows[0],options:createdOptions});
   }catch(e){await client.query("ROLLBACK");if(e.code==="23505")return res.status(409).json({error:"An option with this code already exists in the package"});throw e;}finally{client.release();}
 }));
-app.patch("/api/admin/packages/:id",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.patch("/api/admin/packages/:id",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=packageSchema.partial().strict().safeParse(req.body);if(!parsed.success||!Object.keys(req.body||{}).length||!Object.keys(parsed.data||{}).length)return res.status(400).json({error:"Invalid package update"});
   const map={name:"name",tagline:"tagline",description:"description",price:"price",currency:"currency",features:"features",isFeatured:"is_featured",isCustomQuote:"is_custom_quote",isPublished:"is_published",sortOrder:"sort_order"};
   const entries=Object.entries(parsed.data);const client=await pool.connect();
@@ -1141,19 +1186,19 @@ app.patch("/api/admin/packages/:id",requireAdmin,requireRole("owner","admin"),ro
     await auditChange(client,req.admin.email,"package.updated","package",req.params.id,before.rows[0],q.rows[0]);await client.query("COMMIT");res.json({package:q.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.delete("/api/admin/packages/:id",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.delete("/api/admin/packages/:id",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM packages WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
     const q=await client.query("UPDATE packages SET is_published=false,updated_at=now() WHERE id=$1 RETURNING *",[req.params.id]);await auditChange(client,req.admin.email,"package.unpublished","package",req.params.id,before.rows[0],q.rows[0]);await client.query("COMMIT");res.json({package:q.rows[0],message:"Package unpublished; historical orders preserved."});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.post("/api/admin/options",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.post("/api/admin/options",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=optionSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:"Invalid option",details:parsed.error.issues});
   const x=parsed.data,client=await pool.connect();try{await client.query("BEGIN");const p=await client.query("SELECT id FROM packages WHERE id=$1 FOR SHARE",[x.packageId]);if(!p.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
     const q=await client.query("INSERT INTO package_options(package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",[x.packageId,x.code,x.name,x.description,x.price,x.pricingType,x.unitLabel,x.isRequired,x.isActive,x.sortOrder]);
     await auditChange(client,req.admin.email,"package_option.created","package_option",q.rows[0].id,null,q.rows[0]);await client.query("COMMIT");res.status(201).json({option:q.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.patch("/api/admin/options/:id",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.patch("/api/admin/options/:id",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=optionSchema.partial().omit({packageId:true,code:true}).strict().safeParse(req.body);if(!parsed.success||!Object.keys(req.body||{}).length||!Object.keys(parsed.data||{}).length)return res.status(400).json({error:"Invalid option update"});
   const map={name:"name",description:"description",price:"price",pricingType:"pricing_type",unitLabel:"unit_label",isRequired:"is_required",isActive:"is_active",sortOrder:"sort_order"};
   const entries=Object.entries(parsed.data),client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM package_options WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Option not found"});}
@@ -1161,13 +1206,13 @@ app.patch("/api/admin/options/:id",requireAdmin,requireRole("owner","admin"),rou
     const q=await client.query("UPDATE package_options SET "+sets.join(",")+" WHERE id=$"+values.length+" RETURNING *",values);await auditChange(client,req.admin.email,"package_option.updated","package_option",req.params.id,before.rows[0],q.rows[0]);await client.query("COMMIT");res.json({option:q.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.delete("/api/admin/options/:id",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.delete("/api/admin/options/:id",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM package_options WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Option not found"});}
     const q=await client.query("UPDATE package_options SET is_active=false WHERE id=$1 RETURNING *",[req.params.id]);await auditChange(client,req.admin.email,"package_option.deactivated","package_option",req.params.id,before.rows[0],q.rows[0]);await client.query("COMMIT");res.json({option:q.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.get("/api/admin/settings",requireAdmin,route(async(_req,res)=>{const q=await pool.query("SELECT vat_rate,theme,updated_at FROM site_settings WHERE id=1");res.json({settings:q.rows[0]||{vat_rate:14,theme:null}});}));
-app.patch("/api/admin/settings",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.get("/api/admin/settings",requireAdmin,requirePermission("settings"),route(async(_req,res)=>{const q=await pool.query("SELECT vat_rate,theme,updated_at FROM site_settings WHERE id=1");res.json({settings:q.rows[0]||{vat_rate:14,theme:null}});}));
+app.patch("/api/admin/settings",requireAdmin,requirePermission("settings"),route(async(req,res)=>{
   const imageUrlSchema=z.string().max(2048).refine(value=>value===""||(/^\/(?!\/)[A-Za-z0-9/_?&=#.%:+-]*$/.test(value))||(()=>{try{const url=new URL(value);return url.protocol==="https:"&&!url.username&&!url.password&&!/[\s"'<>\\]/.test(value);}catch{return false;}})(),"Invalid image URL");
   const themeSchema=z.object({navy:z.string().regex(/^#[0-9a-fA-F]{6}$/),blue:z.string().regex(/^#[0-9a-fA-F]{6}$/),gold:z.string().regex(/^#[0-9a-fA-F]{6}$/),page:z.string().regex(/^#[0-9a-fA-F]{6}$/),logoUrl:imageUrlSchema.optional(),heroImageUrl:imageUrlSchema.optional(),backgroundImageUrl:imageUrlSchema.optional(),fontFamily:z.enum(["IBM Plex Sans Arabic","Cairo","Tajawal"]).optional(),cardRadius:z.number().int().min(0).max(40).optional()}).strict();
   const parsed=z.object({vatRate:z.number().finite().min(0).max(100).optional(),theme:themeSchema.optional()}).strict().refine(x=>Object.keys(x).length>0).safeParse(req.body);
@@ -1178,7 +1223,7 @@ app.patch("/api/admin/settings",requireAdmin,requireRole("owner","admin"),route(
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 
-app.patch("/api/admin/orders/:id/status",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.patch("/api/admin/orders/:id/status",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
   const parsed=z.object({status:z.enum(["new","reviewing","quoted","approved","in_progress","completed","cancelled"]).optional(),assignedTo:z.string().uuid().nullable().optional()}).strict().refine(x=>x.status!==undefined||Object.hasOwn(req.body||{},"assignedTo")).safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"Invalid order update"});
   const client=await pool.connect();
@@ -1196,22 +1241,22 @@ app.patch("/api/admin/orders/:id/status",requireAdmin,requireRole("owner","admin
 }));
 
 // Project builder and visual editor: persist proposals, not arbitrary code or shell commands.
-app.post("/api/admin/builder/plans",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/builder/plans",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  let plan;try{plan=buildProjectPlan(req.body);}catch(e){return res.status(400).json({error:e.message});}
  const result=await pool.query("INSERT INTO project_builder_plans(slug,plan,created_by) VALUES($1,$2::jsonb,$3) RETURNING id,created_at",[plan.slug,JSON.stringify(plan),req.admin.email]);
  res.status(201).json({id:result.rows[0].id,createdAt:result.rows[0].created_at,plan});
 }));
-app.get("/api/admin/builder/plans",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+app.get("/api/admin/builder/plans",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
  const q=await pool.query("SELECT id,slug,plan,created_at FROM project_builder_plans ORDER BY created_at DESC LIMIT 100");res.json({plans:q.rows});
 }));
-app.post("/api/admin/builder/edits",requireAdmin,requireRole("owner","admin","editor"),route(async(req,res)=>{
+app.post("/api/admin/builder/edits",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  let edit;try{edit=proposeVisualEdit(req.body);}catch(e){return res.status(400).json({error:e.message});}
  const project=await pool.query("SELECT id FROM project_builder_plans WHERE slug=$1 ORDER BY created_at DESC LIMIT 1",[edit.projectSlug]);
  if(!project.rowCount)return res.status(404).json({error:"Project plan not found"});
  const q=await pool.query("INSERT INTO project_visual_edits(plan_id,proposal,created_by) VALUES($1,$2::jsonb,$3) RETURNING id,created_at",[project.rows[0].id,JSON.stringify(edit),req.admin.email]);
  res.status(201).json({id:q.rows[0].id,createdAt:q.rows[0].created_at,edit});
 }));
-app.get("/api/admin/builder/edits/:slug",requireAdmin,requireRole("owner","admin","editor","viewer"),route(async(req,res)=>{
+app.get("/api/admin/builder/edits/:slug",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!/^[a-z][a-z0-9-]{2,62}$/.test(req.params.slug))return res.status(400).json({error:"Invalid slug"});
  const q=await pool.query("SELECT e.id,e.proposal,e.created_at FROM project_visual_edits e JOIN project_builder_plans p ON p.id=e.plan_id WHERE p.slug=$1 ORDER BY e.created_at DESC LIMIT 100",[req.params.slug]);res.json({edits:q.rows});
 }));
@@ -1264,14 +1309,14 @@ app.get('/api/admin/builder/jobs',requireAdmin,requireRole('owner','admin','view
 }));
 // Human-reviewed customer quotation feedback: account-scoped on the public side,
 // explicit staff resolution on the admin side. No automatic price changes.
-app.get("/api/admin/commercial/change-requests",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+app.get("/api/admin/commercial/change-requests",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
  const q=await pool.query(`SELECT f.id,f.quote_id,f.details,f.status,f.resolution_note,f.created_at,f.resolved_at,
  q.customer_email,q.status AS quote_status,q.revision
  FROM commercial_quote_change_requests f JOIN commercial_quotes q ON q.id=f.quote_id
  ORDER BY (f.status='pending') DESC,f.created_at DESC LIMIT 200`);
  res.set("Cache-Control","no-store").json({changeRequests:q.rows});
 }));
-app.post("/api/admin/commercial/change-requests/:id/resolve",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/commercial/change-requests/:id/resolve",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const id=Number(req.params.id);
  const body=z.object({resolutionNote:z.string().trim().min(10).max(1200)}).strict().safeParse(req.body);
  if(!Number.isSafeInteger(id)||id<1||!body.success)return res.status(400).json({error:"Valid request and staff response required"});
@@ -1279,7 +1324,7 @@ app.post("/api/admin/commercial/change-requests/:id/resolve",requireAdmin,requir
  if(!result.rowCount)return res.status(409).json({error:"Change request already reviewed"});
  res.json({request:result.rows[0]});
 }));
-app.get("/api/admin/commercial/orders/eligible",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+app.get("/api/admin/commercial/orders/eligible",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
  const r=await pool.query(`SELECT o.id,o.reference,o.total,o.currency,o.created_at,
  p.id AS project_id,p.customer_email,d.id AS draft_id,d.title AS project_title,CASE WHEN preview.approval_status='approved' AND preview.snapshot->>'sourceRevision'=d.revision::text THEN 'approved'
  ELSE CASE WHEN preview.approval_status='approved' THEN 'stale' ELSE preview.approval_status END END AS latest_preview_status
@@ -1296,12 +1341,12 @@ app.get("/api/admin/commercial/orders/eligible",requireAdmin,requireRole("owner"
 const validCommercialId=value=>Number.isSafeInteger(Number(value))&&Number(value)>0;
 const hashReviewToken=token=>createHash("sha256").update(token).digest("hex");
 const reviewLimiter=rateLimit({windowMs:15*60*1000,limit:30,standardHeaders:"draft-8",legacyHeaders:false});
-app.post("/api/admin/commercial/quotes/:id/issue",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/commercial/quotes/:id/issue",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!validCommercialId(req.params.id))return res.status(400).json({error:"Invalid quote"});
  const q=await pool.query("UPDATE commercial_quotes SET status='issued' WHERE id=$1 AND status='draft' AND (valid_until IS NULL OR valid_until>now()) RETURNING id,status,total_piasters,valid_until",[req.params.id]);
  if(!q.rowCount)return res.status(409).json({error:"Quote not issuable"});res.json({quote:q.rows[0]});
 }));
-app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!validCommercialId(req.params.id))return res.status(400).json({error:"Invalid quote"});
  const {items,validUntil}=req.body||{};let total;try{total=quoteTotal(items)}catch(e){return res.status(400).json({error:e.message})}
  if(JSON.stringify(items).length>16000)return res.status(400).json({error:"Quote too large"});
@@ -1328,7 +1373,7 @@ app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requireRole("own
  await client.query("COMMIT");res.status(201).json({quote:newer.rows[0],supersedes:x.id});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
 }));
-app.post("/api/admin/commercial/contracts/issue",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/commercial/contracts/issue",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const {quoteId,templateId}=req.body||{};if(!validCommercialId(quoteId)||!validCommercialId(templateId))return res.status(400).json({error:"Invalid identifiers"});
  const client=await pool.connect();
  try{
@@ -1347,7 +1392,7 @@ app.post("/api/admin/commercial/contracts/issue",requireAdmin,requireRole("owner
   await client.query("COMMIT");res.status(201).json({contract:contract.rows[0]});
  }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
-app.post("/api/admin/commercial/quotes/:id/review-link",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/commercial/quotes/:id/review-link",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!validCommercialId(req.params.id))return res.status(400).json({error:"Invalid quote"});
  const token=randomBytes(32).toString("base64url"),hash=hashReviewToken(token);
  const client=await pool.connect();try{await client.query("BEGIN");const q=await client.query("SELECT id,status,valid_until FROM commercial_quotes WHERE id=$1 FOR UPDATE",[req.params.id]);
@@ -1381,7 +1426,7 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
  const linkedProjects=await client.query(`SELECT project_id FROM commercial_order_quote_links WHERE quote_id=$1 AND is_current=true
   UNION SELECT project_id FROM commercial_custom_quote_links WHERE quote_id=$1 AND is_current=true`,[id]);
  for(const linked of linkedProjects.rows){
-  const moved=await transitionJourneyProject(client,{projectId:linked.project_id,next:'payment_pending',expectedStatus:'quoted',actor:req.admin.email});
+  const moved=await transitionJourneyProject(client,{projectId:linked.project_id,next:'payment_pending',expectedStatus:'quoted',actor:"customer-contract-signature"});
   if(!moved.ok){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage changed before contract acceptance",reason:moved.reason});}
  }
  await queueJourneyEvent(client,"contract.signed",`contract.signed:${c.rows[0].id}`,{contractId:c.rows[0].id,quoteId:id,signedAt:c.rows[0].signed_at});
@@ -1390,7 +1435,7 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
 }));
 
 // Stage 21: invoice schedule and verified payment ledger. No client-submitted payment confirmation.
-app.get("/api/admin/commercial/invoices",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
+app.get("/api/admin/commercial/invoices",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const quoteId=req.query.quoteId?Number(req.query.quoteId):null;
  if(quoteId!==null&&(!Number.isSafeInteger(quoteId)||quoteId<1))return res.status(400).json({error:"Invalid quoteId"});
  const result=await pool.query(`SELECT i.id,i.quote_id,i.amount_piasters,i.due_at,i.status,i.verified_paid_piasters,
@@ -1401,7 +1446,7 @@ app.get("/api/admin/commercial/invoices",requireAdmin,requireRole("owner","admin
  WHERE ($1::bigint IS NULL OR i.quote_id=$1) ORDER BY i.due_at NULLS LAST,i.id LIMIT 500`,[quoteId]);
  res.json({invoices:result.rows});
 }));
-app.post("/api/admin/commercial/invoices/schedule",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.post("/api/admin/commercial/invoices/schedule",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const {quoteId,parts}=req.body||{};
  if(!Number.isSafeInteger(quoteId)||quoteId<1||!Array.isArray(parts)||parts.length<1||parts.length>24)return res.status(400).json({error:"Invalid schedule"});
  if(parts.some(p=>!Number.isSafeInteger(p.amountPiasters)||p.amountPiasters<1||typeof p.dueAt!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(p.dueAt)||!validCalendarDate(p.dueAt)))return res.status(400).json({error:"Invalid installment"});
@@ -1418,11 +1463,11 @@ app.post("/api/admin/commercial/invoices/schedule",requireAdmin,requireRole("own
  await client.query('COMMIT');res.status(201).json({invoices});
  }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
 }));
-app.get("/api/admin/commercial/invoices/:id/payments",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
+app.get("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Invalid id'});
  const r=await pool.query('SELECT id,invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by,created_at FROM commercial_invoice_payments WHERE invoice_id=$1 ORDER BY paid_at,id',[id]);res.json({payments:r.rows});
 }));
-app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const id=Number(req.params.id),{amountPiasters,paidAt,provider,providerReference}=req.body||{};
  if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(amountPiasters)||amountPiasters<1||typeof provider!=='string'||!['manual_verified','gateway_verified'].includes(provider)||typeof providerReference!=='string'||!providerReference.trim()||providerReference.length>180||typeof paidAt!=='string'||Number.isNaN(Date.parse(paidAt)))return res.status(400).json({error:'Invalid verified payment'});
  // Gateway verification requires a server-side provider callback. Manual entries require owner/admin evidence review.
@@ -1519,17 +1564,17 @@ async function advancePaidJourneyIfEligible(client,invoiceId){
  return projectId;
 }
 // Stage 12: admin-only commercial management. Customer signing/payment verification deliberately NOT exposed.
-app.post("/api/admin/commercial/leads",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/commercial/leads",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const {customerEmail,interest}=req.body||{};
  if(typeof customerEmail!=="string"||!/^\S+@\S+\.\S+$/.test(customerEmail)||typeof interest!=="string"||!interest.trim()||interest.length>1000)return res.status(400).json({error:"Invalid lead"});
  const q=await pool.query("INSERT INTO crm_leads(customer_email,interest) VALUES($1,$2) RETURNING *",[customerEmail.trim().toLowerCase(),interest.trim()]);res.status(201).json({lead:q.rows[0]});
 }));
-app.get("/api/admin/commercial/leads",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+app.get("/api/admin/commercial/leads",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
  const q=await pool.query("SELECT * FROM crm_leads ORDER BY created_at DESC LIMIT 100");res.json({leads:q.rows});
 }));
 // Individually reviewed custom-solution drafts. No fixed-package checkout
 // or client-submitted monetary price is invented for bespoke projects.
-app.get("/api/admin/commercial/project-drafts/eligible",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+app.get("/api/admin/commercial/project-drafts/eligible",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
  const r=await pool.query(`SELECT d.id,d.title,d.draft,d.updated_at,c.email,
  CASE WHEN p.approval_status='approved' AND p.snapshot->>'sourceRevision'=d.revision::text THEN 'approved'
  ELSE CASE WHEN p.approval_status='approved' THEN 'stale' ELSE p.approval_status END END AS latest_preview_status
@@ -1545,7 +1590,7 @@ const customQuoteInput=z.object({items:z.array(z.object({
  label:z.string().trim().min(3).max(250),quantity:z.number().int().min(1).max(100),
  unitPricePiasters:z.number().int().min(0).max(100000000000),period:z.enum(["fixed","monthly","yearly"]).optional()
 }).strict()).min(1).max(60),validUntil:z.string().datetime({offset:true}).optional()}).strict();
-app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid draft id"});
  const parsed=customQuoteInput.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid priced line items"});
@@ -1601,7 +1646,7 @@ app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requireRo
  }catch(error){await client.query("ROLLBACK");if(error.code==="23505")return res.status(409).json({error:"Concurrent custom quote already exists"});throw error;}finally{client.release();}
 }));
 // Strict order → latest approved preview → draft commercial quote bridge.
-app.post("/api/admin/commercial/orders/:orderId/quote",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/commercial/orders/:orderId/quote",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.orderId).success)return res.status(400).json({error:"Invalid order ID"});
  const client=await pool.connect();
  try{
@@ -1635,14 +1680,14 @@ app.post("/api/admin/commercial/orders/:orderId/quote",requireAdmin,requireRole(
   res.status(201).json({quote:quote.rows[0],orderId:selected.id,requiresAdminIssue:true});
  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.post("/api/admin/commercial/quotes",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/commercial/quotes",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const {customerEmail,items,validUntil}=req.body||{};
  if(typeof customerEmail!=="string"||!/^\S+@\S+\.\S+$/.test(customerEmail))return res.status(400).json({error:"Invalid customer email"});
  let total;try{total=quoteTotal(items)}catch(e){return res.status(400).json({error:e.message})}
  if(JSON.stringify(items).length>16000)return res.status(400).json({error:"Quote too large"});
  const q=await pool.query("INSERT INTO commercial_quotes(customer_email,items,total_piasters,valid_until) VALUES($1,$2::jsonb,$3,$4) RETURNING *",[customerEmail.trim().toLowerCase(),JSON.stringify(items),total,validUntil||null]);res.status(201).json({quote:q.rows[0]});
 }));
-app.get("/api/admin/commercial/quotes",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+app.get("/api/admin/commercial/quotes",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
  const q=await pool.query("SELECT * FROM commercial_quotes ORDER BY created_at DESC LIMIT 100");res.json({quotes:q.rows});
 }));
 // Audit table stores UUID entity IDs while commercial templates use bigint identities.
@@ -1653,7 +1698,7 @@ const contractAuditId=id=>{
 // Contract template CMS: edits are append-only revisions; issued document snapshots remain unchanged.
 const contractCategory=z.enum(["general","managed_monthly","managed_yearly","source_code","independent_hosting"]);
 const contractTemplateInput=z.object({title:z.string().trim().min(2).max(200),body:z.string().trim().min(20).max(30000),category:contractCategory.default("general"),isPublished:z.boolean().default(false)}).strict();
-app.post("/api/admin/commercial/contracts/templates",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.post("/api/admin/commercial/contracts/templates",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const parsed=contractTemplateInput.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:"Invalid contract template"});
  const {title,body,category,isPublished}=parsed.data;
  const client=await pool.connect();try{
@@ -1664,15 +1709,15 @@ app.post("/api/admin/commercial/contracts/templates",requireAdmin,requireRole("o
   await client.query("COMMIT");res.status(201).json({template:q.rows[0]});
  }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
-app.get("/api/admin/commercial/contracts/templates",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+app.get("/api/admin/commercial/contracts/templates",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
  const q=await pool.query("SELECT * FROM contract_templates ORDER BY updated_at DESC,id DESC LIMIT 100");res.set("Cache-Control","no-store").json({templates:q.rows});
 }));
-app.get("/api/admin/commercial/contracts/templates/:id/versions",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
+app.get("/api/admin/commercial/contracts/templates/:id/versions",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!validCommercialId(req.params.id))return res.status(400).json({error:"Invalid template"});
  const q=await pool.query("SELECT template_id,revision,title,body,category,is_published,is_archived,edited_by,created_at FROM contract_template_versions WHERE template_id=$1 ORDER BY revision DESC LIMIT 100",[req.params.id]);
  res.set("Cache-Control","no-store").json({versions:q.rows});
 }));
-app.patch("/api/admin/commercial/contracts/templates/:id",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.patch("/api/admin/commercial/contracts/templates/:id",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!validCommercialId(req.params.id))return res.status(400).json({error:"Invalid template"});
  const parsed=contractTemplateInput.extend({expectedRevision:z.number().int().positive(),isArchived:z.boolean().default(false)}).safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid template update"});
@@ -1692,21 +1737,21 @@ app.patch("/api/admin/commercial/contracts/templates/:id",requireAdmin,requireRo
   await client.query("COMMIT");res.json({template:updated});
  }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
-app.post("/api/admin/commercial/tickets",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.post("/api/admin/commercial/tickets",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const {customerEmail,subject,description}=req.body||{};
  if(typeof customerEmail!=="string"||!/^\S+@\S+\.\S+$/.test(customerEmail)||typeof subject!=="string"||!subject.trim()||subject.length>200||typeof description!=="string"||!description.trim()||description.length>5000)return res.status(400).json({error:"Invalid ticket"});
  const q=await pool.query("INSERT INTO support_tickets(customer_email,subject,description) VALUES($1,$2,$3) RETURNING *",[customerEmail.toLowerCase(),subject,description]);res.status(201).json({ticket:q.rows[0]});
 }));
-app.get("/api/admin/commercial/tickets",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
+app.get("/api/admin/commercial/tickets",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
  const q=await pool.query("SELECT * FROM support_tickets ORDER BY created_at DESC LIMIT 100");res.json({tickets:q.rows});
 }));
-app.patch("/api/admin/commercial/tickets/:id/status",requireAdmin,requireRole("owner","admin","sales"),route(async(req,res)=>{
+app.patch("/api/admin/commercial/tickets/:id/status",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"Invalid id"});
  const q=await pool.query("SELECT status FROM support_tickets WHERE id=$1",[id]);if(!q.rowCount)return res.status(404).json({error:"Not found"});
  if(!validateTicketTransition(q.rows[0].status,req.body?.status))return res.status(409).json({error:"Invalid ticket transition"});
  const changed=await pool.query("UPDATE support_tickets SET status=$1 WHERE id=$2 AND status=$3 RETURNING *",[req.body.status,id,q.rows[0].status]);if(!changed.rowCount)return res.status(409).json({error:"Concurrent update"});res.json({ticket:changed.rows[0]});
 }));
-app.post("/api/admin/commercial/deliveries",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+app.post("/api/admin/commercial/deliveries",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const {quoteId,method}=req.body||{};if(!Number.isSafeInteger(quoteId)||quoteId<1)return res.status(400).json({error:"Invalid quote"});
  try{validateDeliveryMethod(method)}catch(e){return res.status(400).json({error:e.message})}
  const q=await pool.query("INSERT INTO delivery_requests(quote_id,method) VALUES($1,$2) RETURNING *",[quoteId,method]);res.status(201).json({delivery:q.rows[0]});

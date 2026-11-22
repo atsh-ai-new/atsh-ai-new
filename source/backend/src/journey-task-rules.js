@@ -16,3 +16,15 @@ export const journeyTaskUpdate=z.object({
 
 export const canManageJourneyTasks=role=>role==='owner'||role==='admin';
 export const canReadJourneyTasks=role=>['owner','admin','sales','viewer'].includes(role);
+
+// Server-side scope for the personal task inbox. Never trust a client-supplied user id.
+export function taskInboxScope(admin){
+ if(admin?.role==='owner')return {owner:true,userId:null};
+ if(typeof admin?.userId!=='string'||!admin.userId)return null;
+ return {owner:false,userId:admin.userId};
+}
+
+// The owner may oversee all tasks; employees may change only tasks assigned to them.
+export function canUpdateOwnTaskStatus(scope,assignedTo){
+ return Boolean(scope&&(scope.owner||(typeof assignedTo==='string'&&assignedTo===scope.userId)));
+}
