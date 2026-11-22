@@ -26,7 +26,21 @@ export default function JourneyManager({canManageTasks=false,canArchive=false,ca
  useEffect(()=>{if(canManageTasks)fetch("/api/admin/team",{credentials:"include",cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("تعذر تحميل الفريق");return r.json();}).then(d=>setTeam(d.members||[])).catch(e=>setError(String(e)));refresh().catch(e=>setError(String(e)));request("catalog").then(data=>{setCatalog(data.packages||[]);setCatalogError("");}).catch(e=>setCatalogError(String(e)));},[canManageTasks]);
  async function create(event:FormEvent){event.preventDefault();setBusy(true);setError("");try{const data=await request("projects",{method:"POST",body:JSON.stringify({customerName:name, ...(email?{customerEmail:email}:{}),...(template?{templateId:template}:{})})});setName("");setEmail("");setTemplate("");await refresh();await openProject(data.project);}catch(e){setError(String(e));}finally{setBusy(false);}}
  async function archiveProject(project:Project){if(!canArchive||busy||!window.confirm(`أرشفة مشروع "${project.customer_name}" وإخفاؤه من قائمة المشروعات النشطة؟ لن تُحذف بياناته أو طلباته.`))return;setBusy(true);setError("");try{await request(`projects/${project.id}/archive`,{method:"PATCH"});if(selected?.id===project.id){setSelected(null);setMessages([]);setSubmittedDraft(null);setLinkedOrder(null);setOrderAssignments([]);setTasks([]);}await refresh();}catch(e){setError(String(e));}finally{setBusy(false);}}
- async function deleteProject(project:Project){if(!canDelete||busy||!window.confirm(`حذف مشروع "${project.customer_name}" نهائيًا؟ لا يمكن استرجاع بياناته. المشروعات المرتبطة بطلب أو مسودة عميل محمية من الحذف.`))return;setBusy(true);setError("");try{await request(`projects/${project.id}`,{method:"DELETE"});if(selected?.id===project.id){setSelected(null);setMessages([]);setSubmittedDraft(null);setLinkedOrder(null);setOrderAssignments([]);setTasks([]);}await refresh();}catch(e){setError(String(e));}finally{setBusy(false);}}
+ async function deleteProject(project:Project){
+  if(!canDelete||busy||!window.confirm(`حذف مشروع "${project.customer_name}" نهائيًا؟ لا يمكن استرجاع بياناته. المشروعات المرتبطة بطلب أو مسودة عميل محمية من الحذف.`))return;
+  setBusy(true);setError("");
+  try{
+   await request(`projects/${project.id}`,{method:"DELETE"});
+   if(selected?.id===project.id){setSelected(null);setMessages([]);setSubmittedDraft(null);setLinkedOrder(null);setOrderAssignments([]);setTasks([]);}
+   await refresh();
+  }catch(e){
+   const reason=e instanceof Error?e.message:String(e);
+   if(reason.includes("HTTP 409")&&window.confirm("المشروع مرتبط ببيانات عميل أو طلب مالي ولا يمكن حذفه نهائيًا. هل تريد أرشفته وإخفاءه من قائمة المشاريع مع الاحتفاظ بسجلاته؟")){
+    try{await request(`projects/${project.id}/archive`,{method:"PATCH"});if(selected?.id===project.id){setSelected(null);setMessages([]);setSubmittedDraft(null);setLinkedOrder(null);setOrderAssignments([]);setTasks([]);}await refresh();}
+    catch(archiveError){setError(String(archiveError));}
+   }else{setError(reason);}
+  }finally{setBusy(false);}
+ }
  async function sendReply(event:FormEvent){event.preventDefault();if(!selected||reply.trim().length<2)return;setBusy(true);setError("");try{await request(`projects/${selected.id}/messages`,{method:"POST",body:JSON.stringify({body:reply.trim()})});setReply("");await openProject(selected);}catch(e){setError(String(e));}finally{setBusy(false);}}
  async function publishPreview(event:FormEvent){event.preventDefault();if(!selected)return;let url:URL;try{url=new URL(previewUrl.trim());if(url.protocol!=="https:"||url.username||url.password)throw Error();}catch{setError("رابط المعاينة يجب أن يبدأ بـ HTTPS وأن يكون صالحًا");return;}setBusy(true);setError("");try{await request(`projects/${selected.id}/messages`,{method:"POST",body:JSON.stringify({body:`ATSH_PREVIEW_URL: ${url.toString()}`})});setPreviewUrl("");await openProject(selected);}catch(e){setError(String(e));}finally{setBusy(false);}}
  async function guide(event:FormEvent){event.preventDefault();if(!selected||!message.trim())return;setBusy(true);setError("");try{await request(`projects/${selected.id}/guide`,{method:"POST",body:JSON.stringify({message})});setMessage("");await openProject(selected);}catch(e){setError(String(e));}finally{setBusy(false);}}
