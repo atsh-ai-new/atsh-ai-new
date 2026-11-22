@@ -363,6 +363,11 @@ export default function AdminPage() {
                   <label className="admin-field">اسم الباقة<input aria-label={`اسم باقة الربع ${index+1}`} value={item.name} onChange={event=>changePackage(item.id,"name",event.target.value)} /></label>
                   <label className="admin-field">السعر بالجنيه<input type="number" min="0" step="0.01" disabled={item.is_custom_quote} value={item.price} onChange={event=>changePackage(item.id,"price",Number(event.target.value))}/></label>
                   <label className="admin-field">الوصف<textarea rows={2} value={item.description} onChange={event=>changePackage(item.id,"description",event.target.value)}/></label>
+                  <label className="admin-field">ترتيب الباقة<input type="number" min="0" step="1" value={item.sort_order} onChange={event=>changePackage(item.id,"sort_order",Number(event.target.value))}/></label>
+                  <label className="admin-field">شارة الباقة<input value={item.tagline} onChange={event=>changePackage(item.id,"tagline",event.target.value)}/></label>
+                  <label className="admin-field">المزايا (كل ميزة في سطر)<textarea rows={3} value={item.features.join("\n")} onChange={event=>changePackage(item.id,"features",event.target.value.split("\n").map(feature=>feature.trim()).filter(Boolean))}/></label>
+                  <label className="check-row"><input type="checkbox" checked={item.is_custom_quote} onChange={event=>changePackage(item.id,"is_custom_quote",event.target.checked)}/> تسعير مخصص</label>
+                  <label className="check-row"><input type="checkbox" checked={item.is_featured} onChange={event=>changePackage(item.id,"is_featured",event.target.checked)}/> باقة مميزة</label>
                   <label className="check-row"><input type="checkbox" checked={item.is_published} onChange={event=>changePackage(item.id,"is_published",event.target.checked)}/> منشورة للعملاء</label>
                   <small>{item.is_custom_quote ? "تسعير مخصص" : formatEgp(Number(item.price))} · {item.features.length} مزايا</small>
                   <button type="button" className="button button-small" disabled={busy || !item.name.trim()} onClick={()=>savePackage(item)}>حفظ الربع</button>
