@@ -52,11 +52,12 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
   const load = async (preferredSlug = activeSlug,preferredLocale:"ar"|"en"=activeLocale) => {
     const result = await adminApi("pages");
     const nextPages = (result.pages ?? []) as PageRecord[];
+    const savedDrafts = (result.drafts ?? []) as Array<{slug:string;locale:string;content:Record<string,unknown>}>;
     setPages(nextPages);
     setArabicHomeReference(nextPages.find(item=>item.slug==="home"&&item.locale==="ar")?.content ?? null);
     const selected=nextPages.find(item=>item.slug===preferredSlug&&item.locale===preferredLocale);
-    if(selected){setActiveSlug(selected.slug);setDraft(selected);}
-    else {setActiveSlug(preferredSlug);setDraft({slug:preferredSlug,locale:preferredLocale,content:preferredSlug==="home"?(preferredLocale==="en"?{...siteCopyEn}:{...siteCopyDefaults}):{title:"",description:"",sections:[]},is_published:false});}
+    if(selected){const privateDraft=savedDrafts.find(item=>item.slug===selected.slug&&item.locale===selected.locale);setActiveSlug(selected.slug);setDraft(privateDraft?{...selected,content:privateDraft.content}:selected);}
+    else {const privateDraft=savedDrafts.find(item=>item.slug===preferredSlug&&item.locale===preferredLocale);setActiveSlug(preferredSlug);setDraft({slug:preferredSlug,locale:preferredLocale,content:privateDraft?.content??(preferredSlug==="home"?(preferredLocale==="en"?{...siteCopyEn}:{...siteCopyDefaults}):{title:"",description:"",sections:[]}),is_published:false});}
   };
 
   useEffect(() => { setActiveSlug(initialSlug); load(initialSlug).catch((reason) => setError(reason instanceof Error ? reason.message : "تعذر تحميل الصفحات.")); }, [initialSlug]);
@@ -80,17 +81,22 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
   };
 
   const previewPage = () => { if(!draft)return;setPreviewUrl(createPagePreviewUrl({slug:draft.slug,locale:draft.locale==="en"?"en":"ar",content:draft.content}));setWorkspaceTab("preview"); };
-  const savePage = async (event?: FormEvent) => {
-    event?.preventDefault();
-    if (!draft) return;
-    setBusy(true); setError(""); setNotice("");
+  const savePage = async (publish=false) => {
+    if (!draft)return;
+    setBusy(true);setError("");setNotice("");
     try {
-      await adminApi(`pages/${draft.slug}`, { method: "PATCH", body: JSON.stringify({ locale: draft.locale || "ar", content: draft.content, isPublished: draft.is_published }) });
-      await load(draft.slug,draft.locale==="en"?"en":"ar"); await onSaved?.(); setNotice("تم حفظ الصفحة ونشر حالتها المحددة.");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر حفظ الصفحة."); }
-    finally { setBusy(false); }
+      if(publish){
+        await adminApi(`pages/${draft.slug}`,{method:"PATCH",body:JSON.stringify({locale:draft.locale||"ar",content:draft.content,isPublished:true})});
+        setDraft(current=>current?{...current,is_published:true}:current);
+        setNotice("تم حفظ الصفحة ونشرها للزوار.");
+      }else{
+        await adminApi(`page-drafts/${draft.slug}`,{method:"PUT",body:JSON.stringify({locale:draft.locale||"ar",content:draft.content})});
+        setNotice("تم حفظ المسودة فقط، دون تغيير الصفحة المنشورة.");
+      }
+      await onSaved?.();
+    }catch(reason){setError(reason instanceof Error?reason.message:"تعذر حفظ الصفحة.");}
+    finally{setBusy(false);}
   };
-
   const createPage = async (event: FormEvent) => {
     event.preventDefault();
     const slug = newSlug.trim().toLowerCase();
@@ -160,13 +166,13 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
           {Array.from(new Set([...pages.map(item=>item.slug),"home"])).map(slug=>({slug,is_published:pages.some(item=>item.slug===slug&&item.locale===activeLocale&&item.is_published)})).map((item) => <option key={item.slug} value={item.slug}>{item.slug === "home" ? "الرئيسية" : item.slug === "works" ? "سجل الأعمال" : `/${item.slug}`}{item.is_published ? " · منشورة" : " · مسودة"}</option>)}
         </select></label>
         <label className="check-row"><input type="checkbox" checked={draft.is_published} onChange={(event) => setDraft({ ...draft, is_published: event.target.checked })} /> الصفحة منشورة للزوار</label>
-        <button className="button button-small" disabled={busy} onClick={() => void savePage()}>حفظ الصفحة</button>
+        <button className="button button-small" disabled={busy} onClick={() => void savePage(false)}>حفظ المسودة</button>
         <button type="button" className="inline-add" onClick={previewPage}>معاينة الصفحة ↗</button>
       </div>
     </section>
 
     <nav role="tablist" aria-label="تعديل ومعاينة الصفحة" className="admin-actions"><button type="button" role="tab" aria-selected={workspaceTab==="edit"} className={workspaceTab==="edit"?"button":"button button-outline"} onClick={()=>setWorkspaceTab("edit")}>تعديل</button><button type="button" role="tab" aria-selected={workspaceTab==="preview"} className={workspaceTab==="preview"?"button":"button button-outline"} onClick={previewPage}>معاينة</button></nav>
-    {workspaceTab==="preview" ? <section className="admin-content-card" aria-label="المعاينة الحية للصفحة"><div className="admin-content-title"><div><h2>المعاينة الحية — {selectedLabel}</h2><p>مسودة خاصة داخل لوحة الإدارة، لا تُنشر للزوار.</p></div><div className="admin-actions"><button type="button" className="button button-outline button-small" onClick={()=>setWorkspaceTab("edit")}>رجوع للتعديل</button><button type="button" className="button button-small" onClick={previewPage}>تحديث المعاينة</button></div></div>{previewUrl ? <iframe key={previewUrl} title={`معاينة ${selectedLabel}`} src={previewUrl} style={{display:"block",width:"100%",height:"min(78vh,900px)",minHeight:480,border:"1px solid #d8dde5",borderRadius:12,background:"#fff"}} /> : <p>اضغط معاينة لعرض الصفحة.</p>}</section> : <>
+    {workspaceTab==="preview" ? <section className="admin-content-card" aria-label="المعاينة الحية للصفحة"><div className="admin-content-title"><div><h2>المعاينة الحية — {selectedLabel}</h2><p>مسودة خاصة داخل لوحة الإدارة، لا تُنشر للزوار.</p></div><div className="admin-actions"><button type="button" className="button button-outline button-small" onClick={()=>setWorkspaceTab("edit")}>رجوع للتعديل</button><button type="button" className="button button-small" onClick={previewPage}>تحديث المعاينة</button><button type="button" className="button button-outline button-small" disabled={busy} onClick={()=>void savePage(false)}>حفظ فقط</button><button type="button" className="button button-small" disabled={busy} onClick={()=>void savePage(true)}>حفظ ونشر</button></div></div>{previewUrl ? <iframe key={previewUrl} title={`معاينة ${selectedLabel}`} src={previewUrl} style={{display:"block",width:"100%",height:"min(78vh,900px)",minHeight:480,border:"1px solid #d8dde5",borderRadius:12,background:"#fff"}} /> : <p>اضغط معاينة لعرض الصفحة.</p>}</section> : <>
     {activeSlug === "home" ? <>
       <section className="admin-content-card">
         <div className="admin-content-title"><div><h2>بطاقات الصفحة الرئيسية</h2><p>عدّل وأضف واحذف مزايا الصفحة ومراحل العمل والأسئلة الشائعة. القيم الأصلية المعروضة هي الحالية.</p></div></div>
@@ -219,7 +225,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
 
     </>}
     {showCreatePage && <section className="admin-content-card"><div className="admin-content-title"><div><h2>إنشاء صفحة جديدة</h2><p>تبقى الصفحة مسودة حتى تفعّل نشرها. رابط الصفحة يكون مثل atsh-ai.com/about.</p></div></div><form className="cms-create-form" onSubmit={createPage}><label className="admin-field">اسم الصفحة<input required maxLength={120} value={newTitle} onChange={(event) => setNewTitle(event.target.value)} /></label><label className="admin-field">جزء الرابط بالإنجليزية<input required maxLength={80} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="about-us" value={newSlug} onChange={(event) => setNewSlug(event.target.value.toLowerCase())} /></label><button className="button" disabled={busy}>إنشاء الصفحة</button></form></section>}
-    <div className="admin-actions cms-bottom-actions"><button type="button" className="button button-outline" onClick={previewPage}>معاينة</button><button className="button" disabled={busy} onClick={() => void savePage()}>{busy ? "جارٍ الحفظ…" : "حفظ ونشر تغييرات الصفحة ✓"}</button><span className="field-hint">تأكد من حالة النشر أعلى المحرر قبل اعتماد الصفحة.</span></div>
+    <div className="admin-actions cms-bottom-actions"><button type="button" className="button button-outline" onClick={previewPage}>معاينة</button><button type="button" className="button button-outline" disabled={busy} onClick={() => void savePage(false)}>حفظ فقط</button><button type="button" className="button" disabled={busy} onClick={() => void savePage(true)}>{busy ? "جارٍ الحفظ…" : "حفظ ونشر"}</button><span className="field-hint">تأكد من حالة النشر أعلى المحرر قبل اعتماد الصفحة.</span></div>
   </div>;
 }
 
