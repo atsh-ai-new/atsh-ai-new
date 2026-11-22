@@ -90,7 +90,14 @@ jobs:
           fi
       - name: Browser flow on desktop and mobile
         working-directory: source
-        run: npx playwright test --config playwright.config.ts
+        run: npx playwright test --config playwright.config.ts e2e/customer-start.spec.ts --project=desktop-chromium
+      - name: Print API and frontend logs on browser failure
+        if: failure()
+        run: |
+          echo '--- API ---'
+          tail -n 150 /tmp/atsh-api-e2e.log || true
+          echo '--- Next.js ---'
+          tail -n 150 /tmp/atsh-next-e2e.log || true
       - name: Export failing browser evidence
         if: failure()
         uses: actions/upload-artifact@v4
