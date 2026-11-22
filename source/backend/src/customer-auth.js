@@ -62,7 +62,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   const p=z.object({token:z.string().regex(/^[a-f0-9]{64}$/)}).safeParse(req.body);if(!p.success)return res.status(400).json({error:'Invalid token'});
   const client=await pool.connect();try{await client.query('BEGIN');const q=await client.query("UPDATE customer_auth_tokens SET used_at=now() WHERE token_hash=$1 AND purpose='verify' AND used_at IS NULL AND expires_at>now() RETURNING customer_id",[hash(p.data.token)]);
    if(!q.rowCount){await client.query('ROLLBACK');return res.status(400).json({error:'Invalid or expired token'});}
-   await client.query('UPDATE customer_accounts SET email_verified_at=now() WHERE id=$1',[q.rows[0].customer_id]);await client.query('COMMIT');res.json({verified:true});
+   await client.query('UPDATE customer_accounts SET email_verified_at=COALESCE(email_verified_at,now()) WHERE id=$1',[q.rows[0].customer_id]);await client.query('COMMIT');await session(res,q.rows[0].customer_id);res.json({verified:true,authenticated:true});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
  }));
  router.post('/login',safe(async(req,res)=>{
