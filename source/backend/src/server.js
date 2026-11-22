@@ -4,7 +4,7 @@ import { customerCommercialRouter } from "./customer-commercial.js";
 import { customerAuthRouter } from "./customer-auth.js";
 import {createCustomerJourneyProject} from './customer-project-service.js';
 import {transitionJourneyProject} from './customer-journey-state.js';
-import {journeyTaskCreate,journeyTaskUpdate} from './journey-task-rules.js';
+import {journeyTaskCreate,journeyTaskUpdate,taskInboxScope} from './journey-task-rules.js';
 import {quoteTotal,installments,validateTicketTransition,validateDeliveryMethod} from "./commercial-rules.js";
 import express from "express";
 import helmet from "helmet";
@@ -271,8 +271,8 @@ app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requireRole("ow
 
 // Each team member can see only their own assignments; owner sees the whole queue.
 app.get("/api/admin/journey/my-tasks",requireAdmin,route(async(req,res)=>{
- const owner=req.admin.role==="owner";
- if(!owner&&!req.admin.userId)return res.status(403).json({error:"Team account required"});
+ const scope=taskInboxScope(req.admin);
+ if(!scope)return res.status(403).json({error:"Team account required"});
  const tasks=await pool.query(`SELECT t.id,t.project_id,t.title,t.description,t.status,t.created_at,t.updated_at,
   p.customer_name AS project_name,m.display_name AS assigned_to_name
   FROM customer_journey_tasks t
@@ -280,7 +280,7 @@ app.get("/api/admin/journey/my-tasks",requireAdmin,route(async(req,res)=>{
   LEFT JOIN team_members m ON m.id=t.assigned_to
   WHERE ($1::boolean OR t.assigned_to=$2::uuid)
   ORDER BY CASE WHEN t.status='done' THEN 1 ELSE 0 END,t.updated_at DESC LIMIT 200`,
-  [owner,req.admin.userId??null]);
+  [scope.owner,scope.userId]);
  res.set("Cache-Control","private, no-store").json({tasks:tasks.rows});
 }));
 
