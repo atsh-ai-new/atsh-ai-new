@@ -38,8 +38,13 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
         run: node --test test/postgres-idempotency.integration.mjs
-      - name: Test actual HTTP endpoint with concurrent retries
+      - name: Create isolated database for HTTP test
         working-directory: source/backend
         env:
           TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+        run: node --input-type=module -e 'import pg from "pg"; const c=new pg.Client({connectionString:process.env.TEST_DATABASE_URL}); await c.connect(); await c.query("CREATE DATABASE test_http"); await c.end();'
+      - name: Test actual HTTP endpoint with concurrent retries
+        working-directory: source/backend
+        env:
+          TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_http
         run: node --test test/order-http.integration.mjs
