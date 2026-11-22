@@ -141,8 +141,8 @@ async function requireAdmin(req,res,next) {
         throw new Error("Owner session predates password reset");
     }
     if (session.userId) {
-      const active = await pool.query("SELECT is_active FROM team_members WHERE id=$1",[session.userId]);
-      if (!active.rowCount || !active.rows[0].is_active) throw new Error("Session revoked");
+      const active = await pool.query("SELECT is_active,role FROM team_members WHERE id=$1",[session.userId]);
+      if (!active.rowCount || !active.rows[0].is_active || active.rows[0].role !== session.role) throw new Error("Session revoked or role changed");
     }
     req.admin = session;
     next();
