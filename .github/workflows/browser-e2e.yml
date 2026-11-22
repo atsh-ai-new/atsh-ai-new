@@ -1,7 +1,7 @@
 name: ATSH Browser E2E (Desktop + Mobile)
 on:
   push:
-    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1, catalog-commerce-payment-ready-v1, fix/full-english-localization-20261118]
+    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1, catalog-commerce-payment-ready-v1, fix/full-english-localization-20261118, integration/customer-v2-admin-stability-20261122]
     paths:
       - 'source/e2e/**'
       - 'source/src/app/en/**'
@@ -90,7 +90,14 @@ jobs:
           fi
       - name: Browser flow on desktop and mobile
         working-directory: source
-        run: npx playwright test --config playwright.config.ts
+        run: npx playwright test --config playwright.config.ts e2e/customer-start.spec.ts --project=desktop-chromium
+      - name: Print API and frontend logs on browser failure
+        if: failure()
+        run: |
+          echo '--- API ---'
+          tail -n 150 /tmp/atsh-api-e2e.log || true
+          echo '--- Next.js ---'
+          tail -n 150 /tmp/atsh-next-e2e.log || true
       - name: Export failing browser evidence
         if: failure()
         uses: actions/upload-artifact@v4

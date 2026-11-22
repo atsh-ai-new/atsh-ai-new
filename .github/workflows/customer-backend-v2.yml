@@ -1,0 +1,36 @@
+name: Customer backend v2 verification
+on:
+  push:
+    branches: [rebuild/customer-backend-v2-20261122, integration/customer-v2-admin-stability-20261122]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: source/backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify preinstalled Node.js
+        run: node --version
+      - run: npm install --no-audit --no-fund --no-package-lock
+      - run: npm run check
+      - run: npm test
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build

@@ -87,6 +87,12 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
  const [projectMessageText,setProjectMessageText]=useState("");
  const loadProjectMessages=useCallback(async(id:string)=>{try{const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(id)}/messages`,{credentials:"include",cache:"no-store"});if(response.ok){const data=await response.json();setProjectMessages(data.messages||[]);}else setProjectMessages([]);}catch{setProjectMessages([]);}},[]);
  useEffect(()=>{const selected=projectDrafts.find(d=>d.id===selectedProjectDraft);if(selected?.linked_journey_id)void loadProjectMessages(selected.id);else setProjectMessages([]);},[selectedProjectDraft,projectDrafts,loadProjectMessages]);
+ useEffect(()=>{
+  const selected=projectDrafts.find(d=>d.id===selectedProjectDraft);
+  if(!selected?.linked_journey_id)return;
+  const timer=setInterval(()=>{if(document.visibilityState==="visible")void loadProjectMessages(selected.id);},15000);
+  return ()=>clearInterval(timer);
+ },[selectedProjectDraft,projectDrafts,loadProjectMessages]);
  const sendProjectMessage=async()=>{if(!selectedProjectDraft||projectMessageText.trim().length<2)return;try{const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(selectedProjectDraft)}/messages`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({body:projectMessageText.trim()})});const result=await response.json();if(!response.ok)throw Error(result.error||"Message failed");setProjectMessageText("");await loadProjectMessages(selectedProjectDraft);setMessage(t("تم إرسال الرسالة للإدارة.","Message sent to management."));}catch(e){setMessage(e instanceof Error?e.message:"Message failed");}};
  const submitInFlight=useRef(false);
  const [submittingDraft,setSubmittingDraft]=useState(false);

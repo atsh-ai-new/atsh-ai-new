@@ -5,6 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import {queueJourneyEvent} from './customer-event-outbox.js';
 import {createCustomerJourneyProject} from './customer-project-service.js';
+import {submissionDecision} from './customer-v2/submission-decision.js';
 
 const emailSchema=z.string().trim().email().max(254).transform(v=>v.toLowerCase());
 const passwordSchema=z.string().min(6).max(128);
@@ -182,8 +183,9 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    const draft=await client.query('SELECT id,title,draft,linked_journey_id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 FOR UPDATE',[req.params.id,req.customer.id]);
    if(!draft.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Project not found'});}
    const item=draft.rows[0];
-   if(item.linked_journey_id){await client.query('COMMIT');return res.json({projectId:item.linked_journey_id,alreadySubmitted:true});}
-   if(!item.draft?.packageId&&!item.draft?.sectorSlug&&!(item.draft?.projectMode==='custom'&&item.draft?.requirements?.trim())){await client.query('ROLLBACK');return res.status(422).json({code:'PROJECT_REQUIREMENTS_INCOMPLETE',error:'Complete project requirements before submission'});}
+   const decision=submissionDecision(item);
+   if(decision.kind==='existing'){await client.query('COMMIT');return res.json({projectId:decision.projectId,alreadySubmitted:true});}
+   if(decision.kind==='invalid'){await client.query('ROLLBACK');return res.status(422).json({code:'PROJECT_REQUIREMENTS_INCOMPLETE',error:'Complete project requirements before submission'});}
    const customer=await client.query('SELECT email,name FROM customer_accounts WHERE id=$1',[req.customer.id]);
    const created=await createCustomerJourneyProject(client,{customerName:item.title,customerEmail:customer.rows[0]?.email??null,customerAccountId:req.customer.id,createdBy:'customer-portal'});
    const projectId=created.id;
@@ -378,7 +380,17 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   if(!result.rowCount)return res.status(404).end();
   res.set({'Content-Type':result.rows[0].mime_type,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}).send(result.rows[0].data);
  }));
- router.get('/projects',requireCustomer,safe(async(req,res)=>{const q=await pool.query('SELECT id,customer_name,status,created_at,updated_at FROM customer_journey_projects WHERE customer_account_id=$1 ORDER BY created_at DESC LIMIT 100',[req.customer.id]);res.json({projects:q.rows});}));
+ router.get('/projects',requireCustomer,safe(async(req,res)=>{
+  const q=await pool.query('SELECT id,customer_name,status,created_at,updated_at FROM customer_journey_projects WHERE customer_account_id=$1 ORDER BY created_at DESC LIMIT 100',[req.customer.id]);
+  res.set('Cache-Control','private, no-store').json({projects:q.rows});
+ }));
+ router.get('/projects/:id',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Project not found'});
+  const project=await pool.query('SELECT id,customer_name,status,created_at,updated_at FROM customer_journey_projects WHERE id=$1 AND customer_account_id=$2',[req.params.id,req.customer.id]);
+  if(!project.rowCount)return res.status(404).json({error:'Project not found'});
+  const messages=await pool.query('SELECT id,actor,body,created_at FROM customer_journey_messages WHERE project_id=$1 ORDER BY id DESC LIMIT 100',[req.params.id]);
+  res.set('Cache-Control','private, no-store').json({project:project.rows[0],messages:messages.rows.reverse()});
+ }));
  router.post('/logout',(_req,res)=>{res.clearCookie(sessionCookie,cookieOptions);res.json({ok:true});});
  return router;
 }

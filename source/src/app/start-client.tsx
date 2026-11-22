@@ -36,25 +36,54 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
  const filtered=available.filter(x=>x.kinds.includes(kind));
  const changeKind=(value:Kind)=>{setKind(value);setOptions(old=>old.filter(code=>available.some(x=>x.code===code&&x.kinds.includes(value))));};
  const submit=async(event:FormEvent)=>{
-  event.preventDefault();if(!businessName.trim()){setError(tr("اكتب اسم مشروعك.","Please enter a project name."));return}
+  event.preventDefault();if(saving)return;if(!businessName.trim()){setError(tr("اكتب اسم مشروعك.","Please enter a project name."));return}
+  if(mode==="custom"&&!requirements.trim()){setError(tr("اكتب متطلبات المشروع المخصص قبل الإرسال.","Describe your custom project before submitting."));return}
   const patch:CustomerWorkspace={projectMode:mode,solutionType:kind,businessName:businessName.trim(),requirements:requirements.trim(),options,deliveryMethod,source:"configurator"};
-  replaceGuestWorkspace(patch);
+  const previous=loadGuestWorkspace();
+  // Preserve the selected catalogue package when the customer continues the same ready-made solution.
+  // Never carry an unrelated package into a different solution or a custom project.
+  const sameReadyPackage=mode==="ready"&&previous.projectMode==="ready"&&previous.solutionType===kind;
+  const draft:CustomerWorkspace=sameReadyPackage?{...previous,...patch,sectorAddonCodes:previous.sectorAddonCodes}:patch;
+  replaceGuestWorkspace(draft);
   setSaving(true);setError("");
   try{
    const session=await fetch("/api/customer/auth/me",{credentials:"include",cache:"no-store"});
    if(session.status===401){window.location.assign(`${root}/account/login`);return}
    if(!session.ok)throw Error(tr("تعذر فحص حساب العميل. أعد المحاولة.","Could not verify your account. Try again."));
-   const res=await fetch("/api/customer/auth/project-drafts",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:businessName.trim(),draft:loadGuestWorkspace()})});
-   const data=await res.json().catch(()=>({}));
-   if(!res.ok||!data.projectDraft?.id)throw Error((en?"Unable to save your project draft":data.error||"تعذر حفظ مسودة المشروع"));
+   const pendingId=sessionStorage.getItem("atsh_pending_draft_id");
+   let draftId:string|null=pendingId;
+   if(pendingId){
+    const current=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(pendingId)}`,{credentials:"include",cache:"no-store"});
+    if(current.status===404){sessionStorage.removeItem("atsh_pending_draft_id");draftId=null;}
+    else if(!current.ok)throw Error(tr("تعذر استعادة المسودة السابقة.","Unable to recover the pending draft."));
+    else{
+     const existing=await current.json();
+     if(existing.projectDraft?.linked_journey_id){
+      sessionStorage.removeItem("atsh_pending_draft_id");
+      window.location.assign(`${root}/account/project-preview/${encodeURIComponent(pendingId)}`);
+      return;
+     }
+     const revision=existing.projectDraft?.revision;
+     if(typeof revision!=="number")throw Error(tr("تعذر قراءة نسخة المسودة.","Invalid draft revision."));
+     const updated=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(pendingId)}`,{method:"PATCH",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({expectedRevision:revision,title:businessName.trim(),patch:loadGuestWorkspace()})});
+     if(!updated.ok){const detail=await updated.json().catch(()=>({}));throw Error(detail.error||tr("تعذر تحديث المسودة.","Unable to update draft."));}
+    }
+   }
+   if(!draftId){
+    const res=await fetch("/api/customer/auth/project-drafts",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:businessName.trim(),draft:loadGuestWorkspace()})});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok||!data.projectDraft?.id)throw Error((en?"Unable to save your project draft":data.error||"تعذر حفظ مسودة المشروع"));
+    draftId=data.projectDraft.id;
+    sessionStorage.setItem("atsh_pending_draft_id",data.projectDraft.id);
+   }
    // A completed custom brief is a customer submission, not merely a local draft.
    {
-    const sent=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(data.projectDraft.id)}/submit`,{method:"POST",credentials:"include"});
+    const sent=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(draftId!)}/submit`,{method:"POST",credentials:"include"});
     const confirmation=await sent.json().catch(()=>({}));
     if(!sent.ok||!confirmation.projectId)throw Error(confirmation.error||tr("تم حفظ المسودة لكن تعذر إرسال الطلب للإدارة. افتح حسابك وأعد الإرسال.","Draft saved, but submission failed. Open your account and retry."));
    }
-   try{sessionStorage.removeItem("atsh_customer_workspace_v1");}catch{}
-   window.location.assign(`${root}/account/project-preview/${encodeURIComponent(data.projectDraft.id)}`);
+   try{sessionStorage.removeItem("atsh_customer_workspace_v1");sessionStorage.removeItem("atsh_pending_draft_id");}catch{}
+   window.location.assign(`${root}/account/project-preview/${encodeURIComponent(draftId!)}`);
   }catch(e){setError(e instanceof Error?e.message:tr("تعذر حفظ المشروع","Unable to save your project"));}finally{setSaving(false)}
  };
  return <main className="atsh-start" lang={locale} dir={en?"ltr":"rtl"} style={{background:"#f8f8f5",minHeight:"100vh",padding:"15px 14px 65px",color:"#203958"}}>
@@ -86,7 +115,7 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
      <label style={{display:"grid",gap:8,fontWeight:700,marginTop:18}}>{tr("اشرح طلبك","Describe your requirements")}<textarea rows={3} maxLength={4000} value={requirements} onChange={e=>setRequirements(e.target.value)} placeholder={tr("أهم التفاصيل أو المشاكل التي تريد حلها","Main goals, requirements or problems to solve")} style={{border:"1px solid #b9c9dc",borderRadius:10,padding:13,fontSize:16}}/></label>
      <p style={{fontSize:13,color:"#607187",lineHeight:1.8}}>{tr("سيُحفظ طلبك باختياراته في حسابك ويُرسل للإدارة، ثم يمكنك متابعة تفاصيله من نفس الحساب. الأسعار النهائية تخضع لمراجعة العرض.","Your selected requirements will be saved and submitted under your account. You can track the same project there; final prices are subject to quote review.")}</p>
      {error&&<p role="alert" style={{padding:12,background:"#fff0dc",borderRadius:10}}>{error}</p>}
-     <div className="atsh-start-actions" style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}}><button type="button" onClick={()=>setStep(1)} style={{padding:"12px 18px",border:"1px solid #b9c9dc",borderRadius:10,background:"white",cursor:"pointer"}}>{tr("السابق","Previous")}</button><button type="submit" disabled={saving} style={{padding:"12px 18px",border:0,borderRadius:10,background:"#203958",color:"white",fontWeight:800,cursor:"pointer"}}>{saving?"جارٍ الحفظ…":tr("إنشاء الطلب ←","Create request →")}</button></div>
+     <div className="atsh-start-actions" style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}}><button type="button" onClick={()=>setStep(1)} style={{padding:"12px 18px",border:"1px solid #b9c9dc",borderRadius:10,background:"white",cursor:"pointer"}}>{tr("السابق","Previous")}</button><button type="submit" disabled={saving} style={{padding:"12px 18px",border:0,borderRadius:10,background:"#203958",color:"white",fontWeight:800,cursor:"pointer"}}>{saving?"جارٍ الحفظ…":tr("إرسال الطلب للإدارة ←","Send request to management →")}</button></div>
     </section>}
    </form>
   </div>
