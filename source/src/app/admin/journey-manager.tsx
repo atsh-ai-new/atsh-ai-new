@@ -11,7 +11,10 @@ type SubmittedDraft = {id:string;title:string;revision:number;updated_at:string;
 async function request(path:string, init?:RequestInit){
  const response=await fetch(`/api/admin/journey/${path}`,{...init,credentials:"include",cache:"no-store",headers:{...(init?.body?{"Content-Type":"application/json"}:{}),...init?.headers}});
  const data=await response.json().catch(()=>({}));
- if(!response.ok)throw new Error(`${data.error||data.message||"تعذر الاتصال بالخادم"} (HTTP ${response.status} · ${path})`);
+ if(!response.ok){
+  const safeMessages:Record<number,string>={400:"راجع البيانات المطلوبة وحاول مرة أخرى.",401:"انتهت جلسة الدخول. سجّل الدخول مجددًا.",403:"ليس لديك صلاحية لتنفيذ هذه العملية.",404:"العنصر المطلوب غير متاح.",409:"تعذر تنفيذ العملية بسبب تعارض مع بيانات موجودة.",429:"عدد المحاولات كبير. انتظر قليلًا ثم أعد المحاولة."};
+  throw new Error(safeMessages[response.status]||(response.status>=500?"الخدمة غير متاحة مؤقتًا. لم يتم تأكيد تنفيذ العملية، حاول التحقق من القائمة قبل إعادة الإرسال.":"تعذر إتمام العملية. راجع البيانات وحاول مرة أخرى."));
+ }
  return data;
 }
 export default function JourneyManager({canManageTasks=false,canArchive=false,canDelete=false}:{canManageTasks?:boolean;canArchive?:boolean;canDelete?:boolean}){
@@ -51,7 +54,7 @@ export default function JourneyManager({canManageTasks=false,canArchive=false,ca
    await refresh();
   }catch(e){
    const reason=e instanceof Error?e.message:String(e);
-   if(reason.includes("HTTP 409")&&window.confirm("المشروع مرتبط ببيانات عميل أو طلب مالي ولا يمكن حذفه نهائيًا. هل تريد أرشفته وإخفاءه من قائمة المشاريع مع الاحتفاظ بسجلاته؟")){
+   if(reason.includes("تعارض مع بيانات موجودة")&&window.confirm("المشروع مرتبط ببيانات عميل أو طلب مالي ولا يمكن حذفه نهائيًا. هل تريد أرشفته وإخفاءه من قائمة المشاريع مع الاحتفاظ بسجلاته؟")){
     try{await request(`projects/${project.id}/archive`,{method:"PATCH"});if(selected?.id===project.id){setSelected(null);setMessages([]);setSubmittedDraft(null);setLinkedOrder(null);setOrderAssignments([]);setTasks([]);}await refresh();}
     catch(archiveError){setError(String(archiveError));}
    }else{setError(reason);}
