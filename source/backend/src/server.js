@@ -776,7 +776,7 @@ app.post("/api/admin/orders/:id/email",requireAdmin,requireRole("owner","admin",
   await pool.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'customer.email.sent','order',$2,$3)",[req.admin.email,order.id,JSON.stringify({to:order.email,subject:parsed.data.subject})]);
   res.status(202).json({message:`تم تسليم الرسالة إلى خدمة الإرسال للعميل ${order.customer_name}.`});
 }));
-app.get("/api/admin/audit",requireAdmin,route(async(_req,res)=>{ const result=await pool.query("SELECT id,actor,action,entity_type,entity_id,before_data,after_data,created_at FROM audit_logs ORDER BY created_at DESC LIMIT 200"); res.json({logs:result.rows}); }));
+app.get("/api/admin/audit",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{ const result=await pool.query("SELECT id,actor,action,entity_type,entity_id,before_data,after_data,created_at FROM audit_logs ORDER BY created_at DESC LIMIT 200"); res.json({logs:result.rows}); }));
 
 const packageSchema=z.object({
   name:z.string().trim().min(2).max(160),
