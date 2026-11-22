@@ -127,6 +127,6 @@ export default function Concierge({locale="ar",embedded=false}:{locale?:"ar"|"en
        <button type="submit" disabled={!input.trim()||sending} style={{border:0,borderRadius:10,padding:"10px 14px",background:"#203958",color:"white",cursor:"pointer"}}>{sending?t("جارٍ الرد…","Replying…"):t("إرسال","Send")}</button>
      </form>
    </section>}
-   {!embedded&&<button aria-expanded={open} aria-label={open?t("إغلاق مساعد ATSH AI","Close ATSH AI assistant"):t("فتح مساعد ATSH AI","Open ATSH AI assistant")} onClick={()=>setOpen(v=>!v)} style={{border:0,borderRadius:99,background:"#203958",color:"#fff",padding:"13px 19px",boxShadow:"0 8px 30px #20395844",cursor:"pointer",fontWeight:700}}>✦ {open?t("إغلاق المساعد","Close assistant"):t("اسأل مساعد ATSH AI","Ask ATSH AI")}</button>}
+   {!embedded&&<button aria-expanded={open} aria-label={open?t("إغلاق مساعد ATSH AI","Close ATSH AI assistant"):t("فتح مساعد ATSH AI","Open ATSH AI assistant")} onClick={()=>setOpen(v=>!v)} style={{border:0,borderRadius:99,background:"#203958",color:"#fff",padding:"8px 12px",fontSize:12,lineHeight:1.25,boxShadow:"0 8px 30px #20395844",cursor:"pointer",fontWeight:700}}>✦ {open?t("إغلاق المساعد","Close assistant"):t("اسأل مساعد ATSH AI","Ask ATSH AI")}</button>}
  </div>;
 }
