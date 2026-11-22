@@ -123,9 +123,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
   const addProject = (event: FormEvent) => {
     event.preventDefault();
     if (!draft || !projectDraft.title.trim()) return;
-    const quarterSections = sections.slice(0,4);
-  const quarterSections = sections.slice(0,4);
-  const projects = (Array.isArray(draft.content.projects) ? draft.content.projects : []).map(normalizeProject);
+    const projects = (Array.isArray(draft.content.projects) ? draft.content.projects : []).map(normalizeProject);
     updateContent("projects", [...projects, { ...projectDraft, id: newId(), sortOrder: projects.length * 10 }]);
     setProjectDraft({ id: "", title: "", client: "", category: "", description: "", imageUrl: "", projectUrl: "", isPublished: false, sortOrder: 0 });
     setNotice("أضيف العمل إلى مسودة الصفحة. احفظ الصفحة لتثبيته.");
@@ -145,6 +143,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
 
   if (!draft) return <section className="admin-content-card"><p>جارٍ تحميل الصفحات…</p>{error && <p className="error-message">{error}</p>}</section>;
   const sections = Array.isArray(draft.content.sections) ? draft.content.sections.map((item) => asRecord(item) as unknown as CMSSection) : [];
+  const quarterSections: CMSSection[] = sections.slice(0,4);
   const projects = (Array.isArray(draft.content.projects) ? draft.content.projects : []).map(normalizeProject);
 
   return <div className="cms-workspace">
