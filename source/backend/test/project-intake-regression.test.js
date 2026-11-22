@@ -7,7 +7,8 @@ const auth=readFileSync(new URL("../src/customer-auth.js",import.meta.url),"utf8
 test("draft submission serializes by owned draft and returns the existing journey id",()=>{
   const section=auth.split("router.post('/project-drafts/:id/submit'")[1]?.split("router.get('/project-drafts/:id/messages'")[0]||"";
   assert.match(section,/FOR UPDATE/);
-  assert.match(section,/if\(item\.linked_journey_id\)/);
+  assert.match(section,/submissionDecision\(item\)/);
+  assert.match(section,/decision\.kind==='existing'/);
   assert.match(section,/alreadySubmitted:true/);
   assert.match(section,/await client\.query\('COMMIT'\)/);
 });
