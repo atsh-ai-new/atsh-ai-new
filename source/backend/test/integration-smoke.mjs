@@ -26,7 +26,8 @@ try{
  assert.equal(readiness.status,200,JSON.stringify(readiness));
  assert.equal(readiness.result.catalog.total,4);
  assert.equal(readiness.result.catalog.visible,4);
- assert.equal(readiness.result.domains.configured,false);
+ assert.equal(readiness.result.domains.configured,true);
+ assert.equal(readiness.result.domains.mode,"rdap-registry");
  assert.equal(readiness.result.gpt.configured,false);
  assert.equal(readiness.result.registration.ready,false);
  const unauthorizedStatus=await req("/api/admin/integrations/status");
