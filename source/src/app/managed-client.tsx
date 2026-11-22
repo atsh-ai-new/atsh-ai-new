@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
+import { readPagePreview } from "@/lib/page-preview";
 
 type ContentRecord = Record<string, unknown>;
 type Project = { id: string; title: string; client: string; category: string; description: string; imageUrl: string; projectUrl: string; isPublished: boolean; sortOrder: number };
@@ -22,10 +23,11 @@ export default function ManagedPage({locale="ar"}:{locale?:"ar"|"en"}) { const e
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     let active = true;
+    const preview=readPagePreview(slug,locale);
     Promise.all([
       fetch(`/api/site-content/${encodeURIComponent(slug)}?locale=${locale}`, { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as PagePayload : null),
       fetch(`/api/site-pages?locale=${locale}`, { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { pages?: PageLink[] } : { pages: [] })
-    ]).then(([page, pageLinks]) => { if (active) { setPayload(page); setLinks((pageLinks.pages ?? []).filter((item) => item.slug !== "home")); } })
+    ]).then(([page, pageLinks]) => { if (active) { setPayload(preview?{...(page??{}),page:{slug,content:preview.content}}:page); setLinks((pageLinks.pages ?? []).filter((item) => item.slug !== "home")); } })
       .catch(() => { if (active) setPayload(null); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [slug,locale]);
