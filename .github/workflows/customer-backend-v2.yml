@@ -14,11 +14,8 @@ jobs:
         working-directory: source/backend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: source/backend/package-lock.json
+      - name: Verify preinstalled Node.js
+        run: node --version
       - run: npm ci --no-audit --no-fund
       - run: npm run check
       - run: npm test
