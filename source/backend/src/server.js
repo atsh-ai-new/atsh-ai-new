@@ -72,6 +72,7 @@ await pool.query(await readFile(new URL("../db/contract_templates_stage43.sql", 
 await pool.query(await readFile(new URL("../db/customer_project_drafts_stage44.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_preview_stage45.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_service_entitlements_stage55.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/site_page_drafts_stage56.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_project_logos_stage46.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/visitor_ai_usage_stage51.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql", import.meta.url), "utf8"));
@@ -1075,9 +1076,17 @@ app.post("/api/admin/content-studio/:id/produce",requireAdmin,requirePermission(
   await pool.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'content_studio.video.generated','content_studio_draft',$2,$3::jsonb)",[req.admin.email,req.params.id,JSON.stringify({title,video_size:savedVideo.length})]);
   res.set({"Content-Type":"video/mp4","Content-Length":String(savedVideo.length),"Content-Disposition":"attachment; filename=atsh-ad.mp4","Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}).send(savedVideo);
 }));
+app.put("/api/admin/page-drafts/:slug",requireAdmin,requirePermission("content"),route(async(req,res)=>{
+ if(!/^[a-z0-9-]{1,100}$/.test(req.params.slug))return res.status(400).json({error:"Invalid page"});
+ const parsed=z.object({locale:z.enum(["ar","en"]),content:z.record(z.string(),z.unknown())}).strict().safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid draft"});
+ const saved=await pool.query("INSERT INTO site_page_drafts(slug,locale,content,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING slug,locale,updated_at",[req.params.slug,parsed.data.locale,JSON.stringify(parsed.data.content),req.admin.email]);
+ res.json({draft:saved.rows[0]});
+}));
 app.get("/api/admin/pages",requireAdmin,requirePermission("content"),route(async(_req,res)=>{
   const result=await pool.query("SELECT id,slug,locale,content,is_published,updated_by,updated_at FROM site_pages ORDER BY slug,locale");
-  res.json({pages:result.rows});
+  const drafts=await pool.query("SELECT slug,locale,content,updated_at FROM site_page_drafts");
+  res.json({pages:result.rows,drafts:drafts.rows});
 }));
 app.post("/api/admin/media",requireAdmin,requirePermission("content"),express.raw({type:["image/png","image/jpeg","image/webp"],limit:"5mb"}),route(async(req,res)=>{
   if(!Buffer.isBuffer(req.body)||req.body.length===0)return res.status(400).json({error:"Choose a PNG, JPG, or WebP image first"});
@@ -1105,6 +1114,7 @@ app.patch("/api/admin/pages/:slug",requireAdmin,requirePermission("content"),rou
       if(actual!==parsed.data.expectedUpdatedAt){await client.query("ROLLBACK");return res.status(409).json({error:"تم تعديل هذه الصفحة بواسطة مستخدم آخر. أعد تحميل البيانات قبل الحفظ.",currentUpdatedAt:actual});}
     }
     const saved=await client.query("INSERT INTO site_pages(slug,locale,content,is_published,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,is_published=EXCLUDED.is_published,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING *",[req.params.slug,parsed.data.locale,JSON.stringify(parsed.data.content),parsed.data.isPublished,req.admin.email]);
+    await client.query("DELETE FROM site_page_drafts WHERE slug=$1 AND locale=$2",[req.params.slug,parsed.data.locale]);
     await auditChange(client,req.admin.email,"page.updated","site_page",saved.rows[0].id,before.rows[0]||null,saved.rows[0]);await client.query("COMMIT");res.json({page:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
