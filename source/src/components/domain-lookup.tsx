@@ -10,23 +10,21 @@ type Lookup = {
  reservation?:boolean;
 };
 type Candidate = {domain:string;lookup:Lookup|null;error:string};
-const COMMON_EXTENSIONS=[".com",".net",".org",".eg"];
 const DOMAIN_EXTENSIONS=[".com",".net",".org",".eg",".com.eg",".site",".ai",".io",".co",".app",".dev",".tech",".online",".store",".shop",".info",".biz",".me",".xyz",".cloud",".digital",".agency",".design",".solutions",".services",".pro",".edu",".gov"];
 
 // The input accepts a business name (atsh) OR a fully-qualified domain (atsh.com).
-function candidatesFromInput(value:string,extensions:string[]=COMMON_EXTENSIONS):string[] {
+function candidatesFromInput(value:string):string[] {
  const name=value.trim().toLowerCase().replace(/[.。．｡]+$/gu,"");
  if(!name||name.length>253||/[\s/?&#@:]/u.test(name)||name.includes(".."))return [];
  if(name.includes("."))return [name];
  if(name.length>63||!/^[a-z0-9\u0600-\u06FF](?:[a-z0-9\u0600-\u06FF-]*[a-z0-9\u0600-\u06FF])?$/i.test(name))return [];
- return extensions.map(extension=>name+extension);
+ return DOMAIN_EXTENSIONS.map(extension=>name+extension);
 }
 
 export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChange?:(value:string)=>void;locale?:"ar"|"en"}){
  const en=locale==="en";
  const t=(ar:string,english:string)=>en?english:ar;
  const [name,setName]=useState("");
- const [extensions,setExtensions]=useState<string[]>(COMMON_EXTENSIONS);
  const [checking,setChecking]=useState(false);
  const [results,setResults]=useState<Candidate[]>([]);
  const [message,setMessage]=useState("");
@@ -48,7 +46,7 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
   saveGuestWorkspace({domainName:domain,source:"configurator"});
  };
  const check=async()=>{
-  const names=candidatesFromInput(name,extensions);
+  const names=candidatesFromInput(name);
   setResults([]);setMessage("");
   if(!names.length){
    setMessage(t("اكتب اسمًا صحيحًا، مثل atsh أو atsh.com.","Enter a valid name such as atsh or atsh.com."));
@@ -58,7 +56,7 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
   try{
    const checked:Candidate[]=[];
    for(let offset=0;offset<names.length;offset+=4){
-    if(offset>0)await new Promise(resolve=>setTimeout(resolve,25000));
+    if(offset>0)await new Promise(resolve=>setTimeout(resolve,1800));
     const batch=await Promise.all(names.slice(offset,offset+4).map(async domain=>{
     try{
      const response=await fetch(`/api/domains/check?domain=${encodeURIComponent(domain)}`,{cache:"no-store"});
@@ -107,10 +105,6 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
    {t("اكتب الاسم فقط مثل atsh للبحث في عدة امتدادات، أو اكتب الدومين كاملًا مثل atsh.com.",
     "Enter a name like atsh to check several extensions, or a complete domain like atsh.com.")}
   </p>
-  <div style={{display:"flex",flexWrap:"wrap",gap:7,margin:"8px 0 12px"}} aria-label={t("اختر امتدادات البحث","Choose domain extensions")}>
-   {DOMAIN_EXTENSIONS.map(extension=><label key={extension} style={{display:"inline-flex",alignItems:"center",gap:5,border:"1px solid #d9e2ed",borderRadius:20,padding:"5px 9px",fontSize:12,cursor:"pointer",background:extensions.includes(extension)?"#e8f2fc":"#fff"}}><input type="checkbox" checked={extensions.includes(extension)} onChange={event=>setExtensions(current=>event.target.checked?[...current,extension]:current.filter(item=>item!==extension))}/>{extension}</label>)}
-  </div>
-  <p style={{fontSize:12,color:"#64748b",margin:"0 0 10px"}}>{t("اختر الامتدادات المطلوبة؛ البحث يتم على دفعات لتجنب حدود خدمة الفحص. بعض الامتدادات قد لا تدعم التحقق المباشر.","Choose extensions to check; requests are batched to respect lookup limits. Some extensions may not support live verification.")}</p>
   <div role="search" style={{display:"flex",gap:8,flexWrap:"wrap"}}>
    <input required aria-label={t("اسم المشروع أو الدومين","Name or domain")} type="text"
     autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="atsh"
@@ -120,9 +114,10 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
     {checking?t("جارٍ البحث…","Searching…"):t("ابحث","Search")}
    </button>
   </div>
+  {checking&&<p role="status" style={{fontSize:12,color:"#64748b"}}>{t("جارٍ فحص الامتدادات المتاحة تباعًا…","Checking available extensions progressively…")}</p>}
   {message&&<p role="status" style={{color:"#875b14",fontSize:13,lineHeight:1.6,margin:"10px 0 0"}}>{message}</p>}
-  {results.length>0&&<div aria-live="polite" aria-busy={checking} style={{display:"grid",gap:8,marginTop:12}}>
-   {results.map(item=><div key={item.domain} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,
+  {results.filter(item=>item.domain.endsWith(".com")||item.domain.endsWith(".net")||(item.lookup&&selectable(item.lookup))).length>0&&<div aria-live="polite" aria-busy={checking} style={{display:"grid",gap:8,marginTop:12}}>
+   {results.filter(item=>item.domain.endsWith(".com")||item.domain.endsWith(".net")||(item.lookup&&selectable(item.lookup))).map(item=><div key={item.domain} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,
     background:"#f4f7fb",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 12px"}}>
     <div style={{minWidth:0,flex:"1 1 150px"}}>
      <strong dir="ltr" style={{display:"block",textAlign:en?"left":"right",overflowWrap:"anywhere",color:"#203958"}}>{item.domain}</strong>
