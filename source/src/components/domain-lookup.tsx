@@ -10,7 +10,7 @@ type Lookup = {
  reservation?:boolean;
 };
 type Candidate = {domain:string;lookup:Lookup|null;error:string};
-const DOMAIN_EXTENSIONS=[".com",".net",".org",".eg",".com.eg",".site",".ai",".io",".co",".app",".dev",".tech",".online",".store",".shop",".info",".biz",".me",".xyz",".cloud",".digital",".agency",".design",".solutions",".services",".pro",".edu",".gov"];
+const DOMAIN_EXTENSIONS=[".com",".net",".org",".eg",".ai",".io",".co",".site",".app",".store"];
 
 // The input accepts a business name (atsh) OR a fully-qualified domain (atsh.com).
 function candidatesFromInput(value:string):string[] {
