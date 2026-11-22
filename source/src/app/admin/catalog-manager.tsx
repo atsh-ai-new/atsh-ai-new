@@ -95,9 +95,9 @@ export default function CatalogManager() {
     }
   };
   const applyDemoPrices=async()=>{
-    if(!window.confirm("تطبيق أسعار تجريبية: ٥٠٠٠ ج.م لكل كتالوج بلا سعر، و١٠٠٠ ج.م لكل إضافة جديدة. لن تُستبدل الأسعار التي حددتها سابقًا. متابعة؟"))return;
-    const next=items.map(item=>({...item,basePrice:item.basePrice===null?5000:item.basePrice,pricedAddons:[...item.pricedAddons,...defaultPricedAddons().filter(addon=>!item.pricedAddons.some(existing=>existing.code===addon.code))]}));
-    await saveAll(next,"تم حفظ الأسعار التجريبية للكتالوجات والإضافات دون تغيير الأسعار الموجودة.");
+    if(!window.confirm("تعيين سعر أساسي تجريبي ٥٠٠٠ ج.م للأنظمة التي لا سعر لها فقط؟ لن تُنشأ إضافات أو أسعار مستقلة."))return;
+    const next=items.map(item=>({...item,basePrice:item.basePrice===null?5000:item.basePrice,pricedAddons:[]}));
+    await saveAll(next,"تم تعيين الأسعار الأساسية التجريبية دون إنشاء إضافات منفصلة.");
   };
   const importStarter=async()=>{
     const used=new Set(items.map(item=>item.slug));
