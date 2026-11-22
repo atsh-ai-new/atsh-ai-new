@@ -380,7 +380,17 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   if(!result.rowCount)return res.status(404).end();
   res.set({'Content-Type':result.rows[0].mime_type,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}).send(result.rows[0].data);
  }));
- router.get('/projects',requireCustomer,safe(async(req,res)=>{const q=await pool.query('SELECT id,customer_name,status,created_at,updated_at FROM customer_journey_projects WHERE customer_account_id=$1 ORDER BY created_at DESC LIMIT 100',[req.customer.id]);res.json({projects:q.rows});}));
+ router.get('/projects',requireCustomer,safe(async(req,res)=>{
+  const q=await pool.query('SELECT id,customer_name,status,created_at,updated_at FROM customer_journey_projects WHERE customer_account_id=$1 ORDER BY created_at DESC LIMIT 100',[req.customer.id]);
+  res.set('Cache-Control','private, no-store').json({projects:q.rows});
+ }));
+ router.get('/projects/:id',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Project not found'});
+  const project=await pool.query('SELECT id,customer_name,status,created_at,updated_at FROM customer_journey_projects WHERE id=$1 AND customer_account_id=$2',[req.params.id,req.customer.id]);
+  if(!project.rowCount)return res.status(404).json({error:'Project not found'});
+  const messages=await pool.query('SELECT id,actor,body,created_at FROM customer_journey_messages WHERE project_id=$1 ORDER BY id DESC LIMIT 100',[req.params.id]);
+  res.set('Cache-Control','private, no-store').json({project:project.rows[0],messages:messages.rows.reverse()});
+ }));
  router.post('/logout',(_req,res)=>{res.clearCookie(sessionCookie,cookieOptions);res.json({ok:true});});
  return router;
 }
