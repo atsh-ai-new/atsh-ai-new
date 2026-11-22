@@ -353,6 +353,16 @@ export default function AdminPage() {
             <label className="check-row"><input type="checkbox" checked={packageDraft.isPublished} onChange={(event) => setPackageDraft({ ...packageDraft, isPublished: event.target.checked })} /> نشر البطاقة فور الإنشاء</label>
             <button className="button" disabled={busy}>إنشاء الباقة</button>
           </form>
+          <div className="admin-content-title"><div><h3>معاينة الباقات في أربعة أرباع</h3><p>المعاينة تعرض أول أربع باقات حسب ترتيبها الحالي، بما فيها التعديلات غير المحفوظة. لا تنشر أي تغيير تلقائيًا.</p></div></div>
+          <div className="admin-package-quarter-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,260px),1fr))",gap:12,marginBottom:20}}>
+            {[0,1,2,3].map((index) => {
+              const item = [...packages].sort((a,b)=>a.sort_order-b.sort_order)[index];
+              return <article key={item?.id ?? `empty-${index}`} className="admin-package-editor" style={{margin:0,minHeight:170}}>
+                <strong>الربع {index+1}</strong>
+                {item ? <><h3>{item.name}</h3><p>{item.tagline}</p><strong>{item.is_custom_quote ? "تسعير مخصص" : formatEgp(Number(item.price))}</strong><p>{item.description}</p><small>{item.is_published ? "منشورة" : "مسودة"} · {item.features.length} مزايا</small></> : <p>ربع فارغ — أنشئ باقة جديدة لإضافتها.</p>}
+              </article>;
+            })}
+          </div>
           {packages.map((item) => <article className="admin-package-editor" key={item.id}>
             <div className="admin-form-grid">
               <label className="admin-field">اسم البطاقة<input value={item.name} onChange={(event) => changePackage(item.id, "name", event.target.value)} /></label>
