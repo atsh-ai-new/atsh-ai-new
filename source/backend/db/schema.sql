@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS customer_journey_projects (
  customer_name varchar(120) NOT NULL,
  customer_email varchar(254),
  template_id varchar(120),
- status varchar(32) NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','configured','quoted','payment_pending','paid','building','preview_ready','approved','delivered','support')),
+ status varchar(32) NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','configured','quoted','payment_pending','paid','building','preview_ready','approved','delivered','support','archived')),
  created_by varchar(254) NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now(),
  updated_at timestamptz NOT NULL DEFAULT now()
