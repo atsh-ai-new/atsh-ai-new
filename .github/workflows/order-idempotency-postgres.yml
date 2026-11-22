@@ -1,0 +1,63 @@
+name: PostgreSQL order concurrency
+on:
+  push:
+    branches:
+      - fix/project-intake-idempotency-20261122
+  pull_request:
+    paths:
+      - 'source/backend/**'
+      - '.github/workflows/order-idempotency-postgres.yml'
+  workflow_dispatch:
+jobs:
+  concurrency:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user -d test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install backend dependencies
+        working-directory: source/backend
+        run: npm install --no-audit --no-fund
+      - name: Verify customer-admin configuration parity and project linkage
+        working-directory: source/backend
+        run: npm test
+      - name: Run real PostgreSQL simultaneous submissions test
+        working-directory: source/backend
+        env:
+          TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+        run: node --test test/postgres-idempotency.integration.mjs
+      - name: Create isolated database for HTTP test
+        working-directory: source/backend
+        env:
+          TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+        run: node --input-type=module -e 'import pg from "pg"; const c=new pg.Client({connectionString:process.env.TEST_DATABASE_URL}); await c.connect(); await c.query("CREATE DATABASE test_http"); await c.end();'
+      - name: Test actual HTTP endpoint with concurrent retries
+        working-directory: source/backend
+        env:
+          TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_http
+        run: node --test test/order-http.integration.mjs
+      - name: Create isolated database for authenticated customer journey
+        working-directory: source/backend
+        env:
+          TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+        run: node --input-type=module -e 'import pg from "pg"; const c=new pg.Client({connectionString:process.env.TEST_DATABASE_URL}); await c.connect(); await c.query("CREATE DATABASE test_journey"); await c.end();'
+      - name: Test real customer login submit retry and admin parity over HTTP
+        working-directory: source/backend
+        env:
+          TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_journey
+        run: node --test test/customer-admin-journey.integration.mjs
