@@ -340,6 +340,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     URL.revokeObjectURL(url);
   };
 
+  const validCustomerPhone = customer.phone.trim().replace(/[^0-9]/g,"").length >= 7;
   const submitRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if(submitRequestInFlight.current||requestState==="sent")return;
@@ -347,6 +348,11 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     if(readPagePreview("home",isEnglish?"en":"ar")){
       setRequestState("sent");
       setRequestMessage(t("هذه تجربة معاينة فقط؛ لم يتم إرسال طلب حقيقي.","Preview only — no real order was submitted."));
+      return;
+    }
+    if (!validCustomerPhone || customer.name.trim().length < 2 || (customer.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email.trim()))) {
+      setRequestState("error");
+      setRequestMessage(t("راجع بيانات التواصل: الاسم لا يقل عن حرفين، ورقم الهاتف لا يقل عن 7 أرقام، والبريد الإلكتروني يجب أن يكون صحيحًا.","Check your contact details: name must have at least 2 characters, phone at least 7 digits, and email must be valid."));
       return;
     }
     if (!privacyAccepted) {
@@ -411,7 +417,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         body:orderPayload
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(isEnglish?"Unable to submit your request at the moment.":data.message || data.error || "تعذر تسجيل الطلب الآن.");
+      if (!response.ok) throw new Error(data.error==="Invalid order details" ? t("بيانات الطلب غير مكتملة أو غير صحيحة. راجع بيانات التواصل واختيارات الباقة.","Some order details are invalid. Check your contact information and package selections.") : (isEnglish?"Unable to submit your request at the moment.":data.message || data.error || "تعذر تسجيل الطلب الآن."));
       orderSubmissionKey.current=null;
       setRequestState("sent");
       setRequestMessage(`${copy("orderSuccessPrefix")} ${data.order?.reference ?? copy("orderSuccessFallback")}`);
@@ -550,7 +556,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
                 <label className="field-label">{copy("fullNameLabel")}<input name="name" required autoComplete="name" value={customer.name} onChange={updateCustomer} placeholder={copy("fullNamePlaceholder")} /></label>
                 <label className="field-label">{copy("companyNameLabel")}<input name="company" autoComplete="organization" value={customer.company} onChange={updateCustomer} placeholder={copy("companyPlaceholder")} /></label>
                 <label className="field-label">{copy("customerEmailLabel")}<input type="email" name="email" required autoComplete="email" value={customer.email} onChange={updateCustomer} placeholder={copy("emailPlaceholder")} /></label>
-                <label className="field-label">{copy("customerPhoneLabel")}<input type="tel" name="phone" required autoComplete="tel" value={customer.phone} onChange={updateCustomer} placeholder={copy("customerPhonePlaceholder")} /></label>
+                <label className="field-label">{copy("customerPhoneLabel")}<input type="tel" name="phone" required minLength={7} autoComplete="tel" value={customer.phone} onChange={updateCustomer} placeholder={copy("customerPhonePlaceholder")} /></label>
                 <p className="field-hint">{copy("privacyHint")}</p>
               </div>}
 
@@ -569,12 +575,12 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
                 <div className="review-section"><h4>{copy("reviewPriceTitle")}</h4>{sectorPrice&&!sectorPrice.needsCustomQuote&&sectorPrice.items.map(item=><div key={item.code} className="review-detail"><span>{item.name} · {item.pricingType==="yearly"?t("سنوي","annual"):item.pricingType==="monthly"?t("شهري","monthly"):t("مرة واحدة","one time")}</span><b>{money(item.price)}</b></div>)}{localizedQuoteItems.map((item) => <div key={item.id} className="review-detail"><span>{item.label}{item.period ? ` · ${item.period}` : ""}</span><b>{money(item.amount)}</b></div>)}<div className="review-detail review-subtotal"><span>{copy("reviewSubtotal")}</span><b>{money(quoteSubtotal)}</b></div><div className="review-detail"><span>{copy("reviewTax")} {vatRate}%</span><b>{money(quoteTax)}</b></div><div className="review-total"><span>{copy("reviewTotal")}</span><strong>{money(quoteTotal)}</strong></div><div className="review-detail recurring-row"><span>{t("رسوم شهرية","Monthly charges")}</span><b>{money(quoteSummary.monthly)}</b></div><div className="review-detail recurring-row"><span>{t("رسوم سنوية","Annual charges")}</span><b>{money(quoteRecurring)}</b></div></div>
                 <div className="review-section"><h4>{copy("reviewContactTitle")}</h4><div className="review-detail"><span>{copy("fullNameLabel")}</span><b>{customer.name || "—"}</b></div><div className="review-detail"><span>{copy("customerEmailLabel")}</span><b>{customer.email || "—"}</b></div><div className="review-detail"><span>{copy("customerPhoneLabel")}</span><b>{customer.phone || "—"}</b></div></div>
                 {!customerSignedIn&&<p className="api-notice">{t("لإكمال رحلة المعاينة الشخصية والعقد وتسليم المشروع، ","To manage previews, contracts and project delivery, ")}<a href={isEnglish?"/en/account/login":"/account/login"} style={{textDecoration:"underline",fontWeight:700}}>{t("سجّل الدخول","Sign in")}</a> أو <a href={isEnglish?"/en/account/register":"/account/register"} style={{textDecoration:"underline",fontWeight:700}}>{t("افتح حسابًا","Create an account")}</a>{t(". اختياراتك مؤقتة في هذه الجلسة فقط، وتُمسح عند تحديث الصفحة ما لم تُحفظ في حسابك.",". Your selections are temporary in this session and reset on refresh unless saved to your account.")}</p>}
-                <div className="review-actions"><button type="button" className="button button-outline" onClick={downloadSummary}>{copy("downloadSummaryButton")}</button><button className="button" type="submit" disabled={(!selectedProjectDraftId && (!apiConfigured || sectorNeedsQuote)) || requestState === "sending" || !customer.name || !customer.email || !customer.phone || !privacyAccepted}>{requestState === "sending" ? copy("sendingRequest") : copy("submitRequestButton")}<span>←</span></button></div>
+                <div className="review-actions"><button type="button" className="button button-outline" onClick={downloadSummary}>{copy("downloadSummaryButton")}</button><button className="button" type="submit" disabled={(!selectedProjectDraftId && (!apiConfigured || sectorNeedsQuote)) || requestState === "sending" || !customer.name.trim() || !customer.email.trim() || !validCustomerPhone || !privacyAccepted}>{requestState === "sending" ? copy("sendingRequest") : copy("submitRequestButton")}<span>←</span></button></div>
                 {!apiConfigured && !selectedProjectDraftId && <p className="api-notice">{catalogStatus === "loading" ? copy("loadingCatalogMessage") : catalogStatus === "unavailable" ? copy("unavailableCatalogMessage") : copy("catalogMismatchMessage")}</p>}
                 {requestMessage && <p className={requestState === "sent" ? "success-message" : "error-message"} role="status">{requestMessage}</p>}
               </div>}
 
-              {pricingOnly&&step<5?<div className="builder-controls"><button type="button" className="button button-outline" onClick={()=>window.location.assign(isEnglish?"/en#packages":"/#packages")}>{t("تغيير الباقة","Change package")}</button><button type="button" className="button" onClick={()=>setStep(5)}>{t("متابعة الطلب","Continue request")} ←</button></div>:<div className="builder-controls"><button type="button" className="button button-outline" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step <= 1}>{copy("previousStep")}</button><span>{step + 1} / {steps.length}</span>{step < steps.length - 1 ? <button type="button" className="button" onClick={() => { if (step === 5 && (!customer.name || !customer.email || !customer.phone)) return; setStep((current) => Math.min(steps.length - 1, current + 1)); }} disabled={(step === 5 && (!customer.name || !customer.email || !customer.phone))}>{copy("nextStep")} <span>←</span></button> : <button type="button" className="button button-outline" onClick={() => setStep(1)}>{copy("editChoices")}</button>}</div>}
+              {pricingOnly&&step<5?<div className="builder-controls"><button type="button" className="button button-outline" onClick={()=>window.location.assign(isEnglish?"/en#packages":"/#packages")}>{t("تغيير الباقة","Change package")}</button><button type="button" className="button" onClick={()=>setStep(5)}>{t("متابعة الطلب","Continue request")} ←</button></div>:<div className="builder-controls"><button type="button" className="button button-outline" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step <= 1}>{copy("previousStep")}</button><span>{step + 1} / {steps.length}</span>{step < steps.length - 1 ? <button type="button" className="button" onClick={() => { if (step === 5 && (!customer.name.trim() || !customer.email.trim() || !validCustomerPhone)) return; setStep((current) => Math.min(steps.length - 1, current + 1)); }} disabled={(step === 5 && (!customer.name || !customer.email || !customer.phone))}>{copy("nextStep")} <span>←</span></button> : <button type="button" className="button button-outline" onClick={() => setStep(1)}>{copy("editChoices")}</button>}</div>}
             </form>
           </div>
         <aside className="quote-sidebar">
