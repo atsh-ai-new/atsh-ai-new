@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { siteCopyDefaults } from "@/lib/site-copy";
 import { siteCopyEn } from "@/lib/site-copy-en";
+import { openPagePreview } from "@/lib/page-preview";
 
 type PageRecord = { slug: string; locale: string; content: Record<string, unknown>; is_published: boolean; updated_at?: string };
 type CMSCard = { id: string; title: string; description: string; imageUrl: string; href: string; linkLabel: string; icon?: string };
@@ -77,6 +78,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
     finally { setBusy(false); event.target.value = ""; }
   };
 
+  const previewPage = () => { if(draft)openPagePreview({slug:draft.slug,locale:draft.locale==="en"?"en":"ar",content:draft.content}); };
   const savePage = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!draft) return;
@@ -158,12 +160,12 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
         </select></label>
         <label className="check-row"><input type="checkbox" checked={draft.is_published} onChange={(event) => setDraft({ ...draft, is_published: event.target.checked })} /> الصفحة منشورة للزوار</label>
         <button className="button button-small" disabled={busy} onClick={() => void savePage()}>حفظ الصفحة</button>
-        <a className="inline-add" href={activeSlug==="home"?(activeLocale==="en"?"/en":"/"):`${activeLocale==="en"?"/en":""}/${activeSlug}`} target="_blank" rel="noreferrer">معاينة الصفحة ↗</a>
+        <button type="button" className="inline-add" onClick={previewPage}>معاينة الصفحة ↗</button>
       </div>
     </section>
 
-    <nav role="tablist" aria-label="تعديل ومعاينة الصفحة" className="admin-actions"><button type="button" role="tab" aria-selected={workspaceTab==="edit"} className={workspaceTab==="edit"?"button":"button button-outline"} onClick={()=>setWorkspaceTab("edit")}>تعديل</button><button type="button" role="tab" aria-selected={workspaceTab==="preview"} className={workspaceTab==="preview"?"button":"button button-outline"} onClick={()=>setWorkspaceTab("preview")}>معاينة</button></nav>
-    {workspaceTab==="preview" ? <section className="admin-content-card"><h2>معاينة أقسام الصفحة</h2><div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:16}}>{[0,1,2,3].map(i=>{const section=quarterSections[i];return <article key={i} style={{minHeight:150,padding:16,background:section?.backgroundColor||"#fff",color:section?.textColor||"#26313f",textAlign:section?.align||"right"}}>{section&&section.isVisible!==false&&<><h3 style={{fontSize:section.titleFontSize||24}}>{section.title}</h3><p style={{fontSize:section.bodyFontSize||16}}>{section.body}</p>{section.layout==="cards"&&(section.cards||[]).map(card=><div key={card.id}><strong>{card.title}</strong><p>{card.description}</p></div>)}</>}</article>})}</div><p className="field-hint">معاينة المسودة، وليست نشرًا.</p></section> : <>
+    <nav role="tablist" aria-label="تعديل ومعاينة الصفحة" className="admin-actions"><button type="button" role="tab" aria-selected={workspaceTab==="edit"} className={workspaceTab==="edit"?"button":"button button-outline"} onClick={()=>setWorkspaceTab("edit")}>تعديل</button><button type="button" role="tab" aria-selected={workspaceTab==="preview"} className={workspaceTab==="preview"?"button":"button button-outline"} onClick={previewPage}>معاينة</button></nav>
+    {workspaceTab==="preview" ? <section className="admin-content-card"><h2>معاينة الصفحة الحقيقية</h2><p>ستظهر الصفحة الحالية بكل تعديلاتك غير المحفوظة وبنفس تصميم الزوار، دون نشرها.</p><button type="button" className="button" onClick={previewPage}>فتح المعاينة الفعلية</button></section> : <>
     {activeSlug === "home" ? <>
       <section className="admin-content-card">
         <div className="admin-content-title"><div><h2>بطاقات الصفحة الرئيسية</h2><p>عدّل وأضف واحذف مزايا الصفحة ومراحل العمل والأسئلة الشائعة. القيم الأصلية المعروضة هي الحالية.</p></div></div>
