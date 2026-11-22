@@ -6,7 +6,7 @@ test("new customer chooses ready store and keeps a scoped preference draft",asyn
  await page.getByRole("button",{name:/التالي/}).click();
  await page.getByRole("textbox",{name:"اسم المشروع / النشاط"}).fill("متجر العميل");
  await page.getByRole("checkbox",{name:"دفع إلكتروني"}).check();
- await expect(page.getByRole("button",{name:/إنشاء الطلب/})).toBeVisible();
+ await expect(page.getByRole("button",{name:/إرسال الطلب للإدارة/})).toBeVisible();
  await expect(page.getByRole("textbox",{name:"اسم المشروع / النشاط"})).toHaveValue("متجر العميل");
  await expect(page.getByRole("checkbox",{name:"دفع إلكتروني"})).toBeChecked();
 });
@@ -27,7 +27,25 @@ test("custom client request creates one authenticated account-owned project draf
  await page.getByRole("textbox",{name:"اسم المشروع / النشاط"}).fill("تطبيق الشحن");
  await page.getByRole("textbox",{name:"اشرح طلبك"}).fill("نظام للسائقين والعملاء ولوحة تحكم");
  await page.getByRole("checkbox",{name:"لوحة إدارة"}).check();
- await page.getByRole("button",{name:/إنشاء الطلب/}).click();
+ await page.getByRole("button",{name:/إرسال الطلب للإدارة/}).click();
  await expect.poll(()=>submitted.length).toBe(1);
  expect(submitted[0].draft).toMatchObject({projectMode:"custom",solutionType:"mobile",businessName:"تطبيق الشحن",options:["admin-panel"],requirements:"نظام للسائقين والعملاء ولوحة تحكم"});
+});
+
+
+test("selected catalogue package survives submitting a ready-made request",async({page})=>{
+ const submitted:Array<Record<string,unknown>>=[];
+ await page.route("**/api/customer/auth/me",async route=>route.fulfill({status:200,contentType:"application/json",body:'{"customer":{"name":"عميل"}}'}));
+ await page.route("**/api/customer/auth/project-drafts",async route=>{
+  submitted.push(route.request().postDataJSON() as Record<string,unknown>);
+  await route.fulfill({status:201,contentType:"application/json",body:'{"projectDraft":{"id":"11111111-2222-4333-8444-555555555555"}}'});
+ });
+ await page.route("**/api/customer/auth/project-drafts/11111111-2222-4333-8444-555555555555/submit",async route=>route.fulfill({status:200,contentType:"application/json",body:'{"projectId":"22222222-3333-4444-8555-666666666666"}'}));
+ await page.goto("/start");
+ await page.evaluate(()=>sessionStorage.setItem("atsh_customer_workspace_v1",JSON.stringify({projectMode:"ready",solutionType:"store",packageId:"store-basic",sectorSlug:"retail",sectorAddonCodes:["pos"],businessName:"متجر العميل"})));
+ await page.reload();
+ await page.getByRole("button",{name:/التالي/}).click();
+ await page.getByRole("button",{name:/إرسال الطلب للإدارة/}).click();
+ await expect.poll(()=>submitted.length).toBe(1);
+ expect(submitted[0].draft).toMatchObject({packageId:"store-basic",sectorSlug:"retail",sectorAddonCodes:["pos"],solutionType:"store"});
 });
