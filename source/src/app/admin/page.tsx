@@ -20,7 +20,7 @@ type JourneyProject = { id:string; customer_name:string; customer_email:string|n
 type Member = { id: string; email: string; display_name: string; role: Exclude<Role, "owner">; is_active: boolean; permission_overrides?: Record<string, boolean> | null; created_at: string };
 type Theme = { navy: string; blue: string; gold: string; page: string; logoUrl: string; heroImageUrl: string; backgroundImageUrl: string; fontFamily: "IBM Plex Sans Arabic" | "Cairo" | "Tajawal"; cardRadius: number };
 type Audit = { id: number; actor: string; action: string; entity_type: string; created_at: string };
-type AdminUser = { email: string; role: Role };
+type AdminUser = { email: string; role: Role; permissions?: Record<string, boolean> };
 type EmailStatus = { configured: boolean; from: string; replyTo: string };
 type PageContent = Record<string, string>;
 type ApiPayload = Record<string, any>;
@@ -153,7 +153,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     let active = true;
-    api("me").then((data) => { if (!active) return; setUser({ email: data.email, role: data.role }); return loadData(data.role); })
+    api("me").then((data) => { if (!active) return; setUser({ email: data.email, role: data.role, permissions: data.permissions }); return loadData(data.role); })
       .catch((reason) => {
         if (!active) return;
         // An expired session is normal; server/rate-limit failures must not masquerade as logout.
@@ -165,11 +165,18 @@ export default function AdminPage() {
     return () => { active = false; };
   }, [loadData]);
 
-  const canEditCatalog = user?.role === "owner" || user?.role === "admin";
-  const canEditContent = canEditCatalog || user?.role === "editor";
-  const canEditOrders = canEditCatalog || user?.role === "sales";
+  const permitted = (key: string) => user?.role === "owner" || user?.permissions?.[key] === true;
+  const canEditCatalog = permitted("products");
+  const canEditContent = permitted("content");
+  const canEditOrders = permitted("customers");
   const canManageTeam = user?.role === "owner";
-  const visibleNav = nav.filter((item) => (item.id !== "integrations" || canEditCatalog) && (item.id !== "assistant-knowledge" || canEditContent) && (item.id !== "team" || canManageTeam) && (item.id !== "audit" || canEditCatalog) && (item.id !== "options" && item.id !== "theme" ? true : canEditCatalog) && (item.id !== "content" && item.id !== "pages" && item.id !== "works" && item.id !== "content-studio" || canEditContent));
+  const viewPermissions: Partial<Record<View, string>> = {
+    integrations:"settings", "assistant-knowledge":"assistant", team:"team", audit:"audit",
+    options:"products", theme:"settings", content:"content", pages:"content",
+    works:"content", "content-studio":"assistant", journey:"customers",
+    commercial:"customers", inbox:"customers"
+  };
+  const visibleNav = nav.filter(item => !viewPermissions[item.id] || permitted(viewPermissions[item.id]!));
   const newOrders = useMemo(() => orders.filter((order) => order.status === "new").length, [orders]);
   const title = nav.find((item) => item.id === view)?.label ?? "إدارة المنصة";
 
@@ -177,7 +184,7 @@ export default function AdminPage() {
     event.preventDefault(); setBusy(true); setError("");
     try {
       const result = await api("login", { method: "POST", body: JSON.stringify({ email: loginEmail, password: loginPassword }) });
-      setUser({ email: result.email, role: result.role }); setLoginPassword(""); await loadData(result.role);
+      const session = await api("me"); setUser({ email: session.email, role: session.role, permissions: session.permissions }); setLoginPassword(""); await loadData(session.role);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر تسجيل الدخول."); }
     finally { setBusy(false); }
   };
