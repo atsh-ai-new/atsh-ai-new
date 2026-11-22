@@ -199,7 +199,30 @@ export default function AdminPage() {
     finally { setBusy(false); }
   };
 
-  const logout = async () => { await api("logout", { method: "POST" }).catch(() => undefined); setUser(null); setPackages([]); setOrders([]); };
+  const logout = async () => {
+    // Clear every account-scoped cache so a later login cannot display another user's data.
+    await api("logout", { method: "POST" }).catch(() => undefined);
+    setUser(null);
+    setView("overview");
+    setPackages([]);
+    setOptions([]);
+    setOrders([]);
+    setJourneyProjects([]);
+    setMembers([]);
+    setAudit([]);
+    setPage({ ...siteCopyDefaults });
+    setHiddenHomeFields(new Set());
+    setTheme(defaultTheme);
+    setVatRate(14);
+    setEmailStatus({ configured: false, from: "info@atsh-ai.com", replyTo: "sales@atsh-ai.com" });
+    setJourneyError("");
+    setError("");
+    setNotice("");
+    setLoginPassword("");
+    setMemberPassword("");
+    setRecoveryCode("");
+    setNewOwnerPassword("");
+  };
 
   const changePackage = <K extends keyof Package,>(id: string, key: K, value: Package[K]) => setPackages((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
   const changeOption = <K extends keyof Option,>(id: string, key: K, value: Option[K]) => setOptions((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
