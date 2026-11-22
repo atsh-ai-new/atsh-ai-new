@@ -11,7 +11,7 @@ type SubmittedDraft = {id:string;title:string;revision:number;updated_at:string;
 async function request(path:string, init?:RequestInit){
  const response=await fetch(`/api/admin/journey/${path}`,{...init,credentials:"include",cache:"no-store",headers:{...(init?.body?{"Content-Type":"application/json"}:{}),...init?.headers}});
  const data=await response.json().catch(()=>({}));
- if(!response.ok)throw new Error(`${data.error||"تعذر الاتصال بالخادم"} (HTTP ${response.status} · ${path})`);
+ if(!response.ok)throw new Error(`${data.error||data.message||"تعذر الاتصال بالخادم"} (HTTP ${response.status} · ${path})`);
  return data;
 }
 export default function JourneyManager({canManageTasks=false,canArchive=false,canDelete=false}:{canManageTasks?:boolean;canArchive?:boolean;canDelete?:boolean}){
