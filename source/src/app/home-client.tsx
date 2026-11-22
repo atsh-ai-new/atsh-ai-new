@@ -219,7 +219,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   }) : (isEnglish ? packages.map(item=>({...item,...englishPackages[item.id],features:englishPackages[item.id]?.features || []})) : packages);
   const selectedBackendPackageId = packageId ? backendPackageIds[packageId] ?? packageId : undefined;
   const selectedServerPackage = selectedBackendPackageId ? apiCatalog.packages.find((item) => item.id === selectedBackendPackageId) : undefined;
-  const serverOptions = apiCatalog.options.filter((option) => option.package_id === selectedServerPackage?.id);
+  const serverOptions = apiCatalog.options.filter((option) => option.package_id === selectedServerPackage?.id && option.visibility !== "systems");
   const customerSelectedOptionCodes = [
     ...(bilingual ? ["language"] : []),
     ...(identity === "provided" ? [] : [identity]),
