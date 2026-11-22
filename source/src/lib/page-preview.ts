@@ -16,6 +16,5 @@ export function openPagePreview(draft:PagePreviewDraft){
  window.sessionStorage.setItem(prefix+token,JSON.stringify(draft));
  const path=draft.slug==="home"?(draft.locale==="en"?"/en":"/"):`${draft.locale==="en"?"/en":""}/${encodeURIComponent(draft.slug)}`;
  const url=path+(path.includes("?")?"&":"?")+"atshPreview="+token;
- const opened=window.open(url,"_blank","noopener");
- if(!opened)window.location.assign(url);
+ window.location.assign(url);
 }
