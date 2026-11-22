@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import {useState} from "react";
 
 export type HubTab="overview"|"projects"|"messages"|"preview"|"services"|"quotes"|"contracts"|"invoices"|"deliveries"|"assistant"|"settings";
 type Props={
@@ -22,7 +22,7 @@ const tabs:Array<{id:HubTab;label:string}>= [
  {id:"settings",label:"حسابي"}
 ];
 const stages=["اختيار المواصفات","تخصيص النموذج","اعتماد المعاينة","عرض السعر والعقد","المدفوعات","التنفيذ والتسليم"];
-export default function CustomerJourneyHub(props:Props){const en=props.locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
+export default function CustomerJourneyHub(props:Props){const [menuOpen,setMenuOpen]=useState(false);const en=props.locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
  const translatedTabs:Record<HubTab,string>={overview:"Overview",projects:"Package & project",messages:"Management messages",preview:"Project preview",services:"Ongoing services",quotes:"Management offers",contracts:"Contracts",invoices:"Invoices & payments",deliveries:"Deliverables",assistant:"AI assistant",settings:"Account settings"};
  const translatedStages=["Select requirements","Customize solution","Approve preview","Quote & contract","Payments","Build & delivery"];
  const counts=[{title:"مشروعاتي",number:props.draftCount},{title:"طلبات قيد المتابعة",number:props.projectCount},{title:"عروض أسعار",number:props.quoteCount}];
@@ -31,14 +31,13 @@ export default function CustomerJourneyHub(props:Props){const en=props.locale===
  const status=props.currentJourneyStatus;
  const completed=!props.currentProject?0:status==="delivered"||status==="support"?6:["paid","building","preview_ready","approved"].includes(status||"")?5:status==="payment_pending"?4:previewStatus==="approved"?3:previewStatus?2:1;
  return <div dir={en?"ltr":"rtl"} style={{marginBottom:24}}>
-  <style>{`.atsh-hub-nav{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:8px;margin:12px 0;padding-bottom:5px;scrollbar-width:thin}.atsh-hub-tab{white-space:nowrap;flex-shrink:0;border:1px solid #d0dced;border-radius:11px;padding:11px 13px;cursor:pointer;background:white;color:#203958;font:inherit;font-size:14px}.atsh-hub-tab[aria-current="page"]{background:#203958;color:white;font-weight:800}.atsh-hub-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px}.atsh-hub-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}@media(max-width:600px){.atsh-hub-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.atsh-hub-tab{flex:0 0 auto}.atsh-hub-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}`}</style>
-  <header style={{background:"linear-gradient(125deg,#203958,#2c5c87)",color:"white",padding:"16px 18px",borderRadius:19,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:14}}>
-    <div><p style={{margin:"0 0 6px",opacity:.8,fontSize:14}}>{t("بوابتك الموحدة في ATSH AI","Your ATSH AI workspace")}</p><h2 style={{margin:"0 0 6px",fontSize:"clamp(19px,3vw,25px)"}}>{t("من الفكرة حتى تسليم مشروعك","From idea to launch")}</h2><p style={{margin:0,opacity:.85,fontSize:13}}>{t("تابع الاختيارات والمعاينات والموافقات والمستندات من الحساب نفسه.","Manage selections, previews, approvals and documents from one account.")}</p></div>
-    <div style={{display:"flex",flexWrap:"wrap",gap:9}}><Link href={`${base}/start`} style={{background:"#fff",color:"#203958",borderRadius:11,padding:"12px 16px",fontWeight:800,textDecoration:"none"}}>{t("مشروع جديد ←","New project →")}</Link><Link href={`${base}/catalog`} style={{border:"1px solid #a9bad0",color:"white",borderRadius:11,padding:"12px 16px",fontWeight:800,textDecoration:"none"}}>{t("المعرض التفاعلي","Interactive catalog")}</Link></div>
-  </header>
-  <nav aria-label={t("أقسام حساب العميل","Customer account navigation")} className="atsh-hub-nav">
-    {tabs.filter(tab=>tab.id!=="services"||["delivered","support"].includes(props.currentJourneyStatus||"")).map(tab=><button key={tab.id} className="atsh-hub-tab" type="button" aria-current={props.active===tab.id?"page":undefined} onClick={()=>props.onTab(tab.id)}>{en?translatedTabs[tab.id]:tab.label}</button>)}
-  </nav>
+  <style>{`.atsh-hub-menu{position:relative;margin:12px 0}.atsh-hub-menu-trigger{display:flex;align-items:center;gap:10px;border:1px solid #cbd5e1;border-radius:11px;background:#fff;color:#203958;padding:11px 15px;font:inherit;font-weight:800;cursor:pointer}.atsh-hub-menu-items:not([hidden]){display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;padding:12px;margin-top:7px;background:#fff;border:1px solid #dce4ee;border-radius:13px}.atsh-hub-menu-items[hidden]{display:none}.atsh-hub-tab{white-space:nowrap;flex-shrink:0;border:1px solid #d0dced;border-radius:11px;padding:11px 13px;cursor:pointer;background:white;color:#203958;font:inherit;font-size:14px}.atsh-hub-tab[aria-current="page"]{background:#203958;color:white;font-weight:800}.atsh-hub-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px}.atsh-hub-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}@media(max-width:600px){.atsh-hub-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.atsh-hub-tab{flex:0 0 auto}.atsh-hub-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}`}</style>
+  <div className="atsh-hub-menu">
+   <button type="button" className="atsh-hub-menu-trigger" aria-expanded={menuOpen} aria-controls="atsh-hub-menu-items" onClick={()=>setMenuOpen(open=>!open)}>☰ <span>{t("أقسام حسابي","Account sections")}</span></button>
+   <nav id="atsh-hub-menu-items" hidden={!menuOpen} aria-label={t("أقسام حساب العميل","Customer account navigation")} className="atsh-hub-menu-items">
+    {tabs.filter(tab=>tab.id!=="services"||["delivered","support"].includes(props.currentJourneyStatus||"")).map(tab=><button key={tab.id} className="atsh-hub-tab" type="button" aria-current={props.active===tab.id?"page":undefined} onClick={()=>{props.onTab(tab.id);setMenuOpen(false);}}>{en?translatedTabs[tab.id]:tab.label}</button>)}
+   </nav>
+  </div>
   {props.active==="overview"&&<section aria-label={t("ملخص رحلة العميل","Customer journey overview")}>
    <div className="atsh-hub-stats">
      {counts.map(item=><div key={item.title} style={{background:"#fff",border:"1px solid #dce4ee",padding:17,borderRadius:14}}><small style={{color:"#536983"}}>{en?({"مشروعاتي":"My projects","طلبات قيد المتابعة":"Projects in review","عروض أسعار":"Quotes"} as Record<string,string>)[item.title]||item.title:item.title}</small><strong style={{display:"block",fontSize:25,color:"#203958",marginTop:6}}>{item.number}</strong></div>)}
