@@ -6,7 +6,7 @@ import { siteCopyEn } from "@/lib/site-copy-en";
 
 type PageRecord = { slug: string; locale: string; content: Record<string, unknown>; is_published: boolean; updated_at?: string };
 type CMSCard = { id: string; title: string; description: string; imageUrl: string; href: string; linkLabel: string; icon?: string };
-type CMSSection = { id: string; eyebrow: string; title: string; titleFontSize?: number; bodyFontSize?: number; layout: "text" | "cards"; backgroundColor: string; textColor: string; columns: number; align: "right" | "center"; isVisible: boolean; cards: CMSCard[] };
+type CMSSection = { id: string; eyebrow: string; title: string; body: string; titleFontSize?: number; bodyFontSize?: number; layout: "text" | "cards"; backgroundColor: string; textColor: string; columns: number; align: "right" | "center"; isVisible: boolean; cards: CMSCard[] };
 type Project = { id: string; title: string; client: string; category: string; description: string; imageUrl: string; projectUrl: string; isPublished: boolean; sortOrder: number };
 
 const defaultBenefits = [1, 2, 3, 4].map((n) => ({ id: `benefit-${n}`, title: siteCopyDefaults[`benefit${n}Title`], description: siteCopyDefaults[`benefit${n}Description`], imageUrl: "", href: "", linkLabel: "", icon: String(n).padStart(2, "0") }));
