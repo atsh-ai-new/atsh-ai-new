@@ -5,6 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import {queueJourneyEvent} from './customer-event-outbox.js';
 import {createCustomerJourneyProject} from './customer-project-service.js';
+import {validateCustomerSubmission} from './customer-v2/submission-contract.js';
 
 const emailSchema=z.string().trim().email().max(254).transform(v=>v.toLowerCase());
 const passwordSchema=z.string().min(6).max(128);
@@ -183,7 +184,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    if(!draft.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Project not found'});}
    const item=draft.rows[0];
    if(item.linked_journey_id){await client.query('COMMIT');return res.json({projectId:item.linked_journey_id,alreadySubmitted:true});}
-   if(!item.draft?.packageId&&!item.draft?.sectorSlug&&!(item.draft?.projectMode==='custom'&&item.draft?.requirements?.trim())){await client.query('ROLLBACK');return res.status(422).json({code:'PROJECT_REQUIREMENTS_INCOMPLETE',error:'Complete project requirements before submission'});}
+   if(!validateCustomerSubmission(item.draft).ok){await client.query('ROLLBACK');return res.status(422).json({code:'PROJECT_REQUIREMENTS_INCOMPLETE',error:'Complete project requirements before submission'});}
    const customer=await client.query('SELECT email,name FROM customer_accounts WHERE id=$1',[req.customer.id]);
    const created=await createCustomerJourneyProject(client,{customerName:item.title,customerEmail:customer.rows[0]?.email??null,customerAccountId:req.customer.id,createdBy:'customer-portal'});
    const projectId=created.id;
