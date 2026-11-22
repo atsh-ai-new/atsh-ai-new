@@ -141,17 +141,33 @@ async function requireAdmin(req,res,next) {
         throw new Error("Owner session predates password reset");
     }
     if (session.userId) {
-      const active = await pool.query("SELECT is_active,role FROM team_members WHERE id=$1",[session.userId]);
+      const active = await pool.query("SELECT is_active,role,permission_overrides FROM team_members WHERE id=$1",[session.userId]);
       if (!active.rowCount || !active.rows[0].is_active || active.rows[0].role !== session.role) throw new Error("Session revoked or role changed");
     }
-    req.admin = session;
+    req.admin = { ...session, permissions: effectivePermissions(session.role, session.userId ? active.rows[0].permission_overrides : null) };
     next();
   } catch {
     res.clearCookie(cookie,cookieOptions);
     return res.status(401).json({error:"Session expired"});
   }
 }
+const permissionKeys = ["assistant","customers","content","products","settings","team","audit"];
+const rolePermissions = {
+  owner: permissionKeys,
+  admin: ["assistant","customers","content","products","settings","audit"],
+  editor: ["assistant","content"],
+  sales: ["customers"],
+  viewer: []
+};
+const effectivePermissions = (role, overrides) => {
+  const base = Object.fromEntries(permissionKeys.map(key => [key, rolePermissions[role]?.includes(key) ?? false]));
+  if (overrides && typeof overrides === "object" && !Array.isArray(overrides)) {
+    for (const key of permissionKeys) if (typeof overrides[key] === "boolean") base[key] = overrides[key];
+  }
+  return base;
+};
 const requireRole = (...roles) => (req,res,next) => roles.includes(req.admin?.role) ? next() : res.status(403).json({error:"Insufficient permissions"});
+const requirePermission = key => (req,res,next) => req.admin?.role === "owner" || req.admin?.permissions?.[key] === true ? next() : res.status(403).json({error:"Insufficient permissions"});
 const escapeHtml = value => value.replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[character]);
 async function sendTransactionalEmail({to,toName,subject,textContent}) {
   if(!process.env.BREVO_API_KEY)return false;
@@ -792,7 +808,7 @@ app.post("/api/admin/login",rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?
   res.cookie(cookie,token,cookieOptions).json({authenticated:true,email:session.email,role:session.role});
 }));
 app.post("/api/admin/logout",(_req,res)=>{res.clearCookie(cookie,cookieOptions);res.json({authenticated:false});});
-app.get("/api/admin/me",requireAdmin,(req,res)=>res.json({authenticated:true,email:req.admin.email,role:req.admin.role}));
+app.get("/api/admin/me",requireAdmin,(req,res)=>res.json({authenticated:true,email:req.admin.email,role:req.admin.role,permissions:req.admin.permissions}));
 app.get("/api/admin/email-status",requireAdmin,(_req,res)=>res.json({configured:Boolean(process.env.BREVO_API_KEY),from:process.env.BREVO_SENDER_EMAIL||"info@atsh-ai.com",replyTo:process.env.BREVO_REPLY_TO||"sales@atsh-ai.com"}));
 app.get("/api/admin/integrations/status",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{
   const [catalog,packages]=await Promise.all([
@@ -1104,7 +1120,7 @@ app.patch("/api/admin/pages/:slug",requireAdmin,requireRole("owner","admin","edi
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.get("/api/admin/team",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{
-  const result=await pool.query("SELECT id,email,display_name,role,is_active,created_at,updated_at FROM team_members ORDER BY created_at");
+  const result=await pool.query("SELECT id,email,display_name,role,is_active,permission_overrides,created_at,updated_at FROM team_members ORDER BY created_at");
   res.json({members:result.rows});
 }));
 app.post("/api/admin/team",requireAdmin,requireRole("owner"),route(async(req,res)=>{
@@ -1112,29 +1128,29 @@ app.post("/api/admin/team",requireAdmin,requireRole("owner"),route(async(req,res
   if(!parsed.success)return res.status(400).json({error:"Invalid team member",details:parsed.error.issues});
   const x=parsed.data,client=await pool.connect();try{await client.query("BEGIN");
     const passwordHash=await bcrypt.hash(x.password,12);
-    const saved=await client.query("INSERT INTO team_members(email,display_name,role,password_hash) VALUES($1,$2,$3,$4) RETURNING id,email,display_name,role,is_active,created_at,updated_at",[x.email.trim().toLowerCase(),x.displayName,x.role,passwordHash]);
+    const saved=await client.query("INSERT INTO team_members(email,display_name,role,password_hash) VALUES($1,$2,$3,$4) RETURNING id,email,display_name,role,is_active,permission_overrides,created_at,updated_at",[x.email.trim().toLowerCase(),x.displayName,x.role,passwordHash]);
     await auditChange(client,req.admin.email,"team_member.created","team_member",saved.rows[0].id,null,saved.rows[0]);await client.query("COMMIT");res.status(201).json({member:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");if(e.code==="23505")return res.status(409).json({error:"A team member with this email already exists"});throw e;}finally{client.release();}
 }));
 // Audit records must never persist password hashes or other authentication secrets.
 const safeTeamAuditRecord = member => member && ({
   id: member.id, email: member.email, display_name: member.display_name,
-  role: member.role, is_active: member.is_active,
+  role: member.role, is_active: member.is_active, permission_overrides: member.permission_overrides,
   created_at: member.created_at, updated_at: member.updated_at
 });
 app.patch("/api/admin/team/:id",requireAdmin,requireRole("owner"),route(async(req,res)=>{
-  const parsed=z.object({displayName:z.string().trim().min(2).max(120).optional(),role:z.enum(["admin","editor","sales","viewer"]).optional(),isActive:z.boolean().optional(),password:z.string().min(12).max(200).optional()}).strict().refine(x=>Object.keys(x).length>0).safeParse(req.body);
+  const parsed=z.object({displayName:z.string().trim().min(2).max(120).optional(),role:z.enum(["admin","editor","sales","viewer"]).optional(),isActive:z.boolean().optional(),password:z.string().min(12).max(200).optional(),permissions:z.record(z.enum(["assistant","customers","content","products","settings","team","audit"]),z.boolean()).optional()}).strict().refine(x=>Object.keys(x).length>0).safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"Invalid team update"});
   const client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM team_members WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Team member not found"});}
-    const map={displayName:"display_name",role:"role",isActive:"is_active",password:"password_hash"},values=[],sets=[];
-    for(const [key,value] of Object.entries(parsed.data)){values.push(key==="password"?await bcrypt.hash(value,12):value);sets.push(map[key]+"=$"+values.length);}
-    values.push(req.params.id);const saved=await client.query("UPDATE team_members SET "+sets.join(",")+",updated_at=now() WHERE id=$"+values.length+" RETURNING id,email,display_name,role,is_active,created_at,updated_at",values);
+    const map={displayName:"display_name",role:"role",isActive:"is_active",password:"password_hash",permissions:"permission_overrides"},values=[],sets=[];
+    for(const [key,value] of Object.entries(parsed.data)){values.push(key==="password"?await bcrypt.hash(value,12):key==="permissions"?JSON.stringify(value):value);sets.push(map[key]+"=$"+values.length);}
+    values.push(req.params.id);const saved=await client.query("UPDATE team_members SET "+sets.join(",")+",updated_at=now() WHERE id=$"+values.length+" RETURNING id,email,display_name,role,is_active,permission_overrides,created_at,updated_at",values);
     await auditChange(client,req.admin.email,"team_member.updated","team_member",req.params.id,safeTeamAuditRecord(before.rows[0]),saved.rows[0]);await client.query("COMMIT");res.json({member:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.delete("/api/admin/team/:id",requireAdmin,requireRole("owner"),route(async(req,res)=>{
   const client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM team_members WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Team member not found"});}
-    const saved=await client.query("UPDATE team_members SET is_active=false,updated_at=now() WHERE id=$1 RETURNING id,email,display_name,role,is_active,created_at,updated_at",[req.params.id]);
+    const saved=await client.query("UPDATE team_members SET is_active=false,updated_at=now() WHERE id=$1 RETURNING id,email,display_name,role,is_active,permission_overrides,created_at,updated_at",[req.params.id]);
     await auditChange(client,req.admin.email,"team_member.deactivated","team_member",req.params.id,safeTeamAuditRecord(before.rows[0]),saved.rows[0]);await client.query("COMMIT");res.json({member:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
