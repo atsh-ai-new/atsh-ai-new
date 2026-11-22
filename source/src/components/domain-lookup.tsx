@@ -115,18 +115,17 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
   </div>
   {checking&&<p role="status" style={{fontSize:12,color:"#64748b"}}>{t("جارٍ فحص الامتدادات المتاحة تباعًا…","Checking available extensions progressively…")}</p>}
   {message&&<p role="status" style={{color:"#875b14",fontSize:13,lineHeight:1.6,margin:"10px 0 0"}}>{message}</p>}
-  {results.filter(item=>item.domain.endsWith(".com")||item.domain.endsWith(".net")||(item.lookup&&selectable(item.lookup))).length>0&&<div aria-live="polite" aria-busy={checking} style={{display:"grid",gap:6,marginTop:10}}>
-   {results.filter(item=>item.domain.endsWith(".com")||item.domain.endsWith(".net")||(item.lookup&&selectable(item.lookup))).map(item=><div key={item.domain} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6,
-    background:"#f4f7fb",border:"1px solid #e2e8f0",borderRadius:9,padding:"7px 10px"}}>
-    <div style={{minWidth:0,flex:"1 1 140px"}}>
-     <strong dir="ltr" style={{display:"block",textAlign:en?"left":"right",overflowWrap:"anywhere",color:"#203958",fontSize:14,lineHeight:1.35}}>{item.domain}</strong>
-     <small style={{display:"block",lineHeight:1.4,fontSize:11,color:item.error?"#a16207":item.lookup?.status==="registered"||item.lookup?.available===false?"#8f3030":"#386375"}}>
+  {results.filter(item=>item.domain.endsWith(".com")||item.domain.endsWith(".net")||(item.lookup&&selectable(item.lookup))).length>0&&<div aria-live="polite" aria-busy={checking} className="domain-results-grid">
+   {results.filter(item=>item.domain.endsWith(".com")||item.domain.endsWith(".net")||(item.lookup&&selectable(item.lookup))).map(item=><div key={item.domain} className="domain-result-card">
+    <div style={{minWidth:0,width:"100%"}}>
+     <strong dir="ltr" style={{display:"block",textAlign:"center",overflowWrap:"anywhere",color:"#203958",fontSize:12,lineHeight:1.3}}>{item.domain}</strong>
+     <small style={{display:"block",lineHeight:1.3,fontSize:10,textAlign:"center",color:item.error?"#a16207":item.lookup?.status==="registered"||item.lookup?.available===false?"#8f3030":"#386375"}}>
       {item.error|| (item.lookup?resultLabel(item.lookup):t("لم يتم التحقق","Not verified"))}
      </small>
      {item.lookup?.premium&&<small style={{display:"block"}}>{t("دومين مميز — السعر يحتاج تأكيدًا","Premium domain — price needs confirmation")}</small>}
     </div>
     {item.lookup&&selectable(item.lookup)&&<button type="button" onClick={()=>select(item.domain)}
-     style={{background:selectedDomain===item.domain?"#e1ecf7":"#fff",color:"#203958",border:"1px solid #9db4cb",borderRadius:8,padding:"5px 9px",fontSize:11,cursor:"pointer"}}>
+     style={{background:selectedDomain===item.domain?"#e1ecf7":"#fff",color:"#203958",border:"1px solid #9db4cb",borderRadius:8,padding:"5px 4px",fontSize:10,cursor:"pointer",width:"100%"}}>
      {selectedDomain===item.domain?t("محدد ✓","Selected ✓"):t("اختيار مبدئي","Select")}
     </button>}
    </div>)}
