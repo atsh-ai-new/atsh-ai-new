@@ -39,7 +39,12 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
   event.preventDefault();if(saving)return;if(!businessName.trim()){setError(tr("اكتب اسم مشروعك.","Please enter a project name."));return}
   if(mode==="custom"&&!requirements.trim()){setError(tr("اكتب متطلبات المشروع المخصص قبل الإرسال.","Describe your custom project before submitting."));return}
   const patch:CustomerWorkspace={projectMode:mode,solutionType:kind,businessName:businessName.trim(),requirements:requirements.trim(),options,deliveryMethod,source:"configurator"};
-  replaceGuestWorkspace(patch);
+  const previous=loadGuestWorkspace();
+  // Preserve the selected catalogue package when the customer continues the same ready-made solution.
+  // Never carry an unrelated package into a different solution or a custom project.
+  const sameReadyPackage=mode==="ready"&&previous.projectMode==="ready"&&previous.solutionType===kind;
+  const draft:CustomerWorkspace=sameReadyPackage?{...previous,...patch,sectorAddonCodes:previous.sectorAddonCodes}:patch;
+  replaceGuestWorkspace(draft);
   setSaving(true);setError("");
   try{
    const session=await fetch("/api/customer/auth/me",{credentials:"include",cache:"no-store"});
@@ -110,7 +115,7 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
      <label style={{display:"grid",gap:8,fontWeight:700,marginTop:18}}>{tr("اشرح طلبك","Describe your requirements")}<textarea rows={3} maxLength={4000} value={requirements} onChange={e=>setRequirements(e.target.value)} placeholder={tr("أهم التفاصيل أو المشاكل التي تريد حلها","Main goals, requirements or problems to solve")} style={{border:"1px solid #b9c9dc",borderRadius:10,padding:13,fontSize:16}}/></label>
      <p style={{fontSize:13,color:"#607187",lineHeight:1.8}}>{tr("سيُحفظ طلبك باختياراته في حسابك ويُرسل للإدارة، ثم يمكنك متابعة تفاصيله من نفس الحساب. الأسعار النهائية تخضع لمراجعة العرض.","Your selected requirements will be saved and submitted under your account. You can track the same project there; final prices are subject to quote review.")}</p>
      {error&&<p role="alert" style={{padding:12,background:"#fff0dc",borderRadius:10}}>{error}</p>}
-     <div className="atsh-start-actions" style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}}><button type="button" onClick={()=>setStep(1)} style={{padding:"12px 18px",border:"1px solid #b9c9dc",borderRadius:10,background:"white",cursor:"pointer"}}>{tr("السابق","Previous")}</button><button type="submit" disabled={saving} style={{padding:"12px 18px",border:0,borderRadius:10,background:"#203958",color:"white",fontWeight:800,cursor:"pointer"}}>{saving?"جارٍ الحفظ…":tr("إنشاء الطلب ←","Create request →")}</button></div>
+     <div className="atsh-start-actions" style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}}><button type="button" onClick={()=>setStep(1)} style={{padding:"12px 18px",border:"1px solid #b9c9dc",borderRadius:10,background:"white",cursor:"pointer"}}>{tr("السابق","Previous")}</button><button type="submit" disabled={saving} style={{padding:"12px 18px",border:0,borderRadius:10,background:"#203958",color:"white",fontWeight:800,cursor:"pointer"}}>{saving?"جارٍ الحفظ…":tr("إرسال الطلب للإدارة ←","Send request to management →")}</button></div>
     </section>}
    </form>
   </div>
