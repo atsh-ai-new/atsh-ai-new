@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
+import { createPagePreviewUrl } from "@/lib/page-preview";
 import { sectorTemplates, interactiveDemoPaths, type SectorTemplate } from "@/lib/sector-catalog";
 import { normalizeCatalogSectors, defaultCatalogPlacements, resolvePlacement, validCatalogId, canRemoveSector, canRemoveSubcategory, type CatalogSector } from "@/lib/catalog-sectors";
 
@@ -21,6 +22,9 @@ export default function CatalogManager() {
   const [subDraft,setSubDraft]=useState({sectorId:"",id:"",name:""});
   const [draft,setDraft]=useState<CatalogItem>(empty());
   const [originalSlug,setOriginalSlug]=useState("");
+  const [previewUrlLocal,setPreviewUrlLocal]=useState("");
+  const [previewDevice,setPreviewDevice]=useState<"desktop"|"mobile">("desktop");
+  const showLivePreview=()=>{const slug=draft.slug.trim()||originalSlug;if(!slug)return;const url=createPagePreviewUrl({slug:"catalog",locale:"ar",content:{items:[...items.filter(x=>x.slug!==originalSlug&&x.slug!==slug),{...draft,slug,published:true,archived:false}]}});setPreviewUrlLocal(`/catalog/${encodeURIComponent(slug)}${url.slice(url.indexOf("?"))}`);};
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState("");
   const [error,setError]=useState("");
@@ -198,6 +202,7 @@ export default function CatalogManager() {
           <button type="button" className="button button-outline" disabled={busy} onClick={()=>void importStarter()}>استيراد النماذج الأربعة المبدئية دون تكرار</button>
           <button type="button" className="button button-outline" disabled={busy} onClick={()=>void applyDemoPrices()}>تطبيق الأسعار التجريبية على الكتالوجات الحالية (٥٠٠٠ + إضافات ١٠٠٠)</button>
           <a className="inline-add" href="/catalog" target="_blank" rel="noreferrer">عرض المعرض ↗</a>
+          <button type="button" className="button button-outline" onClick={showLivePreview}>معاينة تفاعلية قبل الحفظ</button>
         </div>
         <label className="check-row"><input type="checkbox" checked={pageWasPublished} onChange={e=>setPageWasPublished(e.target.checked)}/> نشر صفحة المعرض بالكامل</label>
         <button type="button" className="inline-add" disabled={busy} onClick={()=>void saveAll(items,pageWasPublished?"تم نشر المعرض":"تم حفظ المعرض كمسودة")}>حفظ حالة نشر المعرض</button>
@@ -211,6 +216,7 @@ export default function CatalogManager() {
         </article>)}</div>
       </>}
     </section>
+    {previewUrlLocal&&<section className="admin-content-card"><div className="admin-content-title"><h2>المعاينة التفاعلية للكتالوج قبل النشر</h2><div className="admin-actions"><button type="button" className="button button-outline" onClick={()=>setPreviewDevice("desktop")}>كمبيوتر</button><button type="button" className="button button-outline" onClick={()=>setPreviewDevice("mobile")}>موبايل</button><button type="button" className="button button-outline" onClick={()=>setPreviewUrlLocal("")}>رجوع للتعديل</button><button type="button" className="button" onClick={showLivePreview}>تحديث المعاينة</button></div></div><div style={{display:"flex",justifyContent:"center",overflowX:"auto",padding:12,background:"#e8edf2"}}><iframe title="معاينة الكتالوج التفاعلية" src={previewUrlLocal} style={{width:previewDevice==="mobile"?390:"100%",maxWidth:"100%",height:"75vh",minHeight:480,border:"1px solid #d8dde5",borderRadius:12,background:"white"}} sandbox="allow-scripts allow-same-origin"/></div><p>هذه معاينة للمسودة؛ لا يتم نشر أي تعديل تلقائيًا.</p></section>}
     {ready&&<section className="admin-content-card">
       <h2>إدارة القطاعات الرئيسية والتصنيفات الفرعية</h2>
       <p>الترتيب: قطاع رئيسي ← تصنيف فرعي ← كتالوج تفاعلي. أسماء الأقسام قابلة للتعديل من هنا دون تعديل الكود، والحذف لا يمس أي كتالوج مرتبط.</p>
