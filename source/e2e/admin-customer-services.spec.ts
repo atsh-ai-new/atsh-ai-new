@@ -38,7 +38,7 @@ test("admin creates and activates a service and sees persisted server responses"
  await section.getByRole("button",{name:"حفظ الخدمة"}).click();
  await expect(section.getByText("استضافة العميل")).toBeVisible();
  await expect.poll(()=>mutations).toContain("create");
- await section.getByLabel("الحالة").last().selectOption("active");
+ await section.locator("article").getByLabel("الحالة").selectOption("active");
  await expect.poll(()=>mutations).toContain("status:active");
  await expect(section.getByText("manual — active")).toBeVisible();
 });
