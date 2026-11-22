@@ -22,7 +22,19 @@ export default function JourneyManager({canManageTasks=false,canArchive=false,ca
  const [reply,setReply]=useState(""),[previewUrl,setPreviewUrl]=useState("");
  const [name,setName]=useState(""),[email,setEmail]=useState(""),[template,setTemplate]=useState(""),[message,setMessage]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);
  async function refresh(){const data=await request("projects");setProjects(data.projects||[]);}
- async function openProject(project:Project){setError("");setSubmittedDraft(null);setOrderAssignments([]);setTasks([]);try{const data=await request(`projects/${project.id}`);setSelected(data.project);setMessages(data.messages||[]);setSubmittedDraft(data.submittedDraft||null);setOrderAssignments(data.linkedOrderAssignments||[]);const linked=await request(`projects/${project.id}/order`);setLinkedOrder(linked.order||null);const taskData=await request(`projects/${project.id}/tasks`);setTasks(taskData.tasks||[]);}catch(e){setError(String(e));}}
+ async function openProject(project:Project){
+  setError("");setSubmittedDraft(null);setOrderAssignments([]);setTasks([]);setLinkedOrder(null);
+  try{
+   const data=await request(`projects/${project.id}`);
+   setSelected(data.project);setMessages(data.messages||[]);
+   setSubmittedDraft(data.submittedDraft||null);setOrderAssignments(data.linkedOrderAssignments||[]);
+  }catch(e){setError(String(e));return;}
+  const [orderResult,taskResult]=await Promise.allSettled([request(`projects/${project.id}/order`),request(`projects/${project.id}/tasks`)]);
+  if(orderResult.status==="fulfilled")setLinkedOrder(orderResult.value.order||null);
+  if(taskResult.status==="fulfilled")setTasks(taskResult.value.tasks||[]);
+  const failures=[orderResult,taskResult].filter(result=>result.status==="rejected").map(result=>String((result as PromiseRejectedResult).reason));
+  if(failures.length)setError(failures.join(" | "));
+ }
  useEffect(()=>{if(canManageTasks)fetch("/api/admin/team",{credentials:"include",cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("تعذر تحميل الفريق");return r.json();}).then(d=>setTeam(d.members||[])).catch(e=>setError(String(e)));refresh().catch(e=>setError(String(e)));request("catalog").then(data=>{setCatalog(data.packages||[]);setCatalogError("");}).catch(e=>setCatalogError(String(e)));},[canManageTasks]);
  async function create(event:FormEvent){event.preventDefault();setBusy(true);setError("");try{const data=await request("projects",{method:"POST",body:JSON.stringify({customerName:name, ...(email?{customerEmail:email}:{}),...(template?{templateId:template}:{})})});setName("");setEmail("");setTemplate("");await refresh();await openProject(data.project);}catch(e){setError(String(e));}finally{setBusy(false);}}
  async function archiveProject(project:Project){if(!canArchive||busy||!window.confirm(`أرشفة مشروع "${project.customer_name}" وإخفاؤه من قائمة المشروعات النشطة؟ لن تُحذف بياناته أو طلباته.`))return;setBusy(true);setError("");try{await request(`projects/${project.id}/archive`,{method:"PATCH"});if(selected?.id===project.id){setSelected(null);setMessages([]);setSubmittedDraft(null);setLinkedOrder(null);setOrderAssignments([]);setTasks([]);}await refresh();}catch(e){setError(String(e));}finally{setBusy(false);}}
