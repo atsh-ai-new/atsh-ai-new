@@ -95,3 +95,35 @@ test("private token review link opens contract and clears the URL secret from hi
  await expect(page).toHaveURL(url=>url.pathname==="/commercial/review"&&!url.searchParams.has("token"));
  await expect(page.getByText("بنود عقد تجريبي لمتجر إلكتروني")).toBeVisible();
 });
+
+
+test("admin order preview completes customer flow without creating a real order",async({page})=>{
+ const token="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+ let orderPosts=0;
+ await page.addInitScript(({token})=>{
+  sessionStorage.setItem("atsh-page-preview:"+token,JSON.stringify({slug:"home",locale:"ar",content:{previewOfferings:{packages:[{id:"single",name:"باقة اختبار المعاينة",tagline:"تجريبي",description:"طلب تجريبي",price:3000,currency:"EGP",features:[],is_featured:false,is_custom_quote:false}],options:[{id:"hosting-test",package_id:"single",code:"hosting",name:"استضافة",description:"",price:600,pricing_type:"yearly",is_required:false,is_active:true,sort_order:1}]}}}));
+ },{token});
+ await page.route("**/api/catalog",route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({packages:[],options:[]})}));
+ await page.route("**/api/orders",async route=>{
+  if(route.request().method()==="POST")orderPosts++;
+  await route.fulfill({status:500,contentType:"application/json",body:'{"error":"Unexpected real order submission"}'});
+ });
+ await page.goto("/?atshPreview="+token+"#packages");
+ const packageCard=page.locator(".package-card").filter({hasText:"باقة اختبار المعاينة"});
+ await expect(packageCard).toBeVisible();
+ await packageCard.getByRole("link",{name:/تخصيص الباقة/}).click();
+ await expect(page.locator(".configurator-section")).toBeVisible();
+ const next=page.locator(".builder-controls button").filter({hasText:/التالي/}).first();
+ for(let step=1;step<=6;step++){
+  if(step===5){
+   await page.locator('input[name="name"]').fill("عميل اختبار");
+   await page.locator('input[name="email"]').fill("preview@example.com");
+   await page.locator('input[name="phone"]').fill("01000000000");
+  }
+  if(step===6)await page.locator('.check-row input[type="checkbox"]').check();
+  await next.click();
+ }
+ await page.locator(".review-actions button[type=submit]").click();
+ await expect(page.getByRole("status").filter({hasText:"هذه تجربة معاينة فقط"})).toBeVisible();
+ expect(orderPosts).toBe(0);
+});
