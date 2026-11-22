@@ -6,8 +6,8 @@ test("new customer chooses ready store and keeps a scoped preference draft",asyn
  await page.getByRole("button",{name:/التالي/}).click();
  await page.getByRole("textbox",{name:"اسم المشروع / النشاط"}).fill("متجر العميل");
  await page.getByRole("checkbox",{name:"دفع إلكتروني"}).check();
- await page.getByRole("button",{name:/عرض النماذج التفاعلية/}).click();
- await expect(page).toHaveURL(/\/catalog$/);
+ await expect(page.getByRole("button",{name:/إنشاء الطلب/})).toBeVisible();
+ await expect.poll(async()=>page.evaluate(()=>JSON.parse(localStorage.getItem("atsh_customer_workspace_v1")||"{}").businessName)).toBe("متجر العميل");
  const data=await page.evaluate(()=>JSON.parse(localStorage.getItem("atsh_customer_workspace_v1")||"{}"));
  expect(data).toMatchObject({projectMode:"ready",solutionType:"store",businessName:"متجر العميل",options:["payments"]});
 });
