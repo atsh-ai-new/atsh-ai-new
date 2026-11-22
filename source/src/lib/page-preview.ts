@@ -11,10 +11,10 @@ export function readPagePreview(slug:string,locale:string):PagePreviewDraft|null
   return parsed.slug===slug&&parsed.locale===locale&&parsed.content&&typeof parsed.content==="object"&&!Array.isArray(parsed.content)?parsed:null;
  }catch{return null;}
 }
-export function openPagePreview(draft:PagePreviewDraft){
+export function createPagePreviewUrl(draft:PagePreviewDraft):string{
  const token=crypto.randomUUID();
  window.sessionStorage.setItem(prefix+token,JSON.stringify(draft));
  const path=draft.slug==="home"?(draft.locale==="en"?"/en":"/"):`${draft.locale==="en"?"/en":""}/${encodeURIComponent(draft.slug)}`;
  const url=path+(path.includes("?")?"&":"?")+"atshPreview="+token;
- window.location.assign(url);
+ return url;
 }
