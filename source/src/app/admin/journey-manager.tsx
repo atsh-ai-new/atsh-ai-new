@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 type Project = {id:string;customer_name:string;customer_email:string|null;template_id:string|null;status:string;created_at:string};
 type Message = {id:number;actor:string;body:string;created_at:string};
@@ -15,6 +15,7 @@ async function request(path:string, init?:RequestInit){
  return data;
 }
 export default function JourneyManager({canManageTasks=false,canArchive=false,canDelete=false}:{canManageTasks?:boolean;canArchive?:boolean;canDelete?:boolean}){
+ const projectLoadVersion=useRef(0);
  const [projects,setProjects]=useState<Project[]>([]),[selected,setSelected]=useState<Project|null>(null),[messages,setMessages]=useState<Message[]>([]),[submittedDraft,setSubmittedDraft]=useState<SubmittedDraft|null>(null),[orderAssignments,setOrderAssignments]=useState<OrderAssignment[]>([]);
  const [tasks,setTasks]=useState<JourneyTask[]>([]),[team,setTeam]=useState<TeamMember[]>([]),[taskTitle,setTaskTitle]=useState(""),[taskDescription,setTaskDescription]=useState(""),[taskAssignee,setTaskAssignee]=useState(""),[taskBusy,setTaskBusy]=useState(false);
  const [catalogError,setCatalogError]=useState("");const [catalog,setCatalog]=useState<Array<{id:string;name:string;price:string|number;currency:string;is_custom_quote:boolean}>>([]),[transitionNote,setTransitionNote]=useState("");
@@ -23,13 +24,16 @@ export default function JourneyManager({canManageTasks=false,canArchive=false,ca
  const [name,setName]=useState(""),[email,setEmail]=useState(""),[template,setTemplate]=useState(""),[message,setMessage]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);
  async function refresh(){const data=await request("projects");setProjects(data.projects||[]);}
  async function openProject(project:Project){
-  setError("");setSubmittedDraft(null);setOrderAssignments([]);setTasks([]);setLinkedOrder(null);
+  const loadVersion=++projectLoadVersion.current;
+  setError("");setSelected(null);setMessages([]);setSubmittedDraft(null);setOrderAssignments([]);setTasks([]);setLinkedOrder(null);
   try{
    const data=await request(`projects/${project.id}`);
+   if(loadVersion!==projectLoadVersion.current)return;
    setSelected(data.project);setMessages(data.messages||[]);
    setSubmittedDraft(data.submittedDraft||null);setOrderAssignments(data.linkedOrderAssignments||[]);
-  }catch(e){setError(String(e));return;}
+  }catch(e){if(loadVersion===projectLoadVersion.current)setError(String(e));return;}
   const [orderResult,taskResult]=await Promise.allSettled([request(`projects/${project.id}/order`),request(`projects/${project.id}/tasks`)]);
+  if(loadVersion!==projectLoadVersion.current)return;
   if(orderResult.status==="fulfilled")setLinkedOrder(orderResult.value.order||null);
   if(taskResult.status==="fulfilled")setTasks(taskResult.value.tasks||[]);
   const failures=[orderResult,taskResult].filter(result=>result.status==="rejected").map(result=>String((result as PromiseRejectedResult).reason));
