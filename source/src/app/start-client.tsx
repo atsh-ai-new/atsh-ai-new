@@ -36,7 +36,8 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
  const filtered=available.filter(x=>x.kinds.includes(kind));
  const changeKind=(value:Kind)=>{setKind(value);setOptions(old=>old.filter(code=>available.some(x=>x.code===code&&x.kinds.includes(value))));};
  const submit=async(event:FormEvent)=>{
-  event.preventDefault();if(!businessName.trim()){setError(tr("اكتب اسم مشروعك.","Please enter a project name."));return}
+  event.preventDefault();if(saving)return;if(!businessName.trim()){setError(tr("اكتب اسم مشروعك.","Please enter a project name."));return}
+  if(mode==="custom"&&!requirements.trim()){setError(tr("اكتب متطلبات المشروع المخصص قبل الإرسال.","Describe your custom project before submitting."));return}
   const patch:CustomerWorkspace={projectMode:mode,solutionType:kind,businessName:businessName.trim(),requirements:requirements.trim(),options,deliveryMethod,source:"configurator"};
   replaceGuestWorkspace(patch);
   setSaving(true);setError("");
@@ -44,17 +45,23 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
    const session=await fetch("/api/customer/auth/me",{credentials:"include",cache:"no-store"});
    if(session.status===401){window.location.assign(`${root}/account/login`);return}
    if(!session.ok)throw Error(tr("تعذر فحص حساب العميل. أعد المحاولة.","Could not verify your account. Try again."));
+   const existingDraftId=typeof window!=="undefined"?sessionStorage.getItem("atsh_pending_draft_id"):null;
+   let draftId=existingDraftId;
+   if(!draftId){
    const res=await fetch("/api/customer/auth/project-drafts",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:businessName.trim(),draft:loadGuestWorkspace()})});
    const data=await res.json().catch(()=>({}));
    if(!res.ok||!data.projectDraft?.id)throw Error((en?"Unable to save your project draft":data.error||"تعذر حفظ مسودة المشروع"));
+   draftId=data.projectDraft.id;
+   sessionStorage.setItem("atsh_pending_draft_id",draftId);
+   }
    // A completed custom brief is a customer submission, not merely a local draft.
    {
-    const sent=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(data.projectDraft.id)}/submit`,{method:"POST",credentials:"include"});
+    const sent=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(draftId!)}/submit`,{method:"POST",credentials:"include"});
     const confirmation=await sent.json().catch(()=>({}));
     if(!sent.ok||!confirmation.projectId)throw Error(confirmation.error||tr("تم حفظ المسودة لكن تعذر إرسال الطلب للإدارة. افتح حسابك وأعد الإرسال.","Draft saved, but submission failed. Open your account and retry."));
    }
-   try{sessionStorage.removeItem("atsh_customer_workspace_v1");}catch{}
-   window.location.assign(`${root}/account/project-preview/${encodeURIComponent(data.projectDraft.id)}`);
+   try{sessionStorage.removeItem("atsh_customer_workspace_v1");sessionStorage.removeItem("atsh_pending_draft_id");}catch{}
+   window.location.assign(`${root}/account/project-preview/${encodeURIComponent(draftId!)}`);
   }catch(e){setError(e instanceof Error?e.message:tr("تعذر حفظ المشروع","Unable to save your project"));}finally{setSaving(false)}
  };
  return <main className="atsh-start" lang={locale} dir={en?"ltr":"rtl"} style={{background:"#f8f8f5",minHeight:"100vh",padding:"15px 14px 65px",color:"#203958"}}>
