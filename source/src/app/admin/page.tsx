@@ -259,6 +259,16 @@ export default function AdminPage() {
   const changeOption = <K extends keyof Option,>(id: string, key: K, value: Option[K]) => setOptions((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
   const savePackage = (item: Package) => save(() => api(`packages/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, tagline: item.tagline, description: item.description, price: item.is_custom_quote ? 0 : Number(item.price), currency: "EGP", features: item.features, isFeatured: item.is_featured, isCustomQuote: item.is_custom_quote, isPublished: item.is_published, sortOrder: item.sort_order }) }), "تم حفظ البطاقة وتحديثها للعملاء.");
   const saveOption = (item: Option) => save(() => api(`options/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, description: item.description, price: Number(item.price), pricingType: item.pricing_type, unitLabel: item.unit_label, isRequired: item.is_required, isActive: item.is_active, sortOrder: item.sort_order }) }), "تم حفظ الإضافة في قاعدة البيانات.");
+  const removeOption = async (item: Option) => {
+    if (!window.confirm(`إيقاف الإضافة "${item.name}"؟ ستختفي من الخيارات الجديدة مع الاحتفاظ بسجل الطلبات السابقة.`)) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api(`options/${item.id}`, { method: "DELETE" });
+      await loadData();
+      setNotice("تم إيقاف الإضافة للطلبات الجديدة دون حذف الطلبات السابقة.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر إيقاف الإضافة."); }
+    finally { setBusy(false); }
+  };
   const savePage = () => save(async () => {
     // Preserve structured CMS sections/cards when the quick text editor publishes.
     const current = await api("pages");
@@ -411,7 +421,7 @@ export default function AdminPage() {
         </section>}
 
         {view === "options" && offeringTab === "addons" && <><section id="unified-package-options" className="admin-content-card">
-          <div className="admin-content-title"><div><h2>خيارات الباقات وإضافاتها</h2><p>أنشئ إضافات، واربطها بباقة، وعدّل السعر أو طريقة احتسابه. رمز الربط ثابت بعد الإنشاء.</p></div></div>
+          <div className="admin-content-title"><div><h2>إدارة الإضافات للباقات والأنظمة المخصصة</h2><p>أنشئ الإضافات وعدّل أسعارها وحالتها. الإضافات النشطة تظهر أيضًا في الأنظمة المخصصة، ويمكن إيقافها دون حذف الطلبات القديمة. رمز الربط ثابت بعد الإنشاء.</p></div></div>
           <form className="admin-team-form admin-option-create" onSubmit={addOption}>
             <label className="admin-field">الباقة<select required value={optionDraft.packageId} onChange={(event) => setOptionDraft({ ...optionDraft, packageId: event.target.value })}><option value="">اختر باقة</option>{packages.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label className="admin-field">رمز الربط<input required pattern="[a-z0-9_-]{2,80}" title="استخدم أحرفًا إنجليزية صغيرة وأرقامًا وشرطة فقط" value={optionDraft.code} onChange={(event) => setOptionDraft({ ...optionDraft, code: event.target.value })} /></label>
@@ -432,7 +442,7 @@ export default function AdminPage() {
               <label className="admin-field">وحدة السعر<input value={item.unit_label} onChange={(event) => changeOption(item.id, "unit_label", event.target.value)} /></label>
               <label className="admin-field" style={{ gridColumn: "1 / -1" }}>الوصف<input value={item.description} onChange={(event) => changeOption(item.id, "description", event.target.value)} /></label>
             </div>
-            <div className="admin-package-controls"><label className="check-row"><input type="checkbox" checked={item.is_required} onChange={(event) => changeOption(item.id, "is_required", event.target.checked)} /> إلزامية</label><label className="check-row"><input type="checkbox" checked={item.is_active} onChange={(event) => changeOption(item.id, "is_active", event.target.checked)} /> متاحة للعملاء</label><button className="button button-small" disabled={busy} onClick={() => saveOption(item)}>حفظ التعديلات</button></div>
+            <div className="admin-package-controls"><label className="check-row"><input type="checkbox" checked={item.is_required} onChange={(event) => changeOption(item.id, "is_required", event.target.checked)} /> إلزامية</label><label className="check-row"><input type="checkbox" checked={item.is_active} onChange={(event) => changeOption(item.id, "is_active", event.target.checked)} /> متاحة للعملاء</label><button className="button button-small" disabled={busy} onClick={() => saveOption(item)}>حفظ التعديلات</button><button type="button" className="button button-outline button-small" disabled={busy || !item.is_active} onClick={() => void removeOption(item)}>حذف من العرض</button></div>
           </article>)}
         </section><section id="unified-vat" className="admin-content-card"><h2>ضريبة القيمة المضافة</h2><p>نسبة الضريبة المستخدمة في ملخص التسعير.</p><label className="admin-field">الضريبة %<input type="number" min="0" max="100" step="0.01" value={vatRate} onChange={(event)=>setVatRate(Number(event.target.value))}/></label><div className="admin-actions"><button type="button" className="button" disabled={busy} onClick={saveTheme}>حفظ نسبة الضريبة</button></div></section></>}
         {view === "options" && offeringTab === "systems" && <div id="unified-catalog-pricing">{canEditCatalog && <CatalogManager />}</div>}
