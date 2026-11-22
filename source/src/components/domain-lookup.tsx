@@ -11,20 +11,22 @@ type Lookup = {
 };
 type Candidate = {domain:string;lookup:Lookup|null;error:string};
 const COMMON_EXTENSIONS=[".com",".net",".org",".eg"];
+const DOMAIN_EXTENSIONS=[".com",".net",".org",".eg",".com.eg",".site",".ai",".io",".co",".app",".dev",".tech",".online",".store",".shop",".info",".biz",".me",".xyz",".cloud",".digital",".agency",".design",".solutions",".services",".pro",".edu",".gov"];
 
 // The input accepts a business name (atsh) OR a fully-qualified domain (atsh.com).
-function candidatesFromInput(value:string):string[] {
+function candidatesFromInput(value:string,extensions:string[]=COMMON_EXTENSIONS):string[] {
  const name=value.trim().toLowerCase().replace(/[.。．｡]+$/gu,"");
  if(!name||name.length>253||/[\s/?&#@:]/u.test(name)||name.includes(".."))return [];
  if(name.includes("."))return [name];
  if(name.length>63||!/^[a-z0-9\u0600-\u06FF](?:[a-z0-9\u0600-\u06FF-]*[a-z0-9\u0600-\u06FF])?$/i.test(name))return [];
- return COMMON_EXTENSIONS.map(extension=>name+extension);
+ return extensions.map(extension=>name+extension);
 }
 
 export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChange?:(value:string)=>void;locale?:"ar"|"en"}){
  const en=locale==="en";
  const t=(ar:string,english:string)=>en?english:ar;
  const [name,setName]=useState("");
+ const [extensions,setExtensions]=useState<string[]>(COMMON_EXTENSIONS);
  const [checking,setChecking]=useState(false);
  const [results,setResults]=useState<Candidate[]>([]);
  const [message,setMessage]=useState("");
@@ -46,7 +48,7 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
   saveGuestWorkspace({domainName:domain,source:"configurator"});
  };
  const check=async()=>{
-  const names=candidatesFromInput(name);
+  const names=candidatesFromInput(name,extensions);
   setResults([]);setMessage("");
   if(!names.length){
    setMessage(t("اكتب اسمًا صحيحًا، مثل atsh أو atsh.com.","Enter a valid name such as atsh or atsh.com."));
@@ -54,7 +56,10 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
   }
   setChecking(true);
   try{
-   const checked=await Promise.all(names.map(async domain=>{
+   const checked:Candidate[]=[];
+   for(let offset=0;offset<names.length;offset+=4){
+    if(offset>0)await new Promise(resolve=>setTimeout(resolve,25000));
+    const batch=await Promise.all(names.slice(offset,offset+4).map(async domain=>{
     try{
      const response=await fetch(`/api/domains/check?domain=${encodeURIComponent(domain)}`,{cache:"no-store"});
      const data=await response.json().catch(()=>null);
@@ -76,7 +81,9 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
      return {domain,lookup:null,error:t("تعذر الاتصال بخدمة البحث.","Lookup service unavailable.")};
     }
    }));
-   setResults(checked);
+    checked.push(...batch);
+    setResults([...checked]);
+   }
    if(checked.every(item=>!item.lookup)){
     setMessage(t("تعذر الوصول إلى سجلات الدومينات حاليًا. حاول مرة أخرى لاحقًا.", "Domain registries are temporarily unreachable. Please retry later."));
    }
@@ -100,6 +107,10 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
    {t("اكتب الاسم فقط مثل atsh للبحث في عدة امتدادات، أو اكتب الدومين كاملًا مثل atsh.com.",
     "Enter a name like atsh to check several extensions, or a complete domain like atsh.com.")}
   </p>
+  <div style={{display:"flex",flexWrap:"wrap",gap:7,margin:"8px 0 12px"}} aria-label={t("اختر امتدادات البحث","Choose domain extensions")}>
+   {DOMAIN_EXTENSIONS.map(extension=><label key={extension} style={{display:"inline-flex",alignItems:"center",gap:5,border:"1px solid #d9e2ed",borderRadius:20,padding:"5px 9px",fontSize:12,cursor:"pointer",background:extensions.includes(extension)?"#e8f2fc":"#fff"}}><input type="checkbox" checked={extensions.includes(extension)} onChange={event=>setExtensions(current=>event.target.checked?[...current,extension]:current.filter(item=>item!==extension))}/>{extension}</label>)}
+  </div>
+  <p style={{fontSize:12,color:"#64748b",margin:"0 0 10px"}}>{t("اختر الامتدادات المطلوبة؛ البحث يتم على دفعات لتجنب حدود خدمة الفحص. بعض الامتدادات قد لا تدعم التحقق المباشر.","Choose extensions to check; requests are batched to respect lookup limits. Some extensions may not support live verification.")}</p>
   <div role="search" style={{display:"flex",gap:8,flexWrap:"wrap"}}>
    <input required aria-label={t("اسم المشروع أو الدومين","Name or domain")} type="text"
     autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="atsh"
