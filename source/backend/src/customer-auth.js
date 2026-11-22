@@ -5,7 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import {queueJourneyEvent} from './customer-event-outbox.js';
 import {createCustomerJourneyProject} from './customer-project-service.js';
-import {validateCustomerSubmission} from './customer-v2/submission-contract.js';
+import {submissionDecision} from './customer-v2/submission-decision.js';
 
 const emailSchema=z.string().trim().email().max(254).transform(v=>v.toLowerCase());
 const passwordSchema=z.string().min(6).max(128);
@@ -183,8 +183,9 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    const draft=await client.query('SELECT id,title,draft,linked_journey_id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 FOR UPDATE',[req.params.id,req.customer.id]);
    if(!draft.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Project not found'});}
    const item=draft.rows[0];
-   if(item.linked_journey_id){await client.query('COMMIT');return res.json({projectId:item.linked_journey_id,alreadySubmitted:true});}
-   if(!validateCustomerSubmission(item.draft).ok){await client.query('ROLLBACK');return res.status(422).json({code:'PROJECT_REQUIREMENTS_INCOMPLETE',error:'Complete project requirements before submission'});}
+   const decision=submissionDecision(item);
+   if(decision.kind==='existing'){await client.query('COMMIT');return res.json({projectId:decision.projectId,alreadySubmitted:true});}
+   if(decision.kind==='invalid'){await client.query('ROLLBACK');return res.status(422).json({code:'PROJECT_REQUIREMENTS_INCOMPLETE',error:'Complete project requirements before submission'});}
    const customer=await client.query('SELECT email,name FROM customer_accounts WHERE id=$1',[req.customer.id]);
    const created=await createCustomerJourneyProject(client,{customerName:item.title,customerEmail:customer.rows[0]?.email??null,customerAccountId:req.customer.id,createdBy:'customer-portal'});
    const projectId=created.id;
