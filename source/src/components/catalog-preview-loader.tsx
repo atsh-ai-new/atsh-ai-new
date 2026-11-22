@@ -4,12 +4,16 @@ import { findSector, interactiveDemoSlug, type SectorTemplate } from "@/lib/sect
 import SectorPreview from "@/components/sector-preview";
 import Link from "next/link";
 import {englishTemplateLabel} from "@/lib/sector-en";
+import { readPagePreview } from "@/lib/page-preview";
 type Item=SectorTemplate & {published?:boolean;archived?:boolean;previewUrl?:string;demoSlug?:string;pricedAddons?:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>;basePrice?:number|null};
 export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;locale?:"ar"|"en"}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
  const [item,setItem]=useState<Item|undefined>(undefined);
  const [ready,setReady]=useState(false);
  useEffect(()=>{
    let active=true;
+   const preview=readPagePreview("catalog",locale);
+   const previewItem=(preview?.content?.items as Item[]|undefined)?.find(x=>x.slug===slug);
+   if(previewItem){setItem(previewItem);setReady(true);return()=>{active=false};}
    fetch("/api/site-content/catalog",{cache:"no-store"}).then(async r=>r.ok?r.json():null).then(data=>{
      if(!active)return;
      const list=data?.page?.content?.items;
