@@ -656,3 +656,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .catalog-addon-grid .select-card-copy{min-width:0;gap:3px}
 .catalog-addon-grid .select-card-copy strong,.catalog-addon-grid .select-card-copy small,.catalog-addon-grid .select-card-copy b{line-height:1.4;overflow-wrap:anywhere}
 @media(max-width:620px){.catalog-addon-grid{grid-template-columns:minmax(0,1fr);gap:7px}.catalog-addon-grid .select-card{padding:9px 10px}}
+
+/* Catalog add-ons: identical full-width stacked feature cards shown after website packages. */
+.catalog-addon-section .catalog-addon-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.catalog-addon-section .catalog-addon-grid .select-card{width:100%;min-height:94px;padding:15px 17px;gap:12px;border-radius:16px;align-items:center;box-sizing:border-box}
+.catalog-addon-section .catalog-addon-grid .select-card-copy{gap:5px;text-align:start}
+.catalog-addon-section .catalog-addon-grid .select-card-copy strong{font-size:14px;line-height:1.5}
+.catalog-addon-section .catalog-addon-grid .select-card-copy small{font-size:12px;line-height:1.5}
+.catalog-addon-section .catalog-addon-grid .select-card-copy b{font-size:13px;line-height:1.5}
+@media(max-width:620px){.catalog-addon-section .catalog-addon-grid{gap:10px}.catalog-addon-section .catalog-addon-grid .select-card{min-height:88px;padding:12px 14px}.catalog-addon-section .catalog-addon-grid .select-card-copy strong{font-size:13px}.catalog-addon-section .catalog-addon-grid .select-card-copy small{font-size:11px}}
