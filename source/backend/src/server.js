@@ -1103,7 +1103,7 @@ app.patch("/api/admin/pages/:slug",requireAdmin,requireRole("owner","admin","edi
     await auditChange(client,req.admin.email,"page.updated","site_page",saved.rows[0].id,before.rows[0]||null,saved.rows[0]);await client.query("COMMIT");res.json({page:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
-app.get("/api/admin/team",requireAdmin,route(async(_req,res)=>{
+app.get("/api/admin/team",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{
   const result=await pool.query("SELECT id,email,display_name,role,is_active,created_at,updated_at FROM team_members ORDER BY created_at");
   res.json({members:result.rows});
 }));
