@@ -145,7 +145,14 @@ export default function AdminPage() {
   useEffect(() => {
     let active = true;
     api("me").then((data) => { if (!active) return; setUser({ email: data.email, role: data.role }); return loadData(); })
-      .catch(() => undefined).finally(() => { if (active) setAuthChecked(true); });
+      .catch((reason) => {
+        if (!active) return;
+        // An expired session is normal; server/rate-limit failures must not masquerade as logout.
+        const message = reason instanceof Error ? reason.message : "تعذر التحقق من جلسة الإدارة.";
+        if (!message.includes("HTTP 401") && !message.includes("HTTP 403")) {
+          setError(`تعذر التحقق من جلسة الإدارة: ${message}`);
+        }
+      }).finally(() => { if (active) setAuthChecked(true); });
     return () => { active = false; };
   }, [loadData]);
 
