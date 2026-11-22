@@ -100,7 +100,7 @@ export default function AdminPage() {
   const loadData = useCallback(async (role: Role = "viewer") => {
     // Keep independent admin sections usable when one backend endpoint fails.
     const endpoints = ["packages", "orders", "settings", "pages", "team", "audit", "email-status", "journey/projects"] as const;
-    const results = await Promise.allSettled(endpoints.map((endpoint) => endpoint === "audit" && role !== "owner" && role !== "admin" ? Promise.resolve({ logs: [] }) : api(endpoint)));
+    const results = await Promise.allSettled(endpoints.map((endpoint) => (endpoint === "audit" && role !== "owner" && role !== "admin") ? Promise.resolve({ logs: [] }) : (endpoint === "team" && role !== "owner" && role !== "admin") ? Promise.resolve({ members: [] }) : api(endpoint)));
     const failed: string[] = [];
     const getResult = (index: number): ApiPayload | null => {
       const result = results[index];
