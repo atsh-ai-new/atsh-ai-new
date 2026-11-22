@@ -343,6 +343,12 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   const submitRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if(submitRequestInFlight.current||requestState==="sent")return;
+    // Admin preview is read-only: never submit customer drafts or create real orders.
+    if(readPagePreview("home",isEnglish?"en":"ar")){
+      setRequestState("sent");
+      setRequestMessage(t("هذه تجربة معاينة فقط؛ لم يتم إرسال طلب حقيقي.","Preview only — no real order was submitted."));
+      return;
+    }
     if (!privacyAccepted) {
       setRequestState("error");
       setRequestMessage(copy("privacyRequiredMessage"));
