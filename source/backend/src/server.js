@@ -1087,6 +1087,18 @@ app.delete("/api/admin/team/:id",requireAdmin,requireRole("owner"),route(async(r
     await auditChange(client,req.admin.email,"team_member.deactivated","team_member",req.params.id,before.rows[0],saved.rows[0]);await client.query("COMMIT");res.json({member:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
+app.post("/api/admin/team/:id/purge",requireAdmin,requireRole("owner"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid member id"});
+ const client=await pool.connect();try{
+  await client.query("BEGIN");
+  const before=await client.query("SELECT * FROM team_members WHERE id=$1 FOR UPDATE",[req.params.id]);
+  if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Team member not found"});}
+  if(before.rows[0].email.toLowerCase()===req.admin.email.toLowerCase()){await client.query("ROLLBACK");return res.status(409).json({error:"لا يمكن حذف حسابك الحالي."});}
+  await client.query("DELETE FROM team_members WHERE id=$1",[req.params.id]);
+  await auditChange(client,req.admin.email,"team_member.deleted","team_member",req.params.id,before.rows[0],null);
+  await client.query("COMMIT");res.json({deleted:true});
+ }catch(e){await client.query("ROLLBACK");if(e.code==="23503")return res.status(409).json({error:"تعذر حذف العضو بسبب بيانات مرتبطة؛ أوقف الحساب بدلًا من الحذف."});throw e;}finally{client.release();}
+}));
 app.get("/api/admin/packages",requireAdmin,route(async(_req,res)=>{
   const [p,o]=await Promise.all([
     pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote,is_published,sort_order,created_at,updated_at FROM packages ORDER BY sort_order,created_at"),
