@@ -28,7 +28,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
    if(!active)return;
    const byCode=new Map<string,Addon>();
    for(const option of data?.options??[]){
-    if(!option?.code||!Number.isFinite(Number(option.price))||["logo_design","visual_identity"].includes(option.code))continue;
+    if(!option?.code||option.visibility==="packages"||!Number.isFinite(Number(option.price))||["logo_design","visual_identity"].includes(option.code))continue;
     if(!byCode.has(option.code))byCode.set(option.code,{code:option.code,name:option.name,description:option.description??"",price:Number(option.price),pricingType:option.pricing_type==="monthly"?"monthly":option.pricing_type==="yearly"?"yearly":"fixed"});
    }
    setSharedAddons([...byCode.values()]);
