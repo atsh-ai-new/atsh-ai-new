@@ -1118,6 +1118,12 @@ const entitlementPayload=z.object({
  status:z.enum(["pending","active","paused","expired","cancelled"]).default("pending"),
  expiresAt:z.string().datetime({offset:true}).nullable().optional()
 }).strict();
+app.get("/api/admin/customer-service-projects",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
+ const result=await pool.query(`SELECT d.id,d.title,d.linked_journey_id,a.name AS customer_name,a.email AS customer_email
+ FROM customer_project_drafts d JOIN customer_accounts a ON a.id=d.customer_id
+ ORDER BY d.updated_at DESC LIMIT 250`);
+ res.json({projects:result.rows});
+}));
 app.get("/api/admin/customer-services",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const projectId=z.string().uuid().safeParse(req.query.projectDraftId);
  if(!projectId.success)return res.status(400).json({error:"Valid projectDraftId required"});
