@@ -38,8 +38,8 @@ try{
  assert.equal(unsent.rows[0].n,0,"No unusable unverified account should be persisted when email provider is missing");
  const resendUnavailable=await req("/api/customer/auth/verification/resend",{method:"POST",body:{email:`signup-${suffix}@example.test`}});
  assert.equal(resendUnavailable.status,503);
- const domainUnconfigured=await req("/api/domains/check?domain=example.com");
- assert.equal(domainUnconfigured.status,503);
+ const domainCheck=await req("/api/domains/check?domain=example.com");
+ assert.equal(domainCheck.status,200,"RDAP fallback should respond without registrar credentials");
 
  await pool.query("INSERT INTO customer_accounts(id,name,email,password_hash,email_verified_at) VALUES($1,'Client A',$2,'ci-salted-not-for-login',now()),($3,'Client B',$4,'ci-salted-not-for-login',now())",[accountA,`first-${suffix}@example.test`,accountB,`second-${suffix}@example.test`]);
  const cookieFor=id=>`atsh_customer=${jwt.sign({sub:id,kind:"customer",ver:0},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-customer",expiresIn:"10m"})}`;
