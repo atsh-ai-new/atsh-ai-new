@@ -202,8 +202,21 @@ app.post("/api/admin/journey/projects",requireAdmin,requireRole("owner","admin",
  const result=await pool.query("INSERT INTO customer_journey_projects(customer_name,customer_email,template_id,created_by) VALUES($1,$2,$3,$4) RETURNING id,customer_name,customer_email,template_id,status,created_at",[x.customerName,x.customerEmail||null,x.templateId||null,req.admin.email]);
  res.status(201).json({project:result.rows[0]});
 }));
+app.patch("/api/admin/journey/projects/:id/archive",requireAdmin,requireRole("owner","admin"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const before=await client.query("SELECT * FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
+  if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
+  if(before.rows[0].status==="archived"){await client.query("COMMIT");return res.json({project:before.rows[0]});}
+  const updated=await client.query("UPDATE customer_journey_projects SET status='archived',updated_at=now() WHERE id=$1 RETURNING *",[req.params.id]);
+  await auditChange(client,req.admin.email,"journey.project.archived","customer_journey_project",req.params.id,before.rows[0],updated.rows[0]);
+  await client.query("COMMIT");res.json({project:updated.rows[0]});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
 app.get("/api/admin/journey/projects",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
- const result=await pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at FROM customer_journey_projects ORDER BY created_at DESC LIMIT 100");
+ const result=await pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at FROM customer_journey_projects WHERE status <> 'archived' ORDER BY created_at DESC LIMIT 100");
  res.json({projects:result.rows});
 }));
 app.get("/api/admin/journey/projects/:id",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
