@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { siteCopyDefaults } from "@/lib/site-copy";
 import { siteCopyEn } from "@/lib/site-copy-en";
-import { openPagePreview } from "@/lib/page-preview";
+import { createPagePreviewUrl } from "@/lib/page-preview";
 
 type PageRecord = { slug: string; locale: string; content: Record<string, unknown>; is_published: boolean; updated_at?: string };
 type CMSCard = { id: string; title: string; description: string; imageUrl: string; href: string; linkLabel: string; icon?: string };
@@ -41,6 +41,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
   const [arabicHomeReference, setArabicHomeReference] = useState<Record<string, unknown> | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [workspaceTab,setWorkspaceTab]=useState<"edit"|"preview">("edit");
+  const [previewUrl,setPreviewUrl]=useState("");
   const [showCreatePage,setShowCreatePage]=useState(false);
   const [newSlug, setNewSlug] = useState("");
   const [projectDraft, setProjectDraft] = useState<Project>({ id: "", title: "", client: "", category: "", description: "", imageUrl: "", projectUrl: "", isPublished: false, sortOrder: 0 });
@@ -78,7 +79,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
     finally { setBusy(false); event.target.value = ""; }
   };
 
-  const previewPage = () => { if(draft)openPagePreview({slug:draft.slug,locale:draft.locale==="en"?"en":"ar",content:draft.content}); };
+  const previewPage = () => { if(!draft)return;setPreviewUrl(createPagePreviewUrl({slug:draft.slug,locale:draft.locale==="en"?"en":"ar",content:draft.content}));setWorkspaceTab("preview"); };
   const savePage = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!draft) return;
@@ -165,7 +166,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
     </section>
 
     <nav role="tablist" aria-label="تعديل ومعاينة الصفحة" className="admin-actions"><button type="button" role="tab" aria-selected={workspaceTab==="edit"} className={workspaceTab==="edit"?"button":"button button-outline"} onClick={()=>setWorkspaceTab("edit")}>تعديل</button><button type="button" role="tab" aria-selected={workspaceTab==="preview"} className={workspaceTab==="preview"?"button":"button button-outline"} onClick={previewPage}>معاينة</button></nav>
-    {workspaceTab==="preview" ? <section className="admin-content-card"><h2>معاينة الصفحة الحقيقية</h2><p>ستظهر الصفحة الحالية بكل تعديلاتك غير المحفوظة وبنفس تصميم الزوار، دون نشرها.</p><button type="button" className="button" onClick={previewPage}>فتح المعاينة الفعلية</button></section> : <>
+    {workspaceTab==="preview" ? <section className="admin-content-card" aria-label="المعاينة الحية للصفحة"><div className="admin-content-title"><div><h2>المعاينة الحية — {selectedLabel}</h2><p>مسودة خاصة داخل لوحة الإدارة، لا تُنشر للزوار.</p></div><div className="admin-actions"><button type="button" className="button button-outline button-small" onClick={()=>setWorkspaceTab("edit")}>رجوع للتعديل</button><button type="button" className="button button-small" onClick={previewPage}>تحديث المعاينة</button></div></div>{previewUrl ? <iframe key={previewUrl} title={`معاينة ${selectedLabel}`} src={previewUrl} style={{display:"block",width:"100%",height:"min(78vh,900px)",minHeight:480,border:"1px solid #d8dde5",borderRadius:12,background:"#fff"}} /> : <p>اضغط معاينة لعرض الصفحة.</p>}</section> : <>
     {activeSlug === "home" ? <>
       <section className="admin-content-card">
         <div className="admin-content-title"><div><h2>بطاقات الصفحة الرئيسية</h2><p>عدّل وأضف واحذف مزايا الصفحة ومراحل العمل والأسئلة الشائعة. القيم الأصلية المعروضة هي الحالية.</p></div></div>
@@ -218,7 +219,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
 
     </>}
     {showCreatePage && <section className="admin-content-card"><div className="admin-content-title"><div><h2>إنشاء صفحة جديدة</h2><p>تبقى الصفحة مسودة حتى تفعّل نشرها. رابط الصفحة يكون مثل atsh-ai.com/about.</p></div></div><form className="cms-create-form" onSubmit={createPage}><label className="admin-field">اسم الصفحة<input required maxLength={120} value={newTitle} onChange={(event) => setNewTitle(event.target.value)} /></label><label className="admin-field">جزء الرابط بالإنجليزية<input required maxLength={80} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="about-us" value={newSlug} onChange={(event) => setNewSlug(event.target.value.toLowerCase())} /></label><button className="button" disabled={busy}>إنشاء الصفحة</button></form></section>}
-    <div className="admin-actions cms-bottom-actions"><button type="button" className="button button-outline" onClick={()=>setWorkspaceTab("preview")}>معاينة</button><button className="button" disabled={busy} onClick={() => void savePage()}>{busy ? "جارٍ الحفظ…" : "حفظ ونشر تغييرات الصفحة ✓"}</button><span className="field-hint">تأكد من حالة النشر أعلى المحرر قبل اعتماد الصفحة.</span></div>
+    <div className="admin-actions cms-bottom-actions"><button type="button" className="button button-outline" onClick={previewPage}>معاينة</button><button className="button" disabled={busy} onClick={() => void savePage()}>{busy ? "جارٍ الحفظ…" : "حفظ ونشر تغييرات الصفحة ✓"}</button><span className="field-hint">تأكد من حالة النشر أعلى المحرر قبل اعتماد الصفحة.</span></div>
   </div>;
 }
 
