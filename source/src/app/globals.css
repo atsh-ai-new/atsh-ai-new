@@ -615,3 +615,29 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 :is(.package-card,.select-card,.benefit-card,.process-card,.catalog-card,.service-card,.feature-card,.trust-card,.sector-card,.portfolio-card,.solution-card,.preview-card,.faq-item,.stat-card,.pricing-card,.card){transition:transform .24s ease,box-shadow .24s ease}
 @media(max-width:600px){.atsh-floating-actions{right:12px;bottom:calc(14px + env(safe-area-inset-bottom,0px));gap:9px}.atsh-fab{width:50px;height:50px}.atsh-fab svg{width:23px;height:23px}}
 @media(prefers-reduced-motion:reduce){.atsh-fab,:is(.package-card,.select-card,.benefit-card,.process-card,.catalog-card,.service-card,.feature-card,.trust-card,.sector-card,.portfolio-card,.solution-card,.preview-card,.faq-item,.stat-card,.pricing-card,.card){transition:none!important;transform:none!important}}
+
+
+/* Keep the assistant fully visible on narrow phone screens. */
+.atsh-assistant-dialog{max-width:calc(100vw - 100px);box-sizing:border-box}
+.atsh-assistant-dialog *{box-sizing:border-box}
+.atsh-assistant-dialog [aria-live="polite"]{min-width:0;overflow-wrap:anywhere}
+.atsh-assistant-dialog nav{min-width:0;overflow-x:hidden}
+.atsh-assistant-dialog form{min-width:0}
+@media(max-width:700px){
+ .atsh-assistant-dialog{
+  position:fixed!important;left:12px!important;right:12px!important;top:auto!important;
+  bottom:calc(190px + env(safe-area-inset-bottom,0px))!important;
+  width:calc(100vw - 24px)!important;max-width:calc(100vw - 24px)!important;
+  height:min(560px,calc(100dvh - 225px))!important;
+  min-height:220px;max-height:calc(100dvh - 225px)!important;
+  margin:0!important;border-radius:16px!important;z-index:150;
+ }
+ .atsh-assistant-dialog header{padding:12px 14px!important;flex-shrink:0}
+ .atsh-assistant-dialog [aria-live="polite"]{padding:12px!important;gap:8px!important}
+ .atsh-assistant-dialog nav{padding:8px 10px!important;gap:6px!important;flex-shrink:0;max-height:92px;overflow-y:auto}
+ .atsh-assistant-dialog nav a{font-size:11px!important;padding:6px 8px!important}
+ .atsh-assistant-dialog form{padding:9px!important;flex-shrink:0}
+ .atsh-assistant-dialog form input{min-width:0!important;padding:9px!important;font-size:16px!important}
+ .atsh-assistant-dialog form button{flex-shrink:0;padding:9px 12px!important}
+}
+@media(max-height:600px) and (max-width:700px){.atsh-assistant-dialog{bottom:80px!important;height:calc(100dvh - 100px)!important;max-height:calc(100dvh - 100px)!important}}
