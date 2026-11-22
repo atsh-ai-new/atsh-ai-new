@@ -7,6 +7,7 @@ type Addon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"
 type Catalog={slug:string;name:string;basePrice:number|null;pricedAddons?:Addon[];published?:boolean;archived?:boolean};
 export default function CatalogPricingClient({slug}:{slug:string}){
  const [catalog,setCatalog]=useState<Catalog|null>(null);
+ const [sharedAddons,setSharedAddons]=useState<Addon[]>([]);
  const [status,setStatus]=useState<"loading"|"ready"|"missing">("loading");
  const [selected,setSelected]=useState<string[]>([]);
  const [pages,setPages]=useState(0);
@@ -26,7 +27,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
   return()=>{active=false};
  },[slug]);
  const en=locale==="en",t=(ar:string,english:string)=>en?english:ar;
- const addons=useMemo(()=>Array.from(new Map((catalog?.pricedAddons??[]).filter(a=>a&&a.code&&Number.isFinite(Number(a.price))).map(a=>[a.code,a])).values()),[catalog]);
+ const addons=useMemo(()=>Array.from(new Map([...sharedAddons,...(catalog?.pricedAddons??[])].filter(a=>a&&a.code&&Number.isFinite(Number(a.price))).map(a=>[a.code,a])).values()),[catalog,sharedAddons]);
  const pageAddon=addons.find(a=>a.code==="extra_page");
  const base=typeof catalog?.basePrice==="number"&&Number.isFinite(catalog.basePrice)?catalog.basePrice:null;
  const fixed=addons.filter(a=>a.code!=="extra_page"&&selected.includes(a.code)&&a.pricingType==="fixed").reduce((n,a)=>n+Number(a.price),0)+pages*Number(pageAddon?.price??0);
