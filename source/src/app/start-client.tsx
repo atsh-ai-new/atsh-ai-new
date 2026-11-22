@@ -52,7 +52,7 @@ export default function StartProject({locale="ar"}:{locale?:"ar"|"en"}){
    const data=await res.json().catch(()=>({}));
    if(!res.ok||!data.projectDraft?.id)throw Error((en?"Unable to save your project draft":data.error||"تعذر حفظ مسودة المشروع"));
    draftId=data.projectDraft.id;
-   sessionStorage.setItem("atsh_pending_draft_id",draftId);
+   sessionStorage.setItem("atsh_pending_draft_id",data.projectDraft.id);
    }
    // A completed custom brief is a customer submission, not merely a local draft.
    {
