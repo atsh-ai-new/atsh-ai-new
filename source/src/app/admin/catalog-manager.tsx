@@ -30,7 +30,6 @@ export default function CatalogManager() {
   const [error,setError]=useState("");
   const [ready,setReady]=useState(false);
   const [uploading,setUploading]=useState(false);
-  const [addonText,setAddonText]=useState(defaultPricedAddons().map(x=>[x.code,x.name,x.price,x.pricingType,x.description??""].join(" | ")).join("\n"));
   const [version,setVersion]=useState(0);
   const [updatedAt,setUpdatedAt]=useState<string|null>(null);
   const [pageWasPublished,setPageWasPublished]=useState(true);
@@ -82,19 +81,9 @@ export default function CatalogManager() {
     const slug=draft.slug.trim().toLowerCase();
     if(!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)){setError("الرابط يجب أن يكون بحروف إنجليزية وأرقام وشرطات فقط.");return;}
     if(slug!==originalSlug && items.some(x=>x.slug===slug)){setError("الرابط مستخدم بالفعل.");return;}
-    const pricedAddons:PricedAddon[]=[];
-    const codes=new Set<string>();
-    for(const raw of addonText.split("\n").map(x=>x.trim()).filter(Boolean)){
-      const [code,name,priceText,type,description=""]=raw.split("|").map(x=>x.trim());
-      const amount=Number(priceText);
-      if(!/^[a-z0-9_-]{1,80}$/.test(code)||!name||codes.has(code)||!Number.isFinite(amount)||amount<0||Math.round(amount*100)!==Math.round(amount*10000)/100||!["fixed","monthly","yearly"].includes(type)){
-        setError("صيغة الإضافة: code | اسم الإضافة | السعر | fixed أو monthly أو yearly. يجب عدم تكرار الرمز.");return;
-      }
-      codes.add(code);pricedAddons.push({code,name,description,price:amount,pricingType:type as PricedAddon["pricingType"]});
-    }
     if(draft.previewUrl.trim()){try{const url=new URL(draft.previewUrl.trim());if(url.protocol!=="https:")throw Error();}catch{setError("رابط المعاينة يجب أن يكون رابط HTTPS صالحًا للنظام المنشور.");return;}}
     if(draft.basePrice!==null&&(!Number.isFinite(draft.basePrice)||draft.basePrice<0)){setError("أدخل سعر بيع صحيحًا للكتالوج، أو اتركه فارغًا حتى تحديد السعر.");return;}
-    const updated={...draft,previewUrl:draft.previewUrl.trim(),pricedAddons,slug,name:draft.name.trim(),description:draft.description.trim()};
+    const updated={...draft,previewUrl:draft.previewUrl.trim(),pricedAddons:[],slug,name:draft.name.trim(),description:draft.description.trim()};
     if(!updated.name){setError("اسم النظام المخصص مطلوب.");return;}
     const placement=resolvePlacement(updated,sectors);
     if(!placement.sector||!updated.sectorId){setError("اختر قطاعًا رئيسيًا صالحًا.");return;}
@@ -102,7 +91,7 @@ export default function CatalogManager() {
     updated.category=placement.subcategory?.name||placement.sector.name;
     const next=originalSlug?items.map(x=>x.slug===originalSlug?updated:x):[...items,updated];
     if(await saveAll(next,"تم حفظ الكتالوج وتحديث حالته.")){
-      setDraft(empty());setAddonText(defaultPricedAddons().map(x=>[x.code,x.name,x.price,x.pricingType,x.description??""].join(" | ")).join("\n"));setOriginalSlug("");
+      setDraft(empty());setOriginalSlug("");
     }
   };
   const applyDemoPrices=async()=>{
@@ -117,7 +106,7 @@ export default function CatalogManager() {
     if(!window.confirm("استيراد نماذج توضيحية ناقصة بدون استبدال بياناتك أو أسعارك؟"))return;
     await saveAll([...items,...starter],"تم استيراد نماذج توضيحية مبدئية. لا تمثل أنظمة تجارية جاهزة.");
   };
-  const edit=(item:CatalogItem)=>{const place=resolvePlacement(item,sectors);setDraft({...item,sectorId:place.sector?.id,subcategoryId:place.subcategory?.id});setAddonText(item.pricedAddons.map(x=>[x.code,x.name,x.price,x.pricingType,x.description??""].join(" | ")).join("\n"));setOriginalSlug(item.slug);setError("");setNotice("");};
+  const edit=(item:CatalogItem)=>{const place=resolvePlacement(item,sectors);setDraft({...item,sectorId:place.sector?.id,subcategoryId:place.subcategory?.id});setOriginalSlug(item.slug);setError("");setNotice("");};
   const update=(key:keyof CatalogItem,value:unknown)=>setDraft(d=>({...d,[key]:value}));
   const toggle=async(item:CatalogItem,patch:Partial<CatalogItem>)=>saveAll(items.map(x=>x.slug===item.slug?{...x,...patch}:x),"تم تحديث حالة الكتالوج.");
   const archive=async(item:CatalogItem)=>{
@@ -198,7 +187,7 @@ export default function CatalogManager() {
       {notice&&<p role="status" className="success-message">{notice}</p>}{error&&<p role="alert" className="error-message">{error}</p>}
       {!ready?<p>جارٍ تحميل الكتالوجات…</p>:<>
         <div className="admin-actions">
-          <button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());setAddonText(defaultPricedAddons().map(x=>[x.code,x.name,x.price,x.pricingType,x.description??""].join(" | ")).join("\n"));}}>+ كتالوج جديد</button>
+          <button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());}}>+ كتالوج جديد</button>
           <button type="button" className="button button-outline" disabled={busy} onClick={()=>void importStarter()}>استيراد النماذج الأربعة المبدئية دون تكرار</button>
           <button type="button" className="button button-outline" disabled={busy} onClick={()=>void applyDemoPrices()}>تطبيق الأسعار التجريبية على الكتالوجات الحالية (٥٠٠٠ + إضافات ١٠٠٠)</button>
           <a className="inline-add" href="/catalog" target="_blank" rel="noreferrer">عرض المعرض ↗</a>
