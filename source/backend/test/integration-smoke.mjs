@@ -281,5 +281,22 @@ try{
  assert.equal(usageGuest.status,401);
  const assistantDisabled=await req("/api/visitor/assistant",{method:"POST",body:{messages:[{role:"user",content:"كم سعر الموقع؟"}]}});
  assert.equal(assistantDisabled.status,503);
+ // Verify real PostgreSQL deletion, linked-project protection, and archive visibility.
+ const removable=await pool.query("INSERT INTO customer_journey_projects(customer_name,customer_email,created_by) VALUES('Delete CI',$1,'integration-test') RETURNING id",[`delete-${suffix}@example.test`]);
+ const removableId=removable.rows[0].id;
+ const removed=await req(`/api/admin/journey/projects/${removableId}`,{method:"DELETE",cookie:adminCookie});
+ assert.equal(removed.status,200,JSON.stringify(removed));
+ assert.equal(removed.result.deleted,true);
+ assert.equal((await pool.query("SELECT 1 FROM customer_journey_projects WHERE id=$1",[removableId])).rowCount,0,"Project must actually disappear from PostgreSQL");
+ const protectedDelete=await req(`/api/admin/journey/projects/${journey.rows[0].id}`,{method:"DELETE",cookie:adminCookie});
+ assert.equal(protectedDelete.status,409,"Linked commercial project cannot be physically deleted");
+ const archived=await req(`/api/admin/journey/projects/${journey.rows[0].id}/archive`,{method:"PATCH",cookie:adminCookie});
+ assert.equal(archived.status,200,JSON.stringify(archived));
+ assert.equal(archived.result.project.status,"archived");
+ const activeProjects=await req("/api/admin/journey/projects",{cookie:adminCookie});
+ assert.equal(activeProjects.status,200);
+ assert.equal(activeProjects.result.projects.some(p=>p.id===journey.rows[0].id),false,"Archived project must be hidden from active list");
+ assert.equal((await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id])).rows[0].status,"archived");
+ console.log("PASS: PostgreSQL physical deletion, protected commercial links, archive persistence and list filtering");
  console.log("PASS: contract revisions, immutable issuance, owner authorization, project isolation, conflict detection, customer preview approval and signed payment settlement");
 }finally{await pool.end();}
