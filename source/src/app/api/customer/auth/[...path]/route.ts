@@ -12,8 +12,10 @@ async function proxy(req:Request,ctx:{params:Promise<{path:string[]}>}){
    if(isLogo&&req.method==='POST'){body=await req.arrayBuffer();if(body.byteLength>2097152)return NextResponse.json({error:'Image too large'},{status:413});}
    else{body=await req.text();if(body.length>32000)return NextResponse.json({error:'Request too large'},{status:413});}
  }
- const response=await fetch(url,{method:req.method,headers,body,cache:'no-store',redirect:'manual'});
+ let response:Response;
+ try{response=await fetch(url,{method:req.method,headers,body,cache:'no-store',redirect:'manual'});}
+ catch{return NextResponse.json({error:"Customer API temporarily unavailable",code:"CUSTOMER_API_UNREACHABLE"},{status:502});}
  const out=new NextResponse(response.body,{status:response.status});const contentType=response.headers.get('content-type');if(contentType)out.headers.set('content-type',contentType);
  const cookies=response.headers.getSetCookie();for(const c of cookies)out.headers.append('set-cookie',c);return out;
 }
-export {proxy as GET,proxy as POST,proxy as PATCH};
+export {proxy as GET,proxy as POST,proxy as PATCH,proxy as PUT,proxy as DELETE};
