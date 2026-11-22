@@ -88,10 +88,10 @@ export default function AdminPage() {
   const [packageDraft, setPackageDraft] = useState<PackageDraft>({ name: "", tagline: "", description: "", price: "", features: "", copyFromPackageId: "", isFeatured: false, isCustomQuote: false, isPublished: false });
   const [optionDraft, setOptionDraft] = useState<OptionDraft>({ packageId: "", code: "", name: "", description: "", price: "", pricingType: "fixed", unitLabel: "", isRequired: false, isActive: true });
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (role: Role = "viewer") => {
     // Keep independent admin sections usable when one backend endpoint fails.
     const endpoints = ["packages", "orders", "settings", "pages", "team", "audit", "email-status", "journey/projects"] as const;
-    const results = await Promise.allSettled(endpoints.map((endpoint) => api(endpoint)));
+    const results = await Promise.allSettled(endpoints.map((endpoint) => endpoint === "audit" && role !== "owner" && role !== "admin" ? Promise.resolve({ logs: [] }) : api(endpoint)));
     const failed: string[] = [];
     const getResult = (index: number): ApiPayload | null => {
       const result = results[index];
@@ -144,7 +144,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     let active = true;
-    api("me").then((data) => { if (!active) return; setUser({ email: data.email, role: data.role }); return loadData(); })
+    api("me").then((data) => { if (!active) return; setUser({ email: data.email, role: data.role }); return loadData(data.role); })
       .catch((reason) => {
         if (!active) return;
         // An expired session is normal; server/rate-limit failures must not masquerade as logout.
@@ -160,7 +160,7 @@ export default function AdminPage() {
   const canEditContent = canEditCatalog || user?.role === "editor";
   const canEditOrders = canEditCatalog || user?.role === "sales";
   const canManageTeam = user?.role === "owner";
-  const visibleNav = nav.filter((item) => (item.id !== "integrations" || canEditCatalog) && (item.id !== "assistant-knowledge" || canEditContent) && (item.id !== "team" || canManageTeam) && (item.id !== "options" && item.id !== "theme" ? true : canEditCatalog) && (item.id !== "content" && item.id !== "pages" && item.id !== "works" && item.id !== "content-studio" || canEditContent));
+  const visibleNav = nav.filter((item) => (item.id !== "integrations" || canEditCatalog) && (item.id !== "assistant-knowledge" || canEditContent) && (item.id !== "team" || canManageTeam) && (item.id !== "audit" || canEditCatalog) && (item.id !== "options" && item.id !== "theme" ? true : canEditCatalog) && (item.id !== "content" && item.id !== "pages" && item.id !== "works" && item.id !== "content-studio" || canEditContent));
   const newOrders = useMemo(() => orders.filter((order) => order.status === "new").length, [orders]);
   const title = nav.find((item) => item.id === view)?.label ?? "إدارة المنصة";
 
@@ -168,7 +168,7 @@ export default function AdminPage() {
     event.preventDefault(); setBusy(true); setError("");
     try {
       const result = await api("login", { method: "POST", body: JSON.stringify({ email: loginEmail, password: loginPassword }) });
-      setUser({ email: result.email, role: result.role }); setLoginPassword(""); await loadData();
+      setUser({ email: result.email, role: result.role }); setLoginPassword(""); await loadData(result.role);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر تسجيل الدخول."); }
     finally { setBusy(false); }
   };
