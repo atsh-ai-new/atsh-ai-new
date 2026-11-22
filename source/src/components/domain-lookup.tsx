@@ -115,8 +115,8 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
   </div>
   {checking&&<p role="status" style={{fontSize:12,color:"#64748b"}}>{t("جارٍ فحص الامتدادات المتاحة تباعًا…","Checking available extensions progressively…")}</p>}
   {message&&<p role="status" style={{color:"#875b14",fontSize:13,lineHeight:1.6,margin:"10px 0 0"}}>{message}</p>}
-  {results.filter(item=>item.domain.endsWith(".com")||item.domain.endsWith(".net")||(item.lookup&&selectable(item.lookup))).length>0&&<div aria-live="polite" aria-busy={checking} className="domain-results-grid">
-   {results.filter(item=>item.domain.endsWith(".com")||item.domain.endsWith(".net")||(item.lookup&&selectable(item.lookup))).map(item=><div key={item.domain} className="domain-result-card">
+  {results.length>0&&<div aria-live="polite" aria-busy={checking} className="domain-results-grid">
+   {results.map(item=><div key={item.domain} className="domain-result-card">
     <div style={{minWidth:0,width:"100%"}}>
      <strong dir="ltr" style={{display:"block",textAlign:"center",overflowWrap:"anywhere",color:"#203958",fontSize:12,lineHeight:1.3}}>{item.domain}</strong>
      <small style={{display:"block",lineHeight:1.3,fontSize:10,textAlign:"center",color:item.error?"#a16207":item.lookup?.status==="registered"||item.lookup?.available===false?"#8f3030":"#386375"}}>
