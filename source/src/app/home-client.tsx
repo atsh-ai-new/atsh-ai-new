@@ -431,6 +431,23 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     }
   };
 
+  const continueFromContact = () => {
+    if(customer.name.trim().length<2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(customer.email.trim()) || !validCustomerPhone){
+      setRequestState("error");
+      setRequestMessage(t("أكمل الاسم والبريد الإلكتروني الصحيح ورقم هاتف لا يقل عن 7 أرقام قبل المتابعة.","Enter your name, a valid email and a phone number with at least 7 digits to continue."));
+      return;
+    }
+    setRequestMessage("");
+    saveGuestWorkspace({
+      packageId:packageId??undefined,domainName:requestedDomainName,
+      sectorSlug:selectedSector?.slug,sectorName:selectedSector?.name,
+      sectorAddonCodes,source:"configurator"
+    });
+    window.location.assign(isEnglish
+      ?(customerSignedIn?"/en/account/dashboard":"/en/account/register")
+      :(customerSignedIn?"/account/dashboard":"/account/register"));
+  };
+
   const handleBuilderSubmit = (event: FormEvent<HTMLFormElement>) => {
     if (step !== steps.length - 1) {
       event.preventDefault();
@@ -582,7 +599,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
                 {requestMessage && <p className={requestState === "sent" ? "success-message" : "error-message"} role="status">{requestMessage}</p>}
               </div>}
 
-              {pricingOnly&&step<5?<div className="builder-controls"><button type="button" className="button button-outline" onClick={()=>window.location.assign(isEnglish?"/en#packages":"/#packages")}>{t("تغيير الباقة","Change package")}</button><button type="button" className="button" onClick={()=>setStep(5)}>{t("متابعة الطلب","Continue request")} ←</button></div>:<div className="builder-controls"><button type="button" className="button button-outline" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step <= 1}>{copy("previousStep")}</button><span>{step + 1} / {steps.length}</span>{step < steps.length - 1 ? <button type="button" className="button" onClick={() => { if (step === 5 && (!customer.name.trim() || !customer.email.trim() || !validCustomerPhone)) return; setStep((current) => Math.min(steps.length - 1, current + 1)); }} disabled={(step === 5 && (!customer.name || !customer.email || !customer.phone))}>{copy("nextStep")} <span>←</span></button> : <button type="button" className="button button-outline" onClick={() => setStep(1)}>{copy("editChoices")}</button>}</div>}
+              {pricingOnly&&step<5?<div className="builder-controls"><button type="button" className="button button-outline" onClick={()=>window.location.assign(isEnglish?"/en#packages":"/#packages")}>{t("تغيير الباقة","Change package")}</button><button type="button" className="button" onClick={()=>setStep(5)}>{t("متابعة الطلب","Continue request")} ←</button></div>:<div className="builder-controls"><button type="button" className="button button-outline" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step <= 1}>{copy("previousStep")}</button><span>{step + 1} / {steps.length}</span>{step < steps.length - 1 ? <button type="button" className="button" onClick={() => { if(step===5){continueFromContact();return;} setStep((current) => Math.min(steps.length - 1, current + 1)); }}>{copy("nextStep")} <span>←</span></button> : <button type="button" className="button button-outline" onClick={() => setStep(1)}>{copy("editChoices")}</button>}</div>}
             </form>
           </div>
         <aside className="quote-sidebar">
