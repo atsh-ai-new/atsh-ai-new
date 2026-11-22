@@ -140,11 +140,13 @@ async function requireAdmin(req,res,next) {
       if ((Number.isSafeInteger(session.ownerVersion)?session.ownerVersion:0)!==currentVersion)
         throw new Error("Owner session predates password reset");
     }
+    let permissionOverrides = null;
     if (session.userId) {
       const active = await pool.query("SELECT is_active,role,permission_overrides FROM team_members WHERE id=$1",[session.userId]);
       if (!active.rowCount || !active.rows[0].is_active || active.rows[0].role !== session.role) throw new Error("Session revoked or role changed");
+      permissionOverrides = active.rows[0].permission_overrides;
     }
-    req.admin = { ...session, permissions: effectivePermissions(session.role, session.userId ? active.rows[0].permission_overrides : null) };
+    req.admin = { ...session, permissions: effectivePermissions(session.role, permissionOverrides) };
     next();
   } catch {
     res.clearCookie(cookie,cookieOptions);
