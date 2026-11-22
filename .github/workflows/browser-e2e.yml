@@ -1,7 +1,7 @@
 name: ATSH Browser E2E (Desktop + Mobile)
 on:
   push:
-    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1, catalog-commerce-payment-ready-v1, fix/full-english-localization-20261118]
+    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1, catalog-commerce-payment-ready-v1, fix/full-english-localization-20261118, integration/customer-v2-admin-stability-20261122]
     paths:
       - 'source/e2e/**'
       - 'source/src/app/en/**'
