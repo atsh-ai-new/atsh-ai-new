@@ -23,3 +23,8 @@ export function taskInboxScope(admin){
  if(typeof admin?.userId!=='string'||!admin.userId)return null;
  return {owner:false,userId:admin.userId};
 }
+
+// The owner may oversee all tasks; employees may change only tasks assigned to them.
+export function canUpdateOwnTaskStatus(scope,assignedTo){
+ return Boolean(scope&&(scope.owner||(typeof assignedTo==='string'&&assignedTo===scope.userId)));
+}
