@@ -57,7 +57,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   const [customerSignedIn,setCustomerSignedIn]=useState(false);
   const [selectedProjectDraftId,setSelectedProjectDraftId]=useState<string|null>(null);
   const submitRequestInFlight=useRef(false);
-  const orderSubmissionKey=useRef<string|null>(null);
+  const orderSubmissionKey=useRef<{key:string;payload:string}|null>(null);
   const [requestState, setRequestState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [requestMessage, setRequestMessage] = useState("");
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -381,10 +381,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         logoName ? `اسم ملف الشعار المرفوع: ${logoName}` : "",
         quote.needsCustomQuote ? "يتطلب الطلب مراجعة فنية قبل اعتماد السعر النهائي." : ""
       ].filter(Boolean).join("\n").slice(0, 4000);
-      const response = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Idempotency-Key": orderSubmissionKey.current ?? (orderSubmissionKey.current=crypto.randomUUID()) },
-        body: JSON.stringify({
+      const orderPayload = JSON.stringify({
           packageId: selectedServerPackage.id,
           optionIds: resolvedOptions.map((option) => option.id),
           optionQuantities,
@@ -394,10 +391,18 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
           email: customer.email,
           phone: customer.phone,
           notes
-        })
+        });
+      if (!orderSubmissionKey.current || orderSubmissionKey.current.payload !== orderPayload) {
+        orderSubmissionKey.current = {key:crypto.randomUUID(),payload:orderPayload};
+      }
+      const response = await fetch("/api/orders", {
+        method:"POST",
+        headers:{"Content-Type":"application/json","Idempotency-Key":orderSubmissionKey.current.key},
+        body:orderPayload
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(isEnglish?"Unable to submit your request at the moment.":data.message || data.error || "تعذر تسجيل الطلب الآن.");
+      orderSubmissionKey.current=null;
       setRequestState("sent");
       setRequestMessage(`${copy("orderSuccessPrefix")} ${data.order?.reference ?? copy("orderSuccessFallback")}`);
     } catch (error) {
