@@ -63,5 +63,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Apply schema on empty database
         run: psql -h localhost -U atsh_ci -d atsh_ci -v ON_ERROR_STOP=1 -f source/backend/db/schema.sql
+      - name: Verify project archive migration can be applied twice
+        run: |
+          psql -h localhost -U atsh_ci -d atsh_ci -v ON_ERROR_STOP=1 -f source/backend/db/journey_project_archive_20261122.sql
+          psql -h localhost -U atsh_ci -d atsh_ci -v ON_ERROR_STOP=1 -f source/backend/db/journey_project_archive_20261122.sql
       - name: Exercise project task creation and updates
         run: psql -h localhost -U atsh_ci -d atsh_ci -v ON_ERROR_STOP=1 -f source/backend/test/journey-tasks-smoke.sql
