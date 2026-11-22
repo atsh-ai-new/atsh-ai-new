@@ -39,6 +39,8 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
   const [draft, setDraft] = useState<PageRecord | null>(null);
   const [arabicHomeReference, setArabicHomeReference] = useState<Record<string, unknown> | null>(null);
   const [newTitle, setNewTitle] = useState("");
+  const [workspaceTab,setWorkspaceTab]=useState<"edit"|"preview">("edit");
+  const [showCreatePage,setShowCreatePage]=useState(false);
   const [newSlug, setNewSlug] = useState("");
   const [projectDraft, setProjectDraft] = useState<Project>({ id: "", title: "", client: "", category: "", description: "", imageUrl: "", projectUrl: "", isPublished: false, sortOrder: 0 });
   const [busy, setBusy] = useState(false);
@@ -121,7 +123,8 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
   const addProject = (event: FormEvent) => {
     event.preventDefault();
     if (!draft || !projectDraft.title.trim()) return;
-    const projects = (Array.isArray(draft.content.projects) ? draft.content.projects : []).map(normalizeProject);
+    const quarterSections = sections.slice(0,4);
+  const projects = (Array.isArray(draft.content.projects) ? draft.content.projects : []).map(normalizeProject);
     updateContent("projects", [...projects, { ...projectDraft, id: newId(), sortOrder: projects.length * 10 }]);
     setProjectDraft({ id: "", title: "", client: "", category: "", description: "", imageUrl: "", projectUrl: "", isPublished: false, sortOrder: 0 });
     setNotice("أضيف العمل إلى مسودة الصفحة. احفظ الصفحة لتثبيته.");
@@ -146,7 +149,8 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
   return <div className="cms-workspace">
     {error && <div className="error-message" role="alert">{error}</div>}{notice && <div className="success-message" role="status">{notice}</div>}
     <section className="admin-content-card">
-      <div className="admin-content-title"><div><h2>كل الصفحات والمحتوى المنظم</h2><p>الصفحة المحددة الآن: {selectedLabel}. كل تعديل يحفظ على قاعدة البيانات مع سجل تدقيق.</p></div></div>
+      <div className="admin-content-title"><div><h2>صفحات المنصة</h2><p>الصفحة المحددة الآن: {selectedLabel}. كل تعديل يحفظ على قاعدة البيانات مع سجل تدقيق.</p></div></div>
+      <div className="admin-actions"><button type="button" className="button button-small" onClick={()=>setShowCreatePage(true)}>إنشاء صفحة</button><button type="button" className="button button-outline button-small" onClick={()=>setShowCreatePage(false)}>صفحات المنصة</button></div>
       <div className="cms-toolbar">
         <label className="admin-field">لغة المحتوى<select value={activeLocale} onChange={event=>{const next=event.target.value==="en"?"en":"ar";setActiveLocale(next);void load(activeSlug,next);setError("");setNotice("");}}><option value="ar">العربية · RTL</option><option value="en">English · LTR</option></select></label>
         <label className="admin-field">اختر الصفحة<select value={activeSlug} onChange={(event) => { const slug = event.target.value; setActiveSlug(slug); void load(slug,activeLocale); setError(""); setNotice(""); }}>
@@ -158,6 +162,8 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
       </div>
     </section>
 
+    <nav role="tablist" aria-label="تعديل ومعاينة الصفحة" className="admin-actions"><button type="button" role="tab" aria-selected={workspaceTab==="edit"} className={workspaceTab==="edit"?"button":"button button-outline"} onClick={()=>setWorkspaceTab("edit")}>تعديل</button><button type="button" role="tab" aria-selected={workspaceTab==="preview"} className={workspaceTab==="preview"?"button":"button button-outline"} onClick={()=>setWorkspaceTab("preview")}>معاينة</button></nav>
+    {workspaceTab==="preview" ? <section className="admin-content-card"><h2>معاينة الأرباع الأربعة</h2><div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:16}}>{[0,1,2,3].map(i=>{const section=quarterSections[i];return <article key={i} style={{minHeight:150,padding:16,background:section?.backgroundColor||"#fff",color:section?.textColor||"#26313f",textAlign:section?.align||"right"}}>{section&&section.isVisible!==false&&<><h3>{section.title}</h3><p>{section.body}</p>{section.layout==="cards"&&(section.cards||[]).map(card=><div key={card.id}><strong>{card.title}</strong><p>{card.description}</p></div>)}</>}</article>})}</div><p className="field-hint">معاينة المسودة، وليست نشرًا.</p></section> : <>
     {activeSlug === "home" ? <>
       <section className="admin-content-card">
         <div className="admin-content-title"><div><h2>بطاقات الصفحة الرئيسية</h2><p>عدّل وأضف واحذف مزايا الصفحة ومراحل العمل والأسئلة الشائعة. القيم الأصلية المعروضة هي الحالية.</p></div></div>
@@ -208,8 +214,9 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
       <section className="admin-content-card"><div className="admin-content-title"><div><h2>أقسام الصفحة</h2><p>يمكن لكل قسم أن يكون نصًا أو شبكة بطاقات مع صور وألوان مستقلة.</p></div><button type="button" className="inline-add" onClick={addSection}>+ إضافة قسم</button></div>{sections.map((section, index) => <SectionEditor key={section.id} section={section} index={index} count={sections.length} onChange={(patch) => updateSection(section.id, patch)} onMove={(direction) => moveSection(section.id, direction)} onDelete={() => updateContent("sections", sections.filter((item) => item.id !== section.id))} onAddCard={() => addBlockCard(section)} onCardChange={(id, patch) => updateBlockCard(section, id, patch)} onCardDelete={(id) => updateSection(section.id, { cards: section.cards.filter((card) => card.id !== id) })} onUpload={(event, callback) => void uploadImage(event, callback)} busy={busy} />)}{!sections.length && <p className="cms-empty">أضف القسم الأول، وستظهر معاينته للزوار بعد النشر.</p>}</section>
     </>}
 
-    <section className="admin-content-card"><div className="admin-content-title"><div><h2>إنشاء صفحة جديدة</h2><p>تبقى الصفحة مسودة حتى تفعّل نشرها. رابط الصفحة يكون مثل atsh-ai.com/about.</p></div></div><form className="cms-create-form" onSubmit={createPage}><label className="admin-field">اسم الصفحة<input required maxLength={120} value={newTitle} onChange={(event) => setNewTitle(event.target.value)} /></label><label className="admin-field">جزء الرابط بالإنجليزية<input required maxLength={80} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="about-us" value={newSlug} onChange={(event) => setNewSlug(event.target.value.toLowerCase())} /></label><button className="button" disabled={busy}>إنشاء الصفحة</button></form></section>
-    <div className="admin-actions cms-bottom-actions"><button className="button" disabled={busy} onClick={() => void savePage()}>{busy ? "جارٍ الحفظ…" : "حفظ ونشر تغييرات الصفحة ✓"}</button><span className="field-hint">تأكد من حالة النشر أعلى المحرر قبل اعتماد الصفحة.</span></div>
+    </>}
+    {showCreatePage && <section className="admin-content-card"><div className="admin-content-title"><div><h2>إنشاء صفحة جديدة</h2><p>تبقى الصفحة مسودة حتى تفعّل نشرها. رابط الصفحة يكون مثل atsh-ai.com/about.</p></div></div><form className="cms-create-form" onSubmit={createPage}><label className="admin-field">اسم الصفحة<input required maxLength={120} value={newTitle} onChange={(event) => setNewTitle(event.target.value)} /></label><label className="admin-field">جزء الرابط بالإنجليزية<input required maxLength={80} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="about-us" value={newSlug} onChange={(event) => setNewSlug(event.target.value.toLowerCase())} /></label><button className="button" disabled={busy}>إنشاء الصفحة</button></form></section>}
+    <div className="admin-actions cms-bottom-actions"><button type="button" className="button button-outline" onClick={()=>setWorkspaceTab("preview")}>معاينة</button><button className="button" disabled={busy} onClick={() => void savePage()}>{busy ? "جارٍ الحفظ…" : "حفظ ونشر تغييرات الصفحة ✓"}</button><span className="field-hint">تأكد من حالة النشر أعلى المحرر قبل اعتماد الصفحة.</span></div>
   </div>;
 }
 
