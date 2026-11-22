@@ -598,3 +598,20 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .journey-mobile button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
  .journey-mobile .admin-content-title{min-width:0}
 }
+
+
+/* Compact floating contact controls, shared across desktop and mobile. */
+.atsh-floating-actions{position:fixed;right:18px;bottom:18px;z-index:151;display:flex;flex-direction:column;gap:11px;align-items:center}
+.atsh-fab{width:54px;height:54px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:50%;color:#fff;text-decoration:none;cursor:pointer;box-shadow:0 7px 22px #12263d38;transition:transform .22s ease,box-shadow .22s ease;flex-shrink:0}
+.atsh-fab svg{width:25px;height:25px}
+.atsh-fab-call{background:#27659b}
+.atsh-fab-whatsapp{background:#168b53}
+.atsh-fab-assistant{background:#203958}
+.atsh-fab:focus-visible{outline:3px solid #e3a74a;outline-offset:3px}
+@media(hover:hover) and (pointer:fine){
+ .atsh-fab:hover{transform:translateY(-4px) scale(1.07);box-shadow:0 12px 28px #12263d50}
+ :is(.package-card,.select-card,.benefit-card,.process-card,.catalog-card,.service-card,.feature-card,.trust-card,.sector-card,.portfolio-card,.solution-card,.preview-card,.faq-item,.stat-card,.pricing-card,.card):not(.atsh-fab):hover{transform:translateY(-5px);box-shadow:0 14px 34px #12263d22}
+}
+:is(.package-card,.select-card,.benefit-card,.process-card,.catalog-card,.service-card,.feature-card,.trust-card,.sector-card,.portfolio-card,.solution-card,.preview-card,.faq-item,.stat-card,.pricing-card,.card){transition:transform .24s ease,box-shadow .24s ease}
+@media(max-width:600px){.atsh-floating-actions{right:12px;bottom:calc(14px + env(safe-area-inset-bottom,0px));gap:9px}.atsh-fab{width:50px;height:50px}.atsh-fab svg{width:23px;height:23px}}
+@media(prefers-reduced-motion:reduce){.atsh-fab,:is(.package-card,.select-card,.benefit-card,.process-card,.catalog-card,.service-card,.feature-card,.trust-card,.sector-card,.portfolio-card,.solution-card,.preview-card,.faq-item,.stat-card,.pricing-card,.card){transition:none!important;transform:none!important}}
