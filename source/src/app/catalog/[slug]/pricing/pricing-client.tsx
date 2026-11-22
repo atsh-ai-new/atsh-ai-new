@@ -3,7 +3,7 @@ import {useEffect,useMemo,useState} from "react";
 import Link from "next/link";
 import {loadGuestWorkspace,saveGuestWorkspace} from "@/lib/customer-workspace";
 
-type Addon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
+type Addon={code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
 type Catalog={slug:string;name:string;basePrice:number|null;pricedAddons?:Addon[];published?:boolean;archived?:boolean};
 export default function CatalogPricingClient({slug}:{slug:string}){
  const [catalog,setCatalog]=useState<Catalog|null>(null);
