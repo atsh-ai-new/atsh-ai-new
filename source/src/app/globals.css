@@ -641,3 +641,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .atsh-assistant-dialog form button{flex-shrink:0;padding:9px 12px!important}
 }
 @media(max-height:600px) and (max-width:700px){.atsh-assistant-dialog{bottom:80px!important;height:calc(100dvh - 100px)!important;max-height:calc(100dvh - 100px)!important}}
+
+
+/* Domain lookup: five compact result cards per row, up to two rows for ten TLDs. */
+.domain-results-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:10px}
+.domain-result-card{min-width:0;display:flex;flex-direction:column;justify-content:space-between;align-items:center;gap:6px;background:#f4f7fb;border:1px solid #e2e8f0;border-radius:9px;padding:8px 4px;text-align:center}
+.domain-result-card strong{font-size:clamp(9px,1.8vw,12px)!important;word-break:break-word}
+.domain-result-card small{font-size:10px!important;overflow-wrap:anywhere}
+@media(max-width:600px){.domain-results-grid{gap:4px}.domain-result-card{padding:7px 2px;gap:4px}.domain-result-card strong{font-size:10px!important}.domain-result-card button{font-size:9px!important;padding:5px 2px!important}}
