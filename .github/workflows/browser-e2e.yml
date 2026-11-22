@@ -93,7 +93,7 @@ jobs:
           fi
       - name: Browser flow on desktop and mobile
         working-directory: source
-        run: npx playwright test --config playwright.config.ts e2e/customer-start.spec.ts e2e/customer-services-security.spec.ts --project=desktop-chromium
+        run: npx playwright test --config playwright.config.ts e2e/customer-start.spec.ts e2e/customer-services-security.spec.ts e2e/admin-customer-services.spec.ts --project=desktop-chromium
       - name: Print API and frontend logs on browser failure
         if: failure()
         run: |
