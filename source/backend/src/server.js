@@ -4,7 +4,7 @@ import { customerCommercialRouter } from "./customer-commercial.js";
 import { customerAuthRouter } from "./customer-auth.js";
 import {createCustomerJourneyProject} from './customer-project-service.js';
 import {transitionJourneyProject} from './customer-journey-state.js';
-import {journeyTaskCreate,journeyTaskUpdate,taskInboxScope} from './journey-task-rules.js';
+import {journeyTaskCreate,journeyTaskUpdate,taskInboxScope,canUpdateOwnTaskStatus} from './journey-task-rules.js';
 import {quoteTotal,installments,validateTicketTransition,validateDeliveryMethod} from "./commercial-rules.js";
 import express from "express";
 import helmet from "helmet";
@@ -297,7 +297,7 @@ app.patch("/api/admin/journey/my-tasks/:taskId/status",requireAdmin,route(async(
   await client.query("BEGIN");
   const before=await client.query("SELECT * FROM customer_journey_tasks WHERE id=$1 FOR UPDATE",[req.params.taskId]);
   if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Task not found"});}
-  if(!scope.owner&&before.rows[0].assigned_to!==scope.userId){await client.query("ROLLBACK");return res.status(403).json({error:"Task is not assigned to your account"});}
+  if(!canUpdateOwnTaskStatus(scope,before.rows[0].assigned_to)){await client.query("ROLLBACK");return res.status(403).json({error:"Task is not assigned to your account"});}
   const result=await client.query("UPDATE customer_journey_tasks SET status=$2,updated_by=$3,updated_at=now() WHERE id=$1 RETURNING id,status,updated_at",[req.params.taskId,parsed.data.status,req.admin.email]);
   await auditChange(client,req.admin.email,"journey.task.status_updated","customer_journey_task",req.params.taskId,before.rows[0],{...before.rows[0],...result.rows[0]});
   await client.query("COMMIT");res.set("Cache-Control","private, no-store").json({task:result.rows[0]});
