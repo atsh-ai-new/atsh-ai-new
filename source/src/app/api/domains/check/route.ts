@@ -5,6 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const attempts = new Map<string, {count: number; resetAt: number}>();
+let backendRateLimitedUntil = 0;
 const NO_STORE = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"};
 
 function allowFallback(request: Request): boolean {
@@ -17,7 +18,7 @@ function allowFallback(request: Request): boolean {
   attempts.set(ip,{count:1,resetAt:now+60_000});
   return true;
  }
- if(previous.count>=30)return false;
+ if(previous.count>=60)return false;
  previous.count++;
  return true;
 }
@@ -39,12 +40,15 @@ export async function GET(request: Request) {
  // Prefer the existing API to retain registrar-confirmed Namecheap availability.
  // A missing/old/unreachable backend must not disable public registry lookup.
  const base=backendUrl();
- if(base){
+ if(base && Date.now() >= backendRateLimitedUntil){
   const target=new URL("/api/domains/check",base);
   target.searchParams.set("domain",domain);
   try{
    const upstream=await fetch(target,{cache:"no-store",signal:AbortSignal.timeout(4000),redirect:"error"});
-   if(upstream.status===429)return NextResponse.json({error:"Rate limit exceeded"},{status:429,headers:NO_STORE});
+   if(upstream.status===429){
+    // Registrar/backend throttling must not block the independent registry fallback.
+    backendRateLimitedUntil=Date.now()+60_000;
+   }
    if(upstream.ok){
     const data=await upstream.json().catch(()=>null);
     if(data&&data.domain===domain&&["namecheap","rdap"].includes(data.provider))
