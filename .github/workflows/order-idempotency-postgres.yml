@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - fix/project-intake-idempotency-20261122
+      - audit/admin-dashboard-modernization-20261122
   pull_request:
     paths:
       - 'source/backend/**'

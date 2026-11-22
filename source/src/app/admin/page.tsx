@@ -12,10 +12,10 @@ import JourneyManager from "./journey-manager";
 import CommercialManager from "./commercial-manager";
 
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
-type View = "overview" | "integrations" | "catalogs" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "packages" | "options" | "theme" | "inbox" | "team" | "audit";
+type View = "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "theme" | "inbox" | "team" | "audit";
 type Package = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number };
 type Option = { id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number };
-type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
+type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; linked_project_id?: string | null; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
 type JourneyProject = { id:string; customer_name:string; customer_email:string|null; status:string; created_at:string };
 type Member = { id: string; email: string; display_name: string; role: Exclude<Role, "owner">; is_active: boolean; created_at: string };
 type Theme = { navy: string; blue: string; gold: string; page: string; logoUrl: string; heroImageUrl: string; backgroundImageUrl: string; fontFamily: "IBM Plex Sans Arabic" | "Cairo" | "Tajawal"; cardRadius: number };
@@ -88,28 +88,71 @@ export default function AdminPage() {
   const [packageDraft, setPackageDraft] = useState<PackageDraft>({ name: "", tagline: "", description: "", price: "", features: "", copyFromPackageId: "", isFeatured: false, isCustomQuote: false, isPublished: false });
   const [optionDraft, setOptionDraft] = useState<OptionDraft>({ packageId: "", code: "", name: "", description: "", price: "", pricingType: "fixed", unitLabel: "", isRequired: false, isActive: true });
 
-  const loadData = useCallback(async () => {
-    const [catalog, inbox, settings, pages, team, changes, email] = await Promise.all([
-      api("packages"), api("orders"), api("settings"), api("pages"), api("team"), api("audit"), api("email-status")
-    ]);
-    try { const journeys = await api("journey/projects"); setJourneyProjects(journeys.projects ?? []); setJourneyError(""); } catch (e) { setJourneyError(e instanceof Error ? e.message : "تعذر تحميل مشروعات العملاء"); }
-    setPackages(catalog.packages ?? []); setOptions((catalog.options ?? []).filter((option: Option) => !["logo_design", "visual_identity"].includes(option.code))); setOrders(inbox.orders ?? []);
-    setVatRate(Number(settings.settings?.vat_rate ?? 14)); setTheme({ ...defaultTheme, ...(settings.settings?.theme ?? {}) });
-    const publishedArabicHome = pages.pages?.find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar")?.content ?? {};
-    setPage({ ...siteCopyDefaults, ...publishedArabicHome });
-    setHiddenHomeFields(new Set(Object.entries(publishedArabicHome).filter(([, value]) => typeof value === "string" && value.trim() === "").map(([key]) => key)));
-    setMembers(team.members ?? []); setAudit(changes.logs ?? []);
-    setEmailStatus({
+  const loadData = useCallback(async (role: Role = "viewer") => {
+    // Keep independent admin sections usable when one backend endpoint fails.
+    const endpoints = ["packages", "orders", "settings", "pages", "team", "audit", "email-status", "journey/projects"] as const;
+    const results = await Promise.allSettled(endpoints.map((endpoint) => endpoint === "audit" && role !== "owner" && role !== "admin" ? Promise.resolve({ logs: [] }) : api(endpoint)));
+    const failed: string[] = [];
+    const getResult = (index: number): ApiPayload | null => {
+      const result = results[index];
+      if (result.status === "fulfilled") return result.value;
+      failed.push(endpoints[index]);
+      return null;
+    };
+    const catalog = getResult(0);
+    const inbox = getResult(1);
+    const settings = getResult(2);
+    const pages = getResult(3);
+    const team = getResult(4);
+    const changes = getResult(5);
+    const email = getResult(6);
+    const journeys = getResult(7);
+
+    if (catalog) {
+      setPackages(catalog.packages ?? []);
+      setOptions((catalog.options ?? []).filter((option: Option) => !["logo_design", "visual_identity"].includes(option.code)));
+    }
+    if (inbox) setOrders(inbox.orders ?? []);
+    if (settings) {
+      setVatRate(Number(settings.settings?.vat_rate ?? 14));
+      setTheme({ ...defaultTheme, ...(settings.settings?.theme ?? {}) });
+    }
+    if (pages) {
+      const publishedArabicHome = pages.pages?.find((item: { slug: string; locale: string }) => item.slug === "home" && item.locale === "ar")?.content ?? {};
+      setPage({ ...siteCopyDefaults, ...publishedArabicHome });
+      setHiddenHomeFields(new Set(Object.entries(publishedArabicHome).filter(([, value]) => typeof value === "string" && value.trim() === "").map(([key]) => key)));
+    }
+    if (team) setMembers(team.members ?? []);
+    if (changes) setAudit(changes.logs ?? []);
+    if (email) setEmailStatus({
       configured: Boolean(email.configured),
       from: typeof email.from === "string" ? email.from : "info@atsh-ai.com",
       replyTo: typeof email.replyTo === "string" ? email.replyTo : "sales@atsh-ai.com",
     });
+    if (journeys) {
+      setJourneyProjects(journeys.projects ?? []);
+      setJourneyError("");
+    } else {
+      setJourneyError("تعذر تحميل مشروعات العملاء. حاول تحديث البيانات لاحقًا.");
+    }
+    if (failed.length) {
+      setError(`تعذر تحديث بعض أقسام الإدارة: ${failed.join("، ")}. تم عرض البيانات المتاحة دون حذف البيانات المحفوظة.`);
+    } else {
+      setError("");
+    }
   }, []);
 
   useEffect(() => {
     let active = true;
-    api("me").then((data) => { if (!active) return; setUser({ email: data.email, role: data.role }); return loadData(); })
-      .catch(() => undefined).finally(() => { if (active) setAuthChecked(true); });
+    api("me").then((data) => { if (!active) return; setUser({ email: data.email, role: data.role }); return loadData(data.role); })
+      .catch((reason) => {
+        if (!active) return;
+        // An expired session is normal; server/rate-limit failures must not masquerade as logout.
+        const message = reason instanceof Error ? reason.message : "تعذر التحقق من جلسة الإدارة.";
+        if (!message.includes("HTTP 401") && !message.includes("HTTP 403")) {
+          setError(`تعذر التحقق من جلسة الإدارة: ${message}`);
+        }
+      }).finally(() => { if (active) setAuthChecked(true); });
     return () => { active = false; };
   }, [loadData]);
 
@@ -117,7 +160,7 @@ export default function AdminPage() {
   const canEditContent = canEditCatalog || user?.role === "editor";
   const canEditOrders = canEditCatalog || user?.role === "sales";
   const canManageTeam = user?.role === "owner";
-  const visibleNav = nav.filter((item) => (item.id !== "integrations" || canEditCatalog) && (item.id !== "catalogs" || canEditCatalog) && (item.id !== "assistant-knowledge" || canEditContent) && (item.id !== "team" || canManageTeam) && (item.id !== "options" && item.id !== "packages" && item.id !== "theme" ? true : canEditCatalog) && (item.id !== "content" && item.id !== "pages" && item.id !== "works" && item.id !== "content-studio" || canEditContent));
+  const visibleNav = nav.filter((item) => (item.id !== "integrations" || canEditCatalog) && (item.id !== "assistant-knowledge" || canEditContent) && (item.id !== "team" || canManageTeam) && (item.id !== "audit" || canEditCatalog) && (item.id !== "options" && item.id !== "theme" ? true : canEditCatalog) && (item.id !== "content" && item.id !== "pages" && item.id !== "works" && item.id !== "content-studio" || canEditContent));
   const newOrders = useMemo(() => orders.filter((order) => order.status === "new").length, [orders]);
   const title = nav.find((item) => item.id === view)?.label ?? "إدارة المنصة";
 
@@ -125,7 +168,7 @@ export default function AdminPage() {
     event.preventDefault(); setBusy(true); setError("");
     try {
       const result = await api("login", { method: "POST", body: JSON.stringify({ email: loginEmail, password: loginPassword }) });
-      setUser({ email: result.email, role: result.role }); setLoginPassword(""); await loadData();
+      setUser({ email: result.email, role: result.role }); setLoginPassword(""); await loadData(result.role);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر تسجيل الدخول."); }
     finally { setBusy(false); }
   };
@@ -163,7 +206,30 @@ export default function AdminPage() {
     finally { setBusy(false); }
   };
 
-  const logout = async () => { await api("logout", { method: "POST" }).catch(() => undefined); setUser(null); setPackages([]); setOrders([]); };
+  const logout = async () => {
+    // Clear every account-scoped cache so a later login cannot display another user's data.
+    await api("logout", { method: "POST" }).catch(() => undefined);
+    setUser(null);
+    setView("overview");
+    setPackages([]);
+    setOptions([]);
+    setOrders([]);
+    setJourneyProjects([]);
+    setMembers([]);
+    setAudit([]);
+    setPage({ ...siteCopyDefaults });
+    setHiddenHomeFields(new Set());
+    setTheme(defaultTheme);
+    setVatRate(14);
+    setEmailStatus({ configured: false, from: "info@atsh-ai.com", replyTo: "sales@atsh-ai.com" });
+    setJourneyError("");
+    setError("");
+    setNotice("");
+    setLoginPassword("");
+    setMemberPassword("");
+    setRecoveryCode("");
+    setNewOwnerPassword("");
+  };
 
   const changePackage = <K extends keyof Package,>(id: string, key: K, value: Package[K]) => setPackages((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
   const changeOption = <K extends keyof Option,>(id: string, key: K, value: Option[K]) => setOptions((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
@@ -348,6 +414,24 @@ function OrderTable({ orders, members, onChange, onSendEmail, canSend = false, d
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [orderDetails, setOrderDetails] = useState<Record<string, Order>>({});
+  const [detailError, setDetailError] = useState("");
+  const [detailLoading, setDetailLoading] = useState(false);
+  const showOrderDetails = async (order: Order) => {
+    if (expandedOrderId === order.id) { setExpandedOrderId(null); return; }
+    setExpandedOrderId(order.id);
+    setDetailError("");
+    setDetailLoading(true);
+    try {
+      const response = await api(`orders/${order.id}`);
+      setOrderDetails((current) => ({ ...current, [order.id]: response.order as Order }));
+    } catch (reason) {
+      setDetailError(reason instanceof Error ? reason.message : "تعذر تحميل تفاصيل الطلب.");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
   if (!orders.length) return <p className="empty-summary">لا توجد طلبات حتى الآن.</p>;
-  return <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>المرجع</th><th>العميل</th><th>البريد والهاتف</th><th>الباقة</th><th>الإجمالي</th><th>الحالة</th><th>المسؤول</th>{detailed && <th>التاريخ</th>}</tr></thead><tbody>{orders.map((order) => <tr key={order.id}><td><strong>{order.reference}</strong>{detailed && order.notes && <details><summary>تفاصيل الطلب</summary><pre>{order.notes}</pre></details>}</td><td>{order.customer_name}</td><td><a href={`mailto:${order.email ?? ""}`}>{order.email || "—"}</a><br />{order.phone}{canSend && order.email && <><br /><button className="inline-add" type="button" onClick={() => { setComposingId(composingId === order.id ? null : order.id); setSubject(`بخصوص طلبك ${order.reference}`); setMessage(""); setSendError(""); }}>إرسال رسالة</button>{composingId === order.id && <form className="admin-mail-compose" onSubmit={async (event) => { event.preventDefault(); setSending(true); setSendError(""); try { await onSendEmail(order, subject, message); setComposingId(null); setSubject(""); setMessage(""); } catch (reason) { setSendError(reason instanceof Error ? reason.message : "تعذر إرسال الرسالة."); } finally { setSending(false); } }}><label className="admin-field">عنوان الرسالة<input required maxLength={180} value={subject} onChange={(event) => setSubject(event.target.value)} /></label><label className="admin-field">نص الرسالة<textarea required maxLength={10000} rows={4} value={message} onChange={(event) => setMessage(event.target.value)} /></label>{sendError && <span className="error-message" role="alert">{sendError}</span>}<button className="button button-small" disabled={sending}>{sending ? "جارٍ الإرسال…" : "إرسال من البريد الرسمي"}</button></form>}</>}</td><td>{order.package_name ?? "طلب مخصص"}</td><td>{formatEgp(Number(order.total))}</td><td><select disabled={readOnly} aria-label={`حالة ${order.reference}`} value={order.status} onChange={(event) => onChange(order, "status", event.target.value)}>{statuses.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select></td><td><select disabled={readOnly} aria-label={`المسؤول ${order.reference}`} value={order.assigned_to ?? ""} onChange={(event) => onChange(order, "assigned_to", event.target.value)}><option value="">غير معيّن</option>{members.filter((member) => member.is_active).map((member) => <option key={member.id} value={member.id}>{member.display_name}</option>)}</select></td>{detailed && <td>{new Date(order.created_at).toLocaleDateString("ar-EG")}</td>}</tr>)}</tbody></table></div>;
+  return <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>المرجع</th><th>العميل</th><th>البريد والهاتف</th><th>الباقة</th><th>الإجمالي</th><th>الحالة</th><th>المسؤول</th>{detailed && <th>التاريخ</th>}</tr></thead><tbody>{orders.map((order) => <tr key={order.id}><td><strong>{order.reference}</strong>{detailed && <><br /><button type="button" className="inline-add" onClick={() => showOrderDetails(order)}>{expandedOrderId === order.id ? "إخفاء التفاصيل" : "عرض الطلب المعتمد"}</button>{expandedOrderId === order.id && <div style={{maxWidth:420,whiteSpace:"normal"}}>{detailLoading ? <p>جارٍ تحميل التفاصيل…</p> : detailError ? <p role="alert" className="error-message">{detailError}</p> : orderDetails[order.id] ? <><p><strong>ملاحظات الطلب:</strong> {orderDetails[order.id].notes || "لا توجد"}</p><p><strong>المشروع المرتبط:</strong> {orderDetails[order.id].linked_project_id ? <code dir="ltr">{orderDetails[order.id].linked_project_id}</code> : "لا يوجد مشروع مرتبط بهذا الطلب"}</p><details open><summary>المواصفات والاختيارات المحفوظة عند إرسال الطلب</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{orderDetails[order.id].snapshot ? JSON.stringify(orderDetails[order.id].snapshot, null, 2) : "لا توجد لقطة مواصفات محفوظة لهذا الطلب."}</pre></details></> : null}</div>}</>}</td><td>{order.customer_name}</td><td><a href={`mailto:${order.email ?? ""}`}>{order.email || "—"}</a><br />{order.phone}{canSend && order.email && <><br /><button className="inline-add" type="button" onClick={() => { setComposingId(composingId === order.id ? null : order.id); setSubject(`بخصوص طلبك ${order.reference}`); setMessage(""); setSendError(""); }}>إرسال رسالة</button>{composingId === order.id && <form className="admin-mail-compose" onSubmit={async (event) => { event.preventDefault(); setSending(true); setSendError(""); try { await onSendEmail(order, subject, message); setComposingId(null); setSubject(""); setMessage(""); } catch (reason) { setSendError(reason instanceof Error ? reason.message : "تعذر إرسال الرسالة."); } finally { setSending(false); } }}><label className="admin-field">عنوان الرسالة<input required maxLength={180} value={subject} onChange={(event) => setSubject(event.target.value)} /></label><label className="admin-field">نص الرسالة<textarea required maxLength={10000} rows={4} value={message} onChange={(event) => setMessage(event.target.value)} /></label>{sendError && <span className="error-message" role="alert">{sendError}</span>}<button className="button button-small" disabled={sending}>{sending ? "جارٍ الإرسال…" : "إرسال من البريد الرسمي"}</button></form>}</>}</td><td>{order.package_name ?? "طلب مخصص"}</td><td>{formatEgp(Number(order.total))}</td><td><select disabled={readOnly} aria-label={`حالة ${order.reference}`} value={order.status} onChange={(event) => onChange(order, "status", event.target.value)}>{statuses.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select></td><td><select disabled={readOnly} aria-label={`المسؤول ${order.reference}`} value={order.assigned_to ?? ""} onChange={(event) => onChange(order, "assigned_to", event.target.value)}><option value="">غير معيّن</option>{members.filter((member) => member.is_active).map((member) => <option key={member.id} value={member.id}>{member.display_name}</option>)}</select></td>{detailed && <td>{new Date(order.created_at).toLocaleDateString("ar-EG")}</td>}</tr>)}</tbody></table></div>;
 }
