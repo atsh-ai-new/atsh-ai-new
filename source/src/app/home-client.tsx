@@ -14,7 +14,7 @@ import { combinedQuoteSummary } from "@/lib/quote-breakdown";
 
 type Customer = { name: string; company: string; email: string; phone: string; details: string; compliance: string };
 type BackendPackage = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean };
-type BackendOption = { id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: string; unit_label: string; is_required: boolean };
+type BackendOption = { id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: string; unit_label: string; is_required: boolean; visibility?: "both" | "packages" | "systems" };
 type BackendCatalog = { packages: BackendPackage[]; options: BackendOption[] };
 type SiteConfig = { page?: { content?: Record<string, unknown> } | null; theme?: { navy: string; blue: string; gold: string; page: string; logoUrl?: string; heroImageUrl?: string; backgroundImageUrl?: string; fontFamily?: string; cardRadius?: number } | null; vatRate?: number };
 type PageLink = { slug: string; title: string };
