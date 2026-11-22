@@ -285,6 +285,25 @@ app.get("/api/admin/journey/my-tasks",requireAdmin,route(async(req,res)=>{
  res.set("Cache-Control","private, no-store").json({tasks:tasks.rows});
 }));
 
+// Assigned employees can change only the status of their own task, never its owner or contents.
+app.patch("/api/admin/journey/my-tasks/:taskId/status",requireAdmin,route(async(req,res)=>{
+ const scope=taskInboxScope(req.admin);
+ if(!scope)return res.status(403).json({error:"Team account required"});
+ if(!z.string().uuid().safeParse(req.params.taskId).success)return res.status(400).json({error:"Invalid task"});
+ const parsed=z.object({status:z.enum(["todo","in_progress","blocked","done"])}).strict().safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid status"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const before=await client.query("SELECT * FROM customer_journey_tasks WHERE id=$1 FOR UPDATE",[req.params.taskId]);
+  if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Task not found"});}
+  if(!scope.owner&&before.rows[0].assigned_to!==scope.userId){await client.query("ROLLBACK");return res.status(403).json({error:"Task is not assigned to your account"});}
+  const result=await client.query("UPDATE customer_journey_tasks SET status=$2,updated_by=$3,updated_at=now() WHERE id=$1 RETURNING id,status,updated_at",[req.params.taskId,parsed.data.status,req.admin.email]);
+  await auditChange(client,req.admin.email,"journey.task.status_updated","customer_journey_task",req.params.taskId,before.rows[0],{...before.rows[0],...result.rows[0]});
+  await client.query("COMMIT");res.set("Cache-Control","private, no-store").json({task:result.rows[0]});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
+
 // Internal project tasks: only administrators assign work to active team accounts.
 app.get("/api/admin/journey/projects/:id/tasks",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
