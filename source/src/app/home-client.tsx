@@ -91,8 +91,11 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
       return await response.json() as BackendCatalog;
     }).then((catalog) => {
       if (!active) return;
-      setApiCatalog(catalog);
-      setCatalogStatus(catalog.packages.length ? "ready" : "unavailable");
+      const preview=readPagePreview("home",locale);
+      const offerings=preview?.content?.previewOfferings as BackendCatalog|undefined;
+      const visible=offerings&&Array.isArray(offerings.packages)&&Array.isArray(offerings.options)?offerings:catalog;
+      setApiCatalog(visible);
+      setCatalogStatus(visible.packages.length ? "ready" : "unavailable");
     }).catch(() => { if (active) setCatalogStatus("unavailable"); });
     if (isEnglish) fetch("/api/site-content/home?locale=ar", { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as SiteConfig : null).then((config)=>{if(active && config?.page?.content)setArabicReference(config.page.content);}).catch(()=>undefined);
     fetch(`/api/site-content/home?locale=${locale}`, { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as SiteConfig : null)
