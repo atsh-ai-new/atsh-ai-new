@@ -24,10 +24,19 @@ export default function CatalogPricingClient({slug}:{slug:string}){
    if(!item){setStatus("missing");return;}
    setCatalog(item);setStatus("ready");
   }).catch(()=>{if(active)setStatus("missing");});
+  fetch("/api/catalog",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("Shared add-ons unavailable");return r.json()}).then(data=>{
+   if(!active)return;
+   const byCode=new Map<string,Addon>();
+   for(const option of data?.options??[]){
+    if(!option?.code||!Number.isFinite(Number(option.price))||["logo_design","visual_identity"].includes(option.code))continue;
+    if(!byCode.has(option.code))byCode.set(option.code,{code:option.code,name:option.name,description:option.description??"",price:Number(option.price),pricingType:option.pricing_type==="monthly"?"monthly":option.pricing_type==="yearly"?"yearly":"fixed"});
+   }
+   setSharedAddons([...byCode.values()]);
+  }).catch(()=>{if(active)setSharedAddons([]);});
   return()=>{active=false};
  },[slug]);
  const en=locale==="en",t=(ar:string,english:string)=>en?english:ar;
- const addons=useMemo(()=>Array.from(new Map([...sharedAddons,...(catalog?.pricedAddons??[])].filter(a=>a&&a.code&&Number.isFinite(Number(a.price))).map(a=>[a.code,a])).values()),[catalog,sharedAddons]);
+ const addons=useMemo(()=>sharedAddons,[sharedAddons]);
  const pageAddon=addons.find(a=>a.code==="extra_page");
  const base=typeof catalog?.basePrice==="number"&&Number.isFinite(catalog.basePrice)?catalog.basePrice:null;
  const fixed=addons.filter(a=>a.code!=="extra_page"&&selected.includes(a.code)&&a.pricingType==="fixed").reduce((n,a)=>n+Number(a.price),0)+pages*Number(pageAddon?.price??0);
