@@ -1,0 +1,40 @@
+name: PostgreSQL order concurrency
+on:
+  push:
+    branches:
+      - fix/project-intake-idempotency-20261122
+  pull_request:
+    paths:
+      - 'source/backend/**'
+      - '.github/workflows/order-idempotency-postgres.yml'
+  workflow_dispatch:
+jobs:
+  concurrency:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user -d test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install backend dependencies
+        working-directory: source/backend
+        run: npm install --no-audit --no-fund
+      - name: Run real PostgreSQL simultaneous submissions test
+        working-directory: source/backend
+        env:
+          TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+        run: node --test test/postgres-idempotency.integration.mjs
