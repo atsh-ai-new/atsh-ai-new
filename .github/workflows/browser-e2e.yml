@@ -1,7 +1,7 @@
 name: ATSH Browser E2E (Desktop + Mobile)
 on:
   push:
-    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1, catalog-commerce-payment-ready-v1, fix/full-english-localization-20261118, integration/customer-v2-admin-stability-20261122]
+    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1, catalog-commerce-payment-ready-v1, fix/full-english-localization-20261118, integration/customer-v2-admin-stability-20261122, feature/unified-four-screens-20261122]
     paths:
       - 'source/e2e/**'
       - 'source/src/app/en/**'
@@ -10,6 +10,9 @@ on:
       - 'source/playwright.config.ts'
       - 'source/src/app/catalog/**'
       - 'source/src/app/account/**'
+      - 'source/src/app/admin/**'
+      - 'source/backend/src/customer-auth.js'
+      - 'source/backend/src/server.js'
       - 'source/src/components/home-catalog-showcase.tsx'
       - 'source/src/components/quote-revision-editor.tsx'
       - 'source/src/app/start/**'
