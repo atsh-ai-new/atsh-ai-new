@@ -225,10 +225,11 @@ app.delete("/api/admin/journey/projects/:id",requireAdmin,requireRole("owner"),r
   if(links.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"المشروع مرتبط بطلب تجاري. استخدم الأرشفة للحفاظ على الطلب والسجل المالي."});}
   const drafts=await client.query("SELECT 1 FROM customer_project_drafts WHERE linked_journey_id=$1 LIMIT 1",[req.params.id]);
   if(drafts.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"المشروع مرتبط بمسودة عميل. استخدم الأرشفة بدل الحذف النهائي."});}
-  await client.query("DELETE FROM customer_journey_projects WHERE id=$1",[req.params.id]);
+  const removed=await client.query("DELETE FROM customer_journey_projects WHERE id=$1 RETURNING id",[req.params.id]);
+  if(removed.rowCount!==1)throw new Error("Project deletion was not confirmed");
   await auditChange(client,req.admin.email,"journey.project.deleted","customer_journey_project",req.params.id,before.rows[0],null);
   await client.query("COMMIT");res.json({deleted:true});
- }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+ }catch(e){await client.query("ROLLBACK");if(e.code==="23503")return res.status(409).json({error:"المشروع مرتبط بسجلات أخرى ولا يمكن حذفه نهائيًا. استخدم الأرشفة لإخفائه من المشروعات النشطة."});throw e;}finally{client.release();}
 }));
 app.get("/api/admin/journey/projects",requireAdmin,requireRole("owner","admin","sales","viewer"),route(async(_req,res)=>{
  const result=await pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at FROM customer_journey_projects WHERE status <> 'archived' ORDER BY created_at DESC LIMIT 100");
