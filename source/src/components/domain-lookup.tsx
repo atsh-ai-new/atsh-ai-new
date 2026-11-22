@@ -36,9 +36,8 @@ export default function DomainLookup({onDomainChange,locale="ar"}:{onDomainChang
  const change=(value:string)=>{
   setName(value);setResults([]);setMessage("");setSelectedDomain("");
   // Never send a bare business name ("atsh") to the project-order domain field.
-  const qualified=value.trim().includes(".")?value.trim().toLowerCase():"";
-  onDomainChange?.(qualified);
-  saveGuestWorkspace({domainName:qualified,source:"configurator"});
+  onDomainChange?.("");
+  saveGuestWorkspace({domainName:"",source:"configurator"});
  };
  const select=(domain:string)=>{
   setSelectedDomain(domain);setName(domain);setMessage(t("تم حفظ الاسم كاختيار مفضل، وليس حجزًا.", "Saved as your preferred domain, not reserved."));
