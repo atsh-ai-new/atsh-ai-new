@@ -52,7 +52,8 @@ export default function JourneyManager({canManageTasks=false,canArchive=false,ca
   if(!canDelete||busy||!window.confirm(`حذف مشروع "${project.customer_name}" نهائيًا؟ لا يمكن استرجاع بياناته. المشروعات المرتبطة بطلب أو مسودة عميل محمية من الحذف.`))return;
   setBusy(true);setError("");
   try{
-   await request(`projects/${project.id}`,{method:"DELETE"});
+   const deletion=await request(`projects/${project.id}`,{method:"DELETE"});
+   if(deletion.deleted!==true)throw new Error("لم يؤكد الخادم حذف المشروع. يرجى المحاولة مرة أخرى.");
    if(selected?.id===project.id){setSelected(null);setMessages([]);setSubmittedDraft(null);setLinkedOrder(null);setOrderAssignments([]);setTasks([]);}
    await refresh();
   }catch(e){
