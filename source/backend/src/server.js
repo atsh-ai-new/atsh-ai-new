@@ -254,9 +254,19 @@ app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requireRole("ow
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const parsed=journeyMessageSchema.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid message"});
- const result=await pool.query("INSERT INTO customer_journey_messages(project_id,actor,body) SELECT id,'admin',$2 FROM customer_journey_projects WHERE id=$1 RETURNING id,actor,body,created_at",[req.params.id,parsed.data.body]);
- if(!result.rowCount)return res.status(404).json({error:"Project not found"});
- res.status(201).json({message:result.rows[0]});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const project=await client.query("SELECT id,customer_account_id,status FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
+  if(!project.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
+  if(project.rows[0].status==="archived"){await client.query("ROLLBACK");return res.status(409).json({error:"Archived project cannot receive messages"});}
+  const result=await client.query("INSERT INTO customer_journey_messages(project_id,actor,body) VALUES($1,'admin',$2) RETURNING id,actor,body,created_at",[req.params.id,parsed.data.body]);
+  if(project.rows[0].customer_account_id){
+   await queueJourneyEvent(client,"journey.admin_message",`journey.admin_message:${result.rows[0].id}`,{projectId:req.params.id,messageId:result.rows[0].id,customerAccountId:project.rows[0].customer_account_id});
+  }
+  await client.query("COMMIT");
+  res.status(201).set("Cache-Control","private, no-store").json({message:result.rows[0]});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 
 // Internal project tasks: only administrators assign work to active team accounts.
