@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type CSSProperties } from "react";
 import { addonOptions, calculateQuote, formatEgp, identityOptions, packages, type AddonId, type ContentId, type DomainId, type IdentityId, type PackageId } from "@/lib/catalog";
 import { siteCopyDefaults } from "@/lib/site-copy";
+import { readPagePreview } from "@/lib/page-preview";
 import { siteCopyEn, englishPackages, englishOptions, englishPrice } from "@/lib/site-copy-en";
 import { findSector } from "@/lib/sector-catalog";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
@@ -95,7 +96,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     }).catch(() => { if (active) setCatalogStatus("unavailable"); });
     if (isEnglish) fetch("/api/site-content/home?locale=ar", { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as SiteConfig : null).then((config)=>{if(active && config?.page?.content)setArabicReference(config.page.content);}).catch(()=>undefined);
     fetch(`/api/site-content/home?locale=${locale}`, { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as SiteConfig : null)
-      .then((config) => { if (active && config) setSiteConfig(config); }).catch(() => undefined);
+      .then((config) => { if (!active)return; const preview=readPagePreview("home",locale);if(preview)setSiteConfig({...config,page:{content:preview.content}});else if(config)setSiteConfig(config); }).catch(() => { const preview=readPagePreview("home",locale);if(active&&preview)setSiteConfig({page:{content:preview.content}}); });
     fetch(`/api/site-pages?locale=${locale}`, { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { pages?: PageLink[] } : null)
       .then((result) => { if (active) setPageLinks((result?.pages ?? []).filter((item) => item.slug !== "home")); }).catch(() => undefined);
     return () => { active = false; };
