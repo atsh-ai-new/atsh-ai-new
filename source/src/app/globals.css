@@ -649,3 +649,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .domain-result-card strong{font-size:clamp(9px,1.8vw,12px)!important;word-break:break-word}
 .domain-result-card small{font-size:10px!important;overflow-wrap:anywhere}
 @media(max-width:600px){.domain-results-grid{gap:4px}.domain-result-card{padding:7px 2px;gap:4px}.domain-result-card strong{font-size:10px!important}.domain-result-card button{font-size:9px!important;padding:5px 2px!important}}
+
+/* Match custom-system add-ons to the compact website feature cards. */
+.catalog-addon-grid{gap:8px}
+.catalog-addon-grid .select-card{min-height:0;padding:10px 11px;gap:8px;align-items:center}
+.catalog-addon-grid .select-card-copy{min-width:0;gap:3px}
+.catalog-addon-grid .select-card-copy strong,.catalog-addon-grid .select-card-copy small,.catalog-addon-grid .select-card-copy b{line-height:1.4;overflow-wrap:anywhere}
+@media(max-width:620px){.catalog-addon-grid{grid-template-columns:minmax(0,1fr);gap:7px}.catalog-addon-grid .select-card{padding:9px 10px}}
