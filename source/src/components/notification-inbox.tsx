@@ -9,7 +9,7 @@ export default function NotificationInbox({customer=false}:{customer?:boolean}){
  const refresh=useCallback(async()=>{
   try{
    const r=await fetch(base,{credentials:"include",cache:"no-store"});
-   if(!r.ok)throw new Error(r.status===503?"الإشعارات تنتظر تفعيل قاعدة البيانات":"تعذر تحميل الإشعارات");
+   if(!r.ok)throw new Error(r.status===503?"الإشعارات تنتظر تفعيل قاعدة البيانات":r.status===404?"واجهة الإشعارات غير متاحة على الخادم الحالي":r.status===401?"انتهت جلسة الدخول، يرجى تسجيل الدخول مجددًا":`تعذر تحميل الإشعارات (HTTP ${r.status})`);
    const d=await r.json();setItems(d.notifications||[]);setError("");
   }catch(e){setError(e instanceof Error?e.message:"تعذر تحميل الإشعارات");}
  },[base]);
@@ -21,7 +21,7 @@ export default function NotificationInbox({customer=false}:{customer?:boolean}){
   await refresh();
  }
  return <details style={{position:"relative",maxWidth:"100%"}}>
-  <summary style={{cursor:"pointer",padding:"8px 10px"}}>🔔 الإشعارات {unread>0?`(${unread})`:""}</summary>
+  <summary style={{cursor:"pointer",padding:"8px 10px",whiteSpace:"nowrap"}}>🔔 الإشعارات {unread>0?`(${unread})`:""}</summary>
   <section aria-label="صندوق الإشعارات" style={{maxHeight:340,overflowY:"auto",minWidth:260,maxWidth:390,padding:10,background:"var(--surface,#fff)",color:"var(--text,#14243c)",border:"1px solid #d8dde5",borderRadius:10}}>
    {error&&<p role="status">{error}</p>}
    {!error&&items.length===0&&<p>لا توجد إشعارات حاليًا.</p>}
