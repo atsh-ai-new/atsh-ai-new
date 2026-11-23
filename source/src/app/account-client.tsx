@@ -47,8 +47,8 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    if(action!=="dashboard")return;
    let active=true;
    void fetch("/api/customer/auth/me",{credentials:"include",cache:"no-store"})
-    .then(response=>{if(active)setAccountStatus(response.ok?"authenticated":"guest")})
-    .catch(()=>{if(active)setAccountStatus("guest")});
+    .then(response=>{if(!active)return;if(response.ok)setAccountStatus("authenticated");else if(response.status===401||response.status===403)setAccountStatus("guest");else setMessage(t("تعذر التحقق من الجلسة مؤقتًا. أعد المحاولة بعد قليل.","Could not verify your session temporarily. Please try again shortly."));})
+    .catch(()=>{if(active)setMessage(t("تعذر الاتصال للتحقق من الجلسة. أعد المحاولة بعد قليل.","Could not connect to verify your session. Please try again shortly."));});
    const guest=loadGuestWorkspace();
    setGuestPending(Object.keys(guest).length>0);
    void fetch("/api/customer/auth/workspace",{credentials:"include",cache:"no-store"}).then(async r=>r.ok?r.json():null)
