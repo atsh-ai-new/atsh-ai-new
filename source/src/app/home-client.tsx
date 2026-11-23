@@ -281,7 +281,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
        const chosenSector=selectedSector?.slug||savedDraft.sectorSlug;
        const chosenPackage=packageId||savedDraft.packageId;
        const customRequirements=(customer.details||savedDraft.requirements||"").trim();
-       if(!chosenSector&&!chosenPackage&&!(savedDraft.projectMode==="custom"&&customRequirements))throw Error(t("لم يتم تحديد نوع المشروع في المسودة. ارجع لاختيار باقة أو مشروع من الكتالوج، ثم أكمل الإضافات.","No project type is selected in this draft. Choose a package or catalog project, then continue with add-ons."));
+       if(!chosenSector&&!chosenPackage&&!(savedDraft.projectMode==="custom"&&customRequirements))throw Error(t("لم يتم تحديد نوع المشروع في المسودة. ارجع لاختيار باقة أو مشروع من النظام المخصص، ثم أكمل الإضافات.","No project type is selected in this draft. Choose a package or catalog project, then continue with add-ons."));
        const patch={...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes,source:"catalog" as const}:{}),...(packageId?{packageId,source:"configurator" as const}:{}),options:[...addons,...selectedExtraOptionIds].slice(0,30),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||savedDraft.businessName||"",requirements:customRequirements,
         pages,bilingual,identity,contentMode:content==="writing"?"writing" as const:"provided" as const,
         hosting,domainChoice:domain,maintenance,startWindow:startWindowLabel,contactWindow:contactWindowLabel,
@@ -376,7 +376,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         setRequestMessage(t("تم إرسال طلبك للإدارة. تابع الرد من حسابك.","Your request was sent to management. Follow the response in your account."));
         return;
       }
-      if (!selectedServerPackage || selectedServerOptions.some((option) => !option)) throw new Error(t("تعذر مطابقة اختياراتك مع كتالوج الخادم. أعد تحميل الصفحة أو تواصل معنا.","Some selected items are no longer in the live catalog. Refresh or contact us."));
+      if (!selectedServerPackage || selectedServerOptions.some((option) => !option)) throw new Error(t("تعذر مطابقة اختياراتك مع نظام مخصص الخادم. أعد تحميل الصفحة أو تواصل معنا.","Some selected items are no longer in the live catalog. Refresh or contact us."));
       const resolvedOptions = selectedServerOptions.filter((option): option is BackendOption => Boolean(option));
       const optionQuantities = Object.fromEntries(resolvedOptions.filter((option) => option.pricing_type === "per_page").map((option) => [option.id, pages]));
       const notes = [
