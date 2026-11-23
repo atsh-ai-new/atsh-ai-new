@@ -77,15 +77,16 @@ FROM packages p CROSS JOIN (VALUES
 ('analytics','تحليلات وتقارير','متابعة الزيارات والتفاعل الأساسي.',600,'fixed','',80),
 ('hosting','استضافة مُدارة وحماية','استضافة سنوية مع حماية ومتابعة.',600,'yearly','',90),
 ('maintenance','صيانة ودعم','صيانة ودعم فني لمدة سنة.',3600,'yearly','',100),
-('domain_com','نطاق .com (السنة الأولى)','تسجيل نطاق .com للسنة الأولى مع الاستضافة.',0,'yearly','',110),
-('domain_eg','نطاق .eg (السنة الأولى)','تسجيل نطاق .eg للسنة الأولى مع الاستضافة.',0,'yearly','',120)
+('smart_bot','البوت الذكي','ردود آلية محفوظة',500,'fixed','',110),
+('ai_assistant','المساعد الذكي','شبيه بمساعد ATSH AI',2500,'yearly','',120)
 ) AS o(code,name,description,price,pricing_type,unit_label,sort_order)
 WHERE p.is_published=true AND NOT EXISTS(SELECT 1 FROM package_options existing WHERE existing.package_id=p.id AND existing.code=o.code);
 
 
 -- Shared add-ons for custom systems. Preserve domain products for website packages.
-UPDATE package_options SET visibility='packages'
-WHERE code IN ('domain_com','domain_eg') AND visibility='both';
+-- Domain booking is handled by the dedicated domain-search flow, never by add-on cards.
+UPDATE package_options SET is_active=false, visibility='packages'
+WHERE code IN ('domain_com','domain_eg');
 
 INSERT INTO package_options(package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,visibility)
 SELECT p.id,a.code,a.name,a.description,a.price,a.pricing_type,'',false,true,a.sort_order,'systems'
