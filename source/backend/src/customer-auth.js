@@ -126,8 +126,16 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    await client.query('COMMIT');res.json({claimed:true,projectId:row.id});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
  }));
- // Shared draft is intentionally a limited preference snapshot, never a priced quote.
+ // A draft invoice is an indicative client-side estimate, not an authoritative quote.
+ const draftInvoiceSchema=z.object({
+  title:z.string().max(120),
+  items:z.array(z.object({name:z.string().max(200),amount:z.number().finite(),period:z.enum(['fixed','monthly','yearly'])}).strict()).max(100),
+  subtotal:z.number().finite(),vat:z.number().finite(),total:z.number().finite(),
+  fixed:z.number().finite(),monthly:z.number().finite(),yearly:z.number().finite(),
+  currency:z.literal('EGP'),savedAt:z.string().max(64)
+ }).strict();
  const draftSchema=z.object({
+  draftInvoice:draftInvoiceSchema.optional(),
   sectorSlug:z.string().regex(/^[a-z0-9-]{1,100}$/).optional(),
   sectorName:z.string().max(120).optional(),
   packageId:z.string().max(100).optional(),
