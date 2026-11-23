@@ -682,3 +682,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .atsh-account-auth>.atsh-account-brand strong b,.atsh-account-dashboard>.atsh-account-brand strong b{color:#27659b}
 .atsh-account-auth>.atsh-account-brand small,.atsh-account-dashboard>.atsh-account-brand small{font-size:9px;color:#536983}
 @media(max-width:620px){.atsh-account-auth>.atsh-account-brand img,.atsh-account-dashboard>.atsh-account-brand img{width:35px;height:35px;min-width:35px;max-width:35px}.atsh-account-auth>.atsh-account-brand strong,.atsh-account-dashboard>.atsh-account-brand strong{font-size:14px}.atsh-account-auth>.atsh-account-brand small,.atsh-account-dashboard>.atsh-account-brand small{font-size:7px}}
+
+/* Global contact and social controls */
+.atsh-fab-messenger{background:#0877ef}
+.atsh-fab-language{background:#fff;color:#203958;border:1px solid #cbd5e1;font-size:23px}
+.atsh-floating-actions{bottom:18px}
+.atsh-global-language{position:fixed;right:18px;bottom:calc(18px + 5 * 65px);z-index:152}
+.atsh-social-header{position:fixed;top:16px;left:16px;z-index:140;display:flex;align-items:center;gap:7px;padding:4px;border-radius:20px;background:rgba(255,255,255,.9);box-shadow:0 2px 12px #2039581a}
+.atsh-social-header a,.atsh-social-header span{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%}
+.atsh-social-header svg{width:18px;height:18px}
+.atsh-social-header .pending{opacity:.6;cursor:default}
+@media(max-width:600px){.atsh-global-language{right:12px;bottom:calc(14px + env(safe-area-inset-bottom,0px) + 5 * 59px)}.atsh-social-header{top:8px;left:8px;gap:3px;padding:3px}.atsh-social-header a,.atsh-social-header span{width:24px;height:24px}.atsh-social-header svg{width:16px;height:16px}}
