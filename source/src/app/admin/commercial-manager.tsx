@@ -47,10 +47,10 @@ export default function CommercialManager(){
   newContract();
  }
  async function showContractVersions(id:number){try{const response=await request(`contracts/templates/${id}/versions`);setContractVersions(response.versions||[]);}catch(e){setMessage(e instanceof Error?e.message:"فشل تحميل الإصدارات");}}
- async function refresh(){try{const [q,t,s,i,o,f,d]=await Promise.all([request("quotes"),request("contracts/templates"),request("tickets"),request("invoices"),request("orders/eligible"),request("change-requests"),request("project-drafts/eligible")]);setInvoices(i.invoices||[]);setQuotes(q.quotes||[]);setTemplates(t.templates||[]);setTickets(s.tickets||[]);setEligibleOrders(o.orders||[]);setEligibleDrafts(d.drafts||[]);setChangeRequests(f.changeRequests||[]);try{setFinance(await request("finance/summary"))}catch{setFinance(null)}}catch(e){setMessage(String(e));}}
- useEffect(()=>{void refresh()},[]);
+ async function refresh(){try{const [q,t,s,i,o,f,d]=await Promise.all([request("quotes"),request("contracts/templates"),request("tickets"),request("invoices"),request("orders/eligible"),request("change-requests"),request("project-drafts/eligible")]);setInvoices(i.invoices||[]);setQuotes(q.quotes||[]);setTemplates(t.templates||[]);setTickets(s.tickets||[]);setEligibleOrders(o.orders||[]);setEligibleDrafts(d.drafts||[]);setChangeRequests(f.changeRequests||[]);try{setFinance(await request("finance/summary"))}catch{setFinance(null)}}catch(e){setMessage("تعذر تحديث بيانات المبيعات: "+String(e));throw e;}}
+ useEffect(()=>{void refresh().catch(()=>undefined)},[]);
  async function showPayments(id:number){setSelectedInvoice(id);setPaymentsBusy(true);try{const result=await request(`invoices/${id}/payments`);setPayments(result.payments||[])}catch(e){setMessage(String(e));setPayments([])}finally{setPaymentsBusy(false)}}
- async function run(action:()=>Promise<unknown>){try{setMessage("");await action();setMessage("تم تنفيذ العملية بنجاح");await refresh()}catch(e){setMessage(e instanceof Error?e.message:"حدث خطأ")}}
+ async function run(action:()=>Promise<unknown>){try{setMessage("");await action();try{await refresh();setMessage("تم تنفيذ العملية وتحديث بيانات المبيعات بنجاح");}catch{setMessage("تم إرسال العملية، لكن تعذر تحديث بيانات المبيعات. تحقق من السجل قبل إعادة الإرسال.");}}catch(e){setMessage(e instanceof Error?e.message:"حدث خطأ")}}
  return <section dir="rtl" style={{padding:20,display:"grid",gap:22}}>
  <h2>إدارة المبيعات والعقود</h2><p>العروض الصادرة والعقود الموقعة تُحفظ بإصدارات ثابتة. الدفع والتسليم لا يتمان تلقائيًا من هذه الشاشة.</p>
  {message&&<p role="status">{message}</p>}
