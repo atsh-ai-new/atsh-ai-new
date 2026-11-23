@@ -12,14 +12,10 @@ type Props={
  currentJourneyStatus?:string;
 };
 const tabs:Array<{id:HubTab;label:string}>= [
- {id:"overview",label:"الرئيسية"},
- {id:"projects",label:"الباقة والمشروع"},
+ {id:"projects",label:"طلبي ومتابعته"},
  {id:"messages",label:"مراسلات الإدارة"},
  {id:"preview",label:"معاينة المشروع"},
- {id:"services",label:"خدماتي المستمرة"},
- {id:"quotes",label:"عروض الإدارة"},
- {id:"invoices",label:"الفواتير والدفع"},
- {id:"settings",label:"حسابي"}
+ {id:"services",label:"لوحة خدماتي"}
 ];
 const stages=["اختيار المواصفات","تخصيص النموذج","اعتماد المعاينة","عرض السعر والعقد","المدفوعات","التنفيذ والتسليم"];
 export default function CustomerJourneyHub(props:Props){const [menuOpen,setMenuOpen]=useState(false);const en=props.locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
@@ -32,12 +28,9 @@ export default function CustomerJourneyHub(props:Props){const [menuOpen,setMenuO
  const completed=!props.currentProject?0:status==="delivered"||status==="support"?6:["paid","building","preview_ready","approved"].includes(status||"")?5:status==="payment_pending"?4:previewStatus==="approved"?3:previewStatus?2:1;
  return <div dir={en?"ltr":"rtl"} style={{marginBottom:24}}>
   <style>{`.atsh-hub-menu{position:relative;margin:12px 0}.atsh-hub-menu-trigger{display:flex;align-items:center;gap:10px;border:1px solid #cbd5e1;border-radius:11px;background:#fff;color:#203958;padding:11px 15px;font:inherit;font-weight:800;cursor:pointer}.atsh-hub-menu-items:not([hidden]){display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;padding:12px;margin-top:7px;background:#fff;border:1px solid #dce4ee;border-radius:13px}.atsh-hub-menu-items[hidden]{display:none}.atsh-hub-tab{white-space:nowrap;flex-shrink:0;border:1px solid #d0dced;border-radius:11px;padding:11px 13px;cursor:pointer;background:white;color:#203958;font:inherit;font-size:14px}.atsh-hub-tab[aria-current="page"]{background:#203958;color:white;font-weight:800}.atsh-hub-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px}.atsh-hub-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}@media(max-width:600px){.atsh-hub-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.atsh-hub-tab{flex:0 0 auto}.atsh-hub-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}`}</style>
-  <div className="atsh-hub-menu">
-   <button type="button" className="atsh-hub-menu-trigger" aria-expanded={menuOpen} aria-controls="atsh-hub-menu-items" onClick={()=>setMenuOpen(open=>!open)}>☰ <span>{t("أقسام حسابي","Account sections")}</span></button>
-   <nav id="atsh-hub-menu-items" hidden={!menuOpen} aria-label={t("أقسام حساب العميل","Customer account navigation")} className="atsh-hub-menu-items">
-    {tabs.filter(tab=>tab.id!=="services"||["delivered","support"].includes(props.currentJourneyStatus||"")).map(tab=><button key={tab.id} className="atsh-hub-tab" type="button" aria-current={props.active===tab.id?"page":undefined} onClick={()=>{props.onTab(tab.id);setMenuOpen(false);}}>{en?translatedTabs[tab.id]:tab.label}</button>)}
-   </nav>
-  </div>
+  <nav aria-label={t("رحلة العميل","Customer journey")} style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8,margin:"12px 0 18px"}}>
+   {tabs.filter(tab=>tab.id!=="services"||["delivered","support"].includes(props.currentJourneyStatus||"")).map(tab=><button key={tab.id} type="button" aria-current={props.active===tab.id?"page":undefined} onClick={()=>props.onTab(tab.id)} style={{padding:"13px 6px",borderRadius:12,border:"1px solid #d0dced",background:props.active===tab.id?"#203958":"#fff",color:props.active===tab.id?"#fff":"#203958",fontWeight:800,fontSize:13,cursor:"pointer"}}>{en?translatedTabs[tab.id]:tab.label}</button>)}
+  </nav>
   {props.active==="overview"&&<section aria-label={t("لوحة العميل","Customer dashboard")}>
    <div style={{background:"#fff",border:"1px solid #dce4ee",borderRadius:16,padding:18,marginBottom:14}}>
     <small style={{color:"#64748b"}}>{t("مشروعك الحالي","Current project")}</small>
