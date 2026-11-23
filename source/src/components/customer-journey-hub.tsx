@@ -38,29 +38,20 @@ export default function CustomerJourneyHub(props:Props){const [menuOpen,setMenuO
     {tabs.filter(tab=>tab.id!=="services"||["delivered","support"].includes(props.currentJourneyStatus||"")).map(tab=><button key={tab.id} className="atsh-hub-tab" type="button" aria-current={props.active===tab.id?"page":undefined} onClick={()=>{props.onTab(tab.id);setMenuOpen(false);}}>{en?translatedTabs[tab.id]:tab.label}</button>)}
    </nav>
   </div>
-  {props.active==="overview"&&<section aria-label={t("ملخص رحلة العميل","Customer journey overview")}>
-   <div className="atsh-hub-stats">
-     {counts.map(item=><div key={item.title} style={{background:"#fff",border:"1px solid #dce4ee",padding:17,borderRadius:14}}><small style={{color:"#536983"}}>{en?({"مشروعاتي":"My projects","طلبات قيد المتابعة":"Projects in review","عروض أسعار":"Quotes"} as Record<string,string>)[item.title]||item.title:item.title}</small><strong style={{display:"block",fontSize:25,color:"#203958",marginTop:6}}>{item.number}</strong></div>)}
-   </div>
-   <div style={{border:"1px solid #dce4ee",background:"#fff",padding:"19px",borderRadius:15,marginTop:14}}>
-    <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:9,alignItems:"center"}}>
-      <div><h3 style={{margin:"0 0 6px"}}>{t("رحلة المشروع الحالية","Current project journey")}</h3><p style={{margin:0,color:"#64748b",fontSize:14}}>{props.currentProject?`${props.currentProject.title} · ${props.currentProject.sectorName||"مشروع قيد التجهيز"}`:"ابدأ مشروعًا أو اختر نموذجًا لإنشاء مسودة تخصك."}</p></div>
-      <button type="button" onClick={()=>props.onTab("projects")} style={{border:0,background:"#203958",color:"white",padding:"10px 14px",borderRadius:10,cursor:"pointer"}}>{props.currentProject?t("استكمال المشروع","Continue project"):t("إنشاء مشروع","Create project")} ←</button>
+  {props.active==="overview"&&<section aria-label={t("لوحة العميل","Customer dashboard")}>
+   <div style={{background:"#fff",border:"1px solid #dce4ee",borderRadius:16,padding:18,marginBottom:14}}>
+    <small style={{color:"#64748b"}}>{t("مشروعك الحالي","Current project")}</small>
+    <h2 style={{margin:"7px 0",fontSize:22}}>{props.currentProject?.title||t("لم تختر مشروعًا بعد","No project selected")}</h2>
+    <p style={{margin:"0 0 12px",color:"#64748b",fontSize:14}}>{props.currentProject?.sectorName||t("يمكنك متابعة طلبك من قسم مشروعي","Track your request from My project")}</p>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+     <span style={{background:"#eef3f8",borderRadius:20,padding:"6px 12px",fontSize:13,fontWeight:700}}>{!props.currentProject?t("لم يبدأ","Not started"):status==="delivered"||status==="support"?t("تم التسليم","Delivered"):status==="building"?t("قيد التنفيذ","In progress"):status==="payment_pending"?t("بانتظار الدفع","Payment pending"):t("قيد المتابعة","In review")}</span>
+     <button type="button" className="atsh-hub-tab" onClick={()=>props.onTab("projects")}>{t("فتح المشروع","Open project")}</button>
     </div>
-    <details style={{marginTop:12}}><summary style={{cursor:"pointer",fontWeight:700,color:"#203958"}}>{t("عرض مراحل المشروع الست","Show six project stages")}</summary><div className="atsh-hub-flow" style={{marginTop:12}}>{(en?translatedStages:stages).map((label,index)=>{
-      const state=index<completed?"done":index===completed?"current":"waiting";
-      return <div key={label} aria-current={state==="current"?"step":undefined} style={{border:"1px solid "+(state==="done"?"#a2d4be":state==="current"?"#89aacb":"#e1e6ed"),background:state==="done"?"#edf9f2":state==="current"?"#eff5ff":"#f9fafb",borderRadius:12,padding:12,minWidth:0}}>
-      <span style={{fontSize:12,fontWeight:800,color:state==="done"?"#17633f":"#203958"}}>{state==="done"?t("✓ مكتمل","✓ Completed"):state==="current"?t("● المرحلة الحالية","● Current stage"):t("○ لاحقًا","○ Later")}</span><div style={{fontWeight:700,marginTop:8,fontSize:13}}>{index+1}. {label}</div></div>;
-    })}</div></details>
-    <p style={{fontSize:12,color:"#64748b",margin:"12px 0 0"}}>{t("تُحسب المراحل من أحدث اعتماد معاينة وسجل المشروع الموثوق بالخادم؛ لا يعتبر الضغط على قبول العقد عملية سداد.","Progress is based on verified project records and the most recent preview approval; accepting a contract is not a payment.")}</p>
-    {status==="payment_pending"&&<p role="status" style={{padding:12,background:"#fff4d6",borderRadius:10,color:"#83591b"}}>{t("العقد معتمد والطلب بانتظار الدفع. بوابة الدفع الإلكتروني لم يتم ربطها بعد؛ التنفيذ لن يبدأ تلقائيًا.","Contract approved; payment pending. Online payment is not connected yet, so work will not start automatically.")}</p>}
-    {["paid","building","preview_ready","approved","delivered","support"].includes(status||"")&&<p role="status" style={{padding:12,background:"#e8f7f1",borderRadius:10,color:"#1b6547"}}>{t("تم تأكيد دفعة المشروع رسميًا من الخادم. متابعة التنفيذ والتسليم تظهر في أقسام حسابك.","A project payment has been verified by the server. Track development and delivery in your account.")}</p>}
    </div>
-   <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:12}}>
-    <button type="button" className="atsh-hub-tab" onClick={()=>props.onTab("quotes")}>{t("الطلبات والعروض","Orders & quotes")} ({props.orderCount+props.quoteCount})</button>
-    <button type="button" className="atsh-hub-tab" onClick={()=>props.onTab("contracts")}>{t("العقود","Contracts")} ({props.contractCount})</button>
-    <button type="button" className="atsh-hub-tab" onClick={()=>props.onTab("invoices")}>{t("الفواتير","Invoices")} ({props.invoiceCount})</button>
-    <button type="button" className="atsh-hub-tab" onClick={()=>props.onTab("deliveries")}>{t("التسليمات","Deliverables")} ({props.deliveryCount})</button>
+   <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}>
+    {([{id:"projects",icon:"📁",ar:"مشروعي",en:"My project",detail:props.draftCount},{id:"invoices",icon:"🧾",ar:"الفاتورة",en:"Invoice",detail:props.invoiceCount},{id:"messages",icon:"✉️",ar:"الرسائل",en:"Messages",detail:null},{id:"preview",icon:"👁️",ar:"المعاينة",en:"Preview",detail:null},{id:"quotes",icon:"📄",ar:"العروض والعقود",en:"Quotes & contracts",detail:props.quoteCount+props.contractCount},{id:"services",icon:"🛠️",ar:"خدماتي",en:"My services",detail:null}] as const).map(item=><button type="button" key={item.id} onClick={()=>props.onTab(item.id)} style={{textAlign:"start",border:"1px solid #dce4ee",background:"#fff",borderRadius:15,padding:"18px 14px",minHeight:108,color:"#203958",cursor:"pointer",font:"inherit"}}>
+     <span style={{fontSize:23}}>{item.icon}</span><strong style={{display:"block",fontSize:16,marginTop:8}}>{en?item.en:item.ar}</strong>{item.detail!==null&&<small style={{color:"#64748b"}}>{item.detail}</small>}
+    </button>)}
    </div>
   </section>}
  </div>;
