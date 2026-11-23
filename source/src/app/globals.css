@@ -775,3 +775,23 @@ body:has(.admin-page) .atsh-floating-actions,body:has(.admin-page) .atsh-global-
  .admin-content-card[aria-label="مشروعات العملاء المقدمة"] .admin-content-title p{font-size:12px;line-height:1.5}
  .admin-intake-card-head strong{font-size:18px}
 }
+
+
+/* Compact mobile admin: keep request cards readable without redundant chrome. */
+.admin-intake-details{margin-top:8px;padding:9px 11px;border:1px solid #dce5ee;border-radius:10px;font-size:13px;line-height:1.7;overflow-wrap:anywhere}
+.admin-intake-details summary{cursor:pointer;font-weight:700}
+.admin-intake-details[open] summary{margin-bottom:8px}
+@media(max-width:700px){
+ .admin-page .admin-topbar{padding:10px 12px;gap:8px;align-items:center}
+ .admin-page .admin-topbar h1{font-size:18px;line-height:1.3}
+ .admin-page .admin-top-actions{gap:6px}
+ .admin-page .admin-identity strong{font-size:11px;overflow-wrap:anywhere}
+ .admin-page .admin-content-card{padding:12px!important;margin-block:10px}
+ .admin-page .admin-content-title h2{font-size:18px;line-height:1.4}
+ .admin-page .admin-content-title p{display:none}
+ .admin-page .admin-intake-card{padding:12px;margin-bottom:10px}
+ .admin-page .admin-intake-card-head strong{font-size:15px}
+ .admin-page .admin-intake-meta{font-size:12px}
+ .admin-page .admin-intake-action{font-size:13px;padding:9px 12px}
+ .admin-page .admin-topbar .admin-identity small{display:none}
+}
