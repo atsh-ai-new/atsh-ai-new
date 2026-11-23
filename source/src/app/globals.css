@@ -811,3 +811,16 @@ body:has(.admin-page) .atsh-floating-actions,body:has(.admin-page) .atsh-global-
 .journey-project-meta{display:block;margin-top:6px;color:#52657c;font-size:12px;overflow-wrap:anywhere;line-height:1.5}
 .journey-project-date{display:block;margin-top:4px;color:#64748b;font-size:11px}
 @media(max-width:600px){.journey-mobile{padding:12px!important}.journey-compact-grid{grid-template-columns:minmax(0,1fr);gap:10px}.journey-project-card{padding:11px 12px;margin-bottom:7px}.journey-mobile button{max-width:100%}.journey-mobile input,.journey-mobile textarea,.journey-mobile select{max-width:100%;min-width:0}}
+
+
+.customer-acceptance-card{border:1px solid #d8e4ef;border-radius:15px;background:#fbfdff;padding:15px;margin:0 0 14px;display:grid;gap:12px;min-width:0}
+.customer-acceptance-title{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:15px;color:#1e3856}
+.customer-acceptance-title span{font-size:11px;border-radius:99px;background:#e8f0fa;padding:5px 10px;color:#27547d}
+.customer-acceptance-status{display:flex;gap:8px;flex-wrap:wrap;font-size:12px}
+.customer-acceptance-status span{padding:7px 10px;border-radius:9px;border:1px solid #e0e8f1;background:#fff}
+.customer-acceptance-check{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.7;color:#43556a}
+.customer-acceptance-check input{width:18px;height:18px;flex-shrink:0;margin-top:2px}
+.customer-acceptance-buttons button{border:0;border-radius:10px;padding:11px 17px;min-height:43px;background:#1e527d;color:#fff;font-weight:700;cursor:pointer}
+.customer-acceptance-buttons button:disabled{opacity:.5;cursor:not-allowed}
+.customer-acceptance-error{color:#a21d2a;font-size:12px}
+@media(max-width:600px){.customer-acceptance-card{padding:12px}.customer-acceptance-buttons button{width:100%}}
