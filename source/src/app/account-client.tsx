@@ -152,6 +152,34 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
   }catch(error){setMessage(error instanceof Error?error.message:"Submission failed");}
   finally{submitInFlight.current=false;setSubmittingDraft(false);}
  };
+ const submitInvoiceToAdmin=async()=>{
+  if(submitInFlight.current)return;
+  if(selectedProjectDraft&&projectDrafts.some(d=>d.id===selectedProjectDraft&&!d.linked_journey_id)){
+   await submitDraftToAdmin();return;
+  }
+  const invoice=workspace?.draftInvoice||loadGuestWorkspace().draftInvoice;
+  if(!invoice){setMessage(t("لا توجد فاتورة لإرسالها.","There is no invoice to submit."));return;}
+  submitInFlight.current=true;setSubmittingDraft(true);
+  let createdId="";
+  try{
+   const guest=loadGuestWorkspace();
+   const selections={...guest,...workspace,draftInvoice:invoice};
+   const created=await fetch("/api/customer/auth/project-drafts",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({title:String(invoice.title||"مشروع جديد"),draft:selections})});
+   const createdBody=await created.json().catch(()=>({}));
+   if(!created.ok||!createdBody.projectDraft?.id)throw Error(String(createdBody.error||t("تعذر إنشاء الطلب.","Could not create the request.")));
+   createdId=createdBody.projectDraft.id;
+   setSelectedProjectDraft(createdId);
+   setProjectDrafts(old=>[createdBody.projectDraft,...old]);
+   const sent=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(createdId)}/submit`,{method:"POST",credentials:"include"});
+   const sentBody=await sent.json().catch(()=>({}));
+   if(!sent.ok)throw Error(String(sentBody.error||t("لم يُرسل الطلب. راجع متطلبات المشروع وأعد المحاولة.","Request not sent. Review project requirements and retry.")));
+   try{sessionStorage.removeItem("atsh_customer_workspace_v1");}catch{}
+   setGuestPending(false);
+   await Promise.all([loadDrafts(),loadProjects()]);
+   setMessage(t("تم إرسال الطلب للإدارة بنجاح.","Request submitted to management successfully.")+(sentBody.reference?` #${sentBody.reference}`:""));
+  }catch(error){setMessage((error instanceof Error?error.message:"Submission failed")+(createdId?t(" — تم حفظ المشروع كمسودة ولم يتم تأكيد الإرسال."," — Project saved as a draft; submission not confirmed."):""));}
+  finally{submitInFlight.current=false;setSubmittingDraft(false);}
+ };
  const savePreviewVersion=async()=>{
   if(!selectedProjectDraft)return;
   try{
@@ -288,6 +316,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    <a href={slug?`${base}/catalog/${encodeURIComponent(slug)}/pricing`:`${base}/catalog`} style={{display:"block",marginTop:14,padding:14,textAlign:"center",borderRadius:11,border:"1px solid #203958",color:"#203958",fontWeight:800,textDecoration:"none"}}>{t("تعديل الباقة وإضافة مكونات","Edit package and add components")}</a>
    {guestPending&&(draft&&!draft.linked_journey_id?<button type="button" disabled={merging} onClick={()=>void importGuestToProjectDraft()} style={{width:"100%",marginTop:10,padding:13}}>{merging?t("جارٍ حفظ التعديلات…","Saving changes…"):t("حفظ الإضافات في نفس الطلب","Save additions to this request")}</button>:<button type="button" onClick={()=>void createProjectDraft(true)} style={{width:"100%",marginTop:10,padding:13}}>{t("حفظ الاختيارات في مشروع جديد","Save selections to a new project")}</button>)}
    {!draft&&!guestPending&&<button type="button" onClick={()=>void createProjectDraft()} style={{width:"100%",marginTop:10,padding:13}}>{t("إنشاء طلب جديد","Create new request")}</button>}
+   {!draft&&inv&&<button type="button" disabled={submittingDraft} onClick={()=>void submitInvoiceToAdmin()} style={{width:"100%",marginTop:10,padding:14,background:"#203958",color:"#fff",border:0,borderRadius:11,fontWeight:800}}>{submittingDraft?t("جارٍ الإرسال…","Submitting…"):t("تأكيد وإرسال الطلب للإدارة","Confirm and submit request")}</button>}
    {draft&&!draft.linked_journey_id&&<button type="button" disabled={submittingDraft||guestPending} onClick={()=>void submitDraftToAdmin()} style={{width:"100%",marginTop:10,padding:14,background:"#203958",color:"#fff",border:0,borderRadius:11,fontWeight:800}}>{submittingDraft?t("جارٍ الإرسال…","Submitting…"):t("تأكيد وإرسال الطلب للإدارة","Confirm and submit request")}</button>}
    <div style={{marginTop:24,padding:16,border:"1px solid #dce4ef",borderRadius:14,background:"#f6f9fd"}} aria-live="polite">
     <h3 style={{margin:"0 0 10px"}}>{t("حالة طلبي الآن","Current request status")}</h3>
