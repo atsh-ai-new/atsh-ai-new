@@ -737,3 +737,25 @@ html[dir="rtl"] .atsh-contact-submenu{left:calc(100% + 10px)}
 html[dir="ltr"] .atsh-contact-submenu{right:calc(100% + 10px)}
 .atsh-global-language{bottom:calc(18px + 2 * 65px)}
 @media(max-width:600px){.atsh-global-language{bottom:calc(14px + env(safe-area-inset-bottom,0px) + 2 * 59px)}}
+
+/* Compact, readable RTL administration layouts on narrow mobile screens. */
+.admin-intake-card{padding:15px 0;border-bottom:1px solid #e2e8f0;min-width:0;overflow-wrap:anywhere}
+.admin-intake-card-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.admin-intake-meta{display:flex;flex-wrap:wrap;gap:6px 16px;color:#52657c;font-size:13px;margin:8px 0 12px;overflow-wrap:anywhere}
+.admin-intake-meta>span{unicode-bidi:plaintext;overflow-wrap:anywhere;min-width:0}
+.admin-intake-action{max-width:100%;white-space:normal;text-align:center}
+.admin-customer-services,.admin-customer-services *{box-sizing:border-box}
+.admin-customer-services{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.admin-customer-services label{display:block;min-width:0;max-width:100%;margin-top:10px}
+.admin-customer-services input,.admin-customer-services select,.admin-customer-services textarea{display:block;width:100%;max-width:100%;min-width:0;margin-top:6px;font:inherit;padding:10px;border:1px solid #cbd5e1;border-radius:9px;background:#fff}
+.admin-customer-services button{max-width:100%;white-space:normal;overflow-wrap:anywhere;margin-top:10px}
+@media(max-width:640px){
+.admin-content-card[aria-label="مشروعات العملاء المقدمة"]{min-width:0;padding:14px}
+.admin-content-card[aria-label="مشروعات العملاء المقدمة"] .admin-content-title{display:flex;flex-wrap:wrap;gap:10px}
+.admin-intake-card{padding:14px 0}
+.admin-intake-meta{display:grid;gap:5px}
+.admin-intake-action{width:100%;min-height:42px}
+.admin-customer-services{padding:14px}
+.admin-customer-services form{grid-template-columns:minmax(0,1fr)!important}
+.admin-customer-services textarea{min-height:92px}
+}
