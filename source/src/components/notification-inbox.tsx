@@ -25,7 +25,7 @@ export default function NotificationInbox({customer=false}:{customer?:boolean}){
   <section aria-label="صندوق الإشعارات" style={{maxHeight:340,overflowY:"auto",minWidth:260,maxWidth:390,padding:10,background:"var(--surface,#fff)",color:"var(--text,#14243c)",border:"1px solid #d8dde5",borderRadius:10}}>
    {error&&<p role="status">{error}</p>}
    {!error&&items.length===0&&<p>لا توجد إشعارات حاليًا.</p>}
-   {items.map(item=><article key={item.id} style={{padding:9,borderBottom:"1px solid #e4e7eb",opacity:item.read_at?.7:1}}>
+   {items.map(item=><article key={item.id} style={{padding:9,borderBottom:"1px solid #e4e7eb",opacity:item.read_at ? 0.7 : 1}}>
     <strong>{item.title}</strong><p style={{margin:"4px 0",overflowWrap:"anywhere"}}>{item.body}</p>
     <small>{new Date(item.created_at).toLocaleString("ar-EG")}</small>
     <div style={{display:"flex",gap:8,marginTop:5}}>
