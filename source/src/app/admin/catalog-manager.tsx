@@ -12,9 +12,9 @@ const defaultPricedAddons=():PricedAddon[]=>[
  {code:"hosting",name:"استضافة (سنة)",price:1000,pricingType:"yearly"},
  {code:"extra_feature",name:"ميزة إضافية",price:1000,pricingType:"fixed"}
 ];
-const seed = (): CatalogItem[] => sectorTemplates.map((s,i)=>({...s,published:true,archived:false,sortOrder:i*10,imageUrl:"",previewUrl:"",demoSlug:s.slug,basePrice:5000,addons:[],pricedAddons:defaultPricedAddons()}));
-const empty = (): CatalogItem => ({slug:"",name:"",category:"",icon:"📁",description:"",features:[],modules:["لوحة القيادة"],sampleStats:[],sampleRows:[],note:"معاينة تجريبية",published:false,archived:false,sortOrder:100,imageUrl:"",previewUrl:"",demoSlug:"",basePrice:5000,addons:[],pricedAddons:defaultPricedAddons()});
-const normalize = (v: unknown): CatalogItem[] => Array.isArray(v) ? v.filter(x=>x && typeof x==="object" && typeof x.slug==="string" && typeof x.name==="string").map(x=>({...empty(),...x,features:Array.isArray(x.features)?x.features:[],modules:Array.isArray(x.modules)?x.modules:[],sampleStats:Array.isArray(x.sampleStats)?x.sampleStats:[],sampleRows:Array.isArray(x.sampleRows)?x.sampleRows:[],addons:Array.isArray(x.addons)?x.addons:[],pricedAddons:Array.isArray(x.pricedAddons)?x.pricedAddons.filter((option:PricedAddon)=>!["logo_design","visual_identity"].includes(option.code)):defaultPricedAddons()})) : seed();
+const seed = (): CatalogItem[] => sectorTemplates.map((s,i)=>({...s,published:true,archived:false,sortOrder:i*10,imageUrl:"",previewUrl:"",demoSlug:s.slug,basePrice:5000,addons:[],pricedAddons:[]}));
+const empty = (): CatalogItem => ({slug:"",name:"",category:"",icon:"📁",description:"",features:[],modules:["لوحة القيادة"],sampleStats:[],sampleRows:[],note:"معاينة تجريبية",published:false,archived:false,sortOrder:100,imageUrl:"",previewUrl:"",demoSlug:"",basePrice:5000,addons:[],pricedAddons:[]});
+const normalize = (v: unknown): CatalogItem[] => Array.isArray(v) ? v.filter(x=>x && typeof x==="object" && typeof x.slug==="string" && typeof x.name==="string").map(x=>({...empty(),...x,features:Array.isArray(x.features)?x.features:[],modules:Array.isArray(x.modules)?x.modules:[],sampleStats:Array.isArray(x.sampleStats)?x.sampleStats:[],sampleRows:Array.isArray(x.sampleRows)?x.sampleRows:[],addons:Array.isArray(x.addons)?x.addons:[],pricedAddons:Array.isArray(x.pricedAddons)?x.pricedAddons.filter((option:PricedAddon)=>!["logo_design","visual_identity"].includes(option.code)):[]})) : seed();
 export default function CatalogManager() {
   const [items,setItems]=useState<CatalogItem[]>([]);
   const [sectors,setSectors]=useState<CatalogSector[]>(normalizeCatalogSectors(undefined));
@@ -36,7 +36,7 @@ export default function CatalogManager() {
 
   useEffect(()=>{
     let active=true;
-    fetch("/api/admin/pages",{credentials:"include",cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("تعذر قراءة الكتالوج. تحقق من تسجيل الدخول وصلاحياتك.");return r.json();}).then(data=>{
+    fetch("/api/admin/pages",{credentials:"include",cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("تعذر قراءة النظام المخصص. تحقق من تسجيل الدخول وصلاحياتك.");return r.json();}).then(data=>{
       if(!active)return;
       const catalog=(data.pages??[]).find((p:{slug:string;locale:string})=>p.slug==="catalog" && p.locale==="ar");
       const raw=catalog?.content?.items;
@@ -45,8 +45,8 @@ export default function CatalogManager() {
       setPageWasPublished(catalog?.is_published!==false);
       setUpdatedAt(catalog?.updated_at?new Date(catalog.updated_at).toISOString():null);
       setReady(true);
-      if(!catalog)setNotice("لا توجد صفحة كتالوج محفوظة بعد. احفظ لنشر النسخة الأولية.");
-    }).catch(e=>active&&setError(e instanceof Error?e.message:"تعذر تحميل الكتالوج."));
+      if(!catalog)setNotice("لا توجد صفحة نظام مخصص محفوظة بعد. احفظ لنشر النسخة الأولية.");
+    }).catch(e=>active&&setError(e instanceof Error?e.message:"تعذر تحميل النظام المخصص."));
     return()=>{active=false;};
   },[version]);
 
@@ -61,7 +61,7 @@ export default function CatalogManager() {
       const payload=await response.json().catch(()=>({}));
       if(!response.ok||typeof payload?.media?.url!=="string")throw Error(payload?.message||"تعذر رفع الصورة.");
       update("imageUrl",payload.media.url);
-      setNotice("تم رفع الصورة. اضغط حفظ الكتالوج لتثبيت استخدامها.");
+      setNotice("تم رفع الصورة. اضغط حفظ النظام المخصص لتثبيت استخدامها.");
     }catch(e){setError(e instanceof Error?e.message:"فشل رفع الصورة.");}
     finally{setUploading(false);event.target.value="";}
   };
@@ -82,7 +82,7 @@ export default function CatalogManager() {
     if(!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)){setError("الرابط يجب أن يكون بحروف إنجليزية وأرقام وشرطات فقط.");return;}
     if(slug!==originalSlug && items.some(x=>x.slug===slug)){setError("الرابط مستخدم بالفعل.");return;}
     if(draft.previewUrl.trim()){try{const url=new URL(draft.previewUrl.trim());if(url.protocol!=="https:")throw Error();}catch{setError("رابط المعاينة يجب أن يكون رابط HTTPS صالحًا للنظام المنشور.");return;}}
-    if(draft.basePrice!==null&&(!Number.isFinite(draft.basePrice)||draft.basePrice<0)){setError("أدخل سعر بيع صحيحًا للكتالوج، أو اتركه فارغًا حتى تحديد السعر.");return;}
+    if(draft.basePrice!==null&&(!Number.isFinite(draft.basePrice)||draft.basePrice<0)){setError("أدخل سعر بيع صحيحًا للنظام مخصص، أو اتركه فارغًا حتى تحديد السعر.");return;}
     const updated={...draft,previewUrl:draft.previewUrl.trim(),pricedAddons:[],slug,name:draft.name.trim(),description:draft.description.trim()};
     if(!updated.name){setError("اسم النظام المخصص مطلوب.");return;}
     const placement=resolvePlacement(updated,sectors);
@@ -90,7 +90,7 @@ export default function CatalogManager() {
     if(updated.subcategoryId&&!placement.subcategory){setError("اختر تصنيفًا فرعيًا تابعًا لهذا القطاع.");return;}
     updated.category=placement.subcategory?.name||placement.sector.name;
     const next=originalSlug?items.map(x=>x.slug===originalSlug?updated:x):[...items,updated];
-    if(await saveAll(next,"تم حفظ الكتالوج وتحديث حالته.")){
+    if(await saveAll(next,"تم حفظ النظام المخصص وتحديث حالته.")){
       setDraft(empty());setOriginalSlug("");
     }
   };
@@ -108,9 +108,9 @@ export default function CatalogManager() {
   };
   const edit=(item:CatalogItem)=>{const place=resolvePlacement(item,sectors);setDraft({...item,sectorId:place.sector?.id,subcategoryId:place.subcategory?.id});setOriginalSlug(item.slug);setError("");setNotice("");};
   const update=(key:keyof CatalogItem,value:unknown)=>setDraft(d=>({...d,[key]:value}));
-  const toggle=async(item:CatalogItem,patch:Partial<CatalogItem>)=>saveAll(items.map(x=>x.slug===item.slug?{...x,...patch}:x),"تم تحديث حالة الكتالوج.");
+  const toggle=async(item:CatalogItem,patch:Partial<CatalogItem>)=>saveAll(items.map(x=>x.slug===item.slug?{...x,...patch}:x),"تم تحديث حالة النظام المخصص.");
   const archive=async(item:CatalogItem)=>{
-    if(!window.confirm("سيُخفى الكتالوج من المعرض دون حذف بياناته. متابعة؟"))return;
+    if(!window.confirm("سيُخفى النظام المخصص من المعرض دون حذف بياناته. متابعة؟"))return;
     await toggle(item,{archived:true,published:false});
   };
   const saveSector=async(e:FormEvent)=>{
@@ -171,25 +171,25 @@ export default function CatalogManager() {
   const toggleSector=async(sector:CatalogSector)=>saveAll(items,"تم تحديث حالة القطاع.",sectors.map(s=>s.id===sector.id?{...s,isPublished:!s.isPublished}:s));
   const toggleSubcategory=async(sector:CatalogSector,subId:string)=>saveAll(items,"تم تحديث حالة التصنيف.",sectors.map(s=>s.id===sector.id?{...s,subcategories:s.subcategories.map(c=>c.id===subId?{...c,isPublished:!c.isPublished}:c)}:s));
   const deleteSector=async(sector:CatalogSector)=>{
-    if(!canRemoveSector(sector.id,items,sectors)){setError("القطاع مرتبط بكتالوجات. انقلها أولًا قبل الحذف.");return;}
+    if(!canRemoveSector(sector.id,items,sectors)){setError("القطاع مرتبط بأنظمة مخصصة. انقلها أولًا قبل الحذف.");return;}
     if(!window.confirm("حذف هذا القطاع وتصنيفاته غير المستخدمة؟"))return;
     await saveAll(items,"تم حذف القطاع غير المستخدم.",sectors.filter(s=>s.id!==sector.id));
   };
   const deleteSubcategory=async(sector:CatalogSector,subId:string)=>{
-    if(!canRemoveSubcategory(sector.id,subId,items,sectors)){setError("التصنيف مرتبط بكتالوجات. انقلها أولًا قبل الحذف.");return;}
+    if(!canRemoveSubcategory(sector.id,subId,items,sectors)){setError("التصنيف مرتبط بأنظمة مخصصة. انقلها أولًا قبل الحذف.");return;}
     if(!window.confirm("حذف التصنيف الفرعي غير المستخدم؟"))return;
     await saveAll(items,"تم حذف التصنيف غير المستخدم.",sectors.map(s=>s.id===sector.id?{...s,subcategories:s.subcategories.filter(c=>c.id!==subId)}:s));
   };
   const field=(label:string,value:string,onChange:(value:string)=>void,area=false)=> <label className="admin-field">{label}{area?<textarea value={value} onChange={e=>onChange(e.target.value)} rows={3}/>:<input value={value} onChange={e=>onChange(e.target.value)} maxLength={2000}/>}</label>;
 
   return <div className="cms-workspace">
-    <section className="admin-content-card"><div className="admin-content-title"><div><h2>إدارة الأنظمة المخصصة ومعاينات القطاعات</h2><p>إضافة وتعديل وإخفاء وأرشفة الكتالوجات. تُحفظ التغييرات على خادم المنصة عبر صلاحيات الإدارة، وليس داخل المتصفح.</p></div></div>
+    <section className="admin-content-card"><div className="admin-content-title"><div><h2>إدارة الأنظمة المخصصة ومعاينات القطاعات</h2><p>إضافة وتعديل وإخفاء وأرشفة الأنظمة المخصصة. تُحفظ التغييرات على خادم المنصة عبر صلاحيات الإدارة، وليس داخل المتصفح.</p></div></div>
       {notice&&<p role="status" className="success-message">{notice}</p>}{error&&<p role="alert" className="error-message">{error}</p>}
-      {!ready?<p>جارٍ تحميل الكتالوجات…</p>:<>
+      {!ready?<p>جارٍ تحميل الأنظمة المخصصة…</p>:<>
         <div className="admin-actions">
-          <button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());}}>+ كتالوج جديد</button>
+          <button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());}}>+ نظام مخصص جديد</button>
           <button type="button" className="button button-outline" disabled={busy} onClick={()=>void importStarter()}>استيراد النماذج الأربعة المبدئية دون تكرار</button>
-          <button type="button" className="button button-outline" disabled={busy} onClick={()=>void applyDemoPrices()}>تطبيق الأسعار التجريبية على الكتالوجات الحالية (٥٠٠٠ + إضافات ١٠٠٠)</button>
+          <button type="button" className="button button-outline" disabled={busy} onClick={()=>void applyDemoPrices()}>تطبيق الأسعار التجريبية على الأنظمة المخصصة الحالية (٥٠٠٠ + إضافات ١٠٠٠)</button>
           <a className="inline-add" href="/catalog" target="_blank" rel="noreferrer">عرض المعرض ↗</a>
           <button type="button" className="button button-outline" onClick={showLivePreview}>معاينة تفاعلية قبل الحفظ</button>
         </div>
@@ -205,10 +205,10 @@ export default function CatalogManager() {
         </article>)}</div>
       </>}
     </section>
-    {previewUrlLocal&&<section className="admin-content-card"><div className="admin-content-title"><h2>المعاينة التفاعلية للكتالوج قبل النشر</h2><div className="admin-actions"><button type="button" className="button button-outline" onClick={()=>setPreviewDevice("desktop")}>كمبيوتر</button><button type="button" className="button button-outline" onClick={()=>setPreviewDevice("mobile")}>موبايل</button><button type="button" className="button button-outline" onClick={()=>setPreviewUrlLocal("")}>رجوع للتعديل</button><button type="button" className="button" onClick={showLivePreview}>تحديث المعاينة</button></div></div><div style={{display:"flex",justifyContent:"center",overflowX:"auto",padding:12,background:"#e8edf2"}}><iframe title="معاينة الكتالوج التفاعلية" src={previewUrlLocal} style={{width:previewDevice==="mobile"?390:"100%",maxWidth:"100%",height:"75vh",minHeight:480,border:"1px solid #d8dde5",borderRadius:12,background:"white"}} sandbox="allow-scripts allow-same-origin"/></div><p>هذه معاينة للمسودة؛ لا يتم نشر أي تعديل تلقائيًا.</p></section>}
+    {previewUrlLocal&&<section className="admin-content-card"><div className="admin-content-title"><h2>المعاينة التفاعلية للنظام مخصص قبل النشر</h2><div className="admin-actions"><button type="button" className="button button-outline" onClick={()=>setPreviewDevice("desktop")}>كمبيوتر</button><button type="button" className="button button-outline" onClick={()=>setPreviewDevice("mobile")}>موبايل</button><button type="button" className="button button-outline" onClick={()=>setPreviewUrlLocal("")}>رجوع للتعديل</button><button type="button" className="button" onClick={showLivePreview}>تحديث المعاينة</button></div></div><div style={{display:"flex",justifyContent:"center",overflowX:"auto",padding:12,background:"#e8edf2"}}><iframe title="معاينة النظام المخصص التفاعلية" src={previewUrlLocal} style={{width:previewDevice==="mobile"?390:"100%",maxWidth:"100%",height:"75vh",minHeight:480,border:"1px solid #d8dde5",borderRadius:12,background:"white"}} sandbox="allow-scripts allow-same-origin"/></div><p>هذه معاينة للمسودة؛ لا يتم نشر أي تعديل تلقائيًا.</p></section>}
     {ready&&<section className="admin-content-card">
       <h2>إدارة القطاعات الرئيسية والتصنيفات الفرعية</h2>
-      <p>الترتيب: قطاع رئيسي ← تصنيف فرعي ← كتالوج تفاعلي. أسماء الأقسام قابلة للتعديل من هنا دون تعديل الكود، والحذف لا يمس أي كتالوج مرتبط.</p>
+      <p>الترتيب: قطاع رئيسي ← تصنيف فرعي ← نظام مخصص تفاعلي. أسماء الأقسام قابلة للتعديل من هنا دون تعديل الكود، والحذف لا يمس أي نظام مخصص مرتبط.</p>
       <div className="admin-team-list">
         {[...sectors].sort((a,b)=>a.sortOrder-b.sortOrder).map(sector=><article key={sector.id} style={{padding:14,marginBottom:12,border:"1px solid #d9e2ec",borderRadius:12}}>
           <div style={{display:"flex",gap:9,alignItems:"center",flexWrap:"wrap"}}>
@@ -267,22 +267,22 @@ export default function CatalogManager() {
             <option value="">معاينة عامة دون نظام قطاع جاهز</option>
             {Object.keys(interactiveDemoPaths).map(slug=><option key={slug} value={slug}>{sectorTemplates.find(template=>template.slug===slug)?.name??slug}</option>)}
           </select>
-          <small>يمكن استخدام المحرك نفسه لأكثر من كتالوج بهوية ومزايا وسعر مختلف. محرك المعاينة يعرض بيانات تجريبية منفصلة عن قاعدة بيانات العملاء.</small>
+          <small>يمكن استخدام المحرك نفسه لأكثر من نظام مخصص بهوية ومزايا وسعر مختلف. محرك المعاينة يعرض بيانات تجريبية منفصلة عن قاعدة بيانات العملاء.</small>
         </label>
         {field("رابط الصورة HTTPS أو ملف مرفوع",draft.imageUrl,v=>update("imageUrl",v))}
         <label className="admin-field">رفع صورة البطاقة مباشرة (PNG أو JPG أو WebP، 5 ميجابايت)
           <input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy||uploading} onChange={e=>void uploadImage(e)} />
           {uploading&&<small>جارٍ رفع الصورة…</small>}
-          {draft.imageUrl&&<img src={draft.imageUrl} alt="معاينة صورة الكتالوج" style={{maxWidth:230,maxHeight:155,objectFit:"contain",borderRadius:12}} />}
+          {draft.imageUrl&&<img src={draft.imageUrl} alt="معاينة صورة النظام المخصص" style={{maxWidth:230,maxHeight:155,objectFit:"contain",borderRadius:12}} />}
         </label>
         {field("رابط النظام التفاعلي المنشور HTTPS — الصق رابط المعاينة هنا",draft.previewUrl,v=>update("previewUrl",v))}
-        <label className="admin-field">سعر بيع الكتالوج الأساسي (جنيه) — قبل إضافات محرك التسعير<input type="number" min="0" step="0.01" value={draft.basePrice??""} onChange={e=>update("basePrice",e.target.value===""?null:Number(e.target.value))}/></label>
+        <label className="admin-field">سعر بيع النظام المخصص الأساسي (جنيه) — قبل إضافات محرك التسعير<input type="number" min="0" step="0.01" value={draft.basePrice??""} onChange={e=>update("basePrice",e.target.value===""?null:Number(e.target.value))}/></label>
         <p className="field-hint" style={{gridColumn:"1 / -1"}}>تُدار الإضافات وأسعارها من قسم الإضافات المركزي في لوحة الإدارة؛ لا توجد أسعار منفصلة لهذا النظام.</p>
         <label className="admin-field">ترتيب الظهور<input type="number" value={draft.sortOrder} onChange={e=>update("sortOrder",Number(e.target.value))}/></label>
         <label className="check-row"><input type="checkbox" checked={draft.published} onChange={e=>update("published",e.target.checked)}/> منشور في المعرض</label>
-        <div className="admin-actions"><button type="submit" className="button" disabled={busy||uploading}>{busy?"جارٍ الحفظ…":"حفظ الكتالوج"}</button></div>
+        <div className="admin-actions"><button type="submit" className="button" disabled={busy||uploading}>{busy?"جارٍ الحفظ…":"حفظ النظام المخصص"}</button></div>
       </form>
-      <p className="field-hint">لا يتم حذف الكتالوج نهائيًا حتى لا تتأثر روابط العملاء وطلباتهم السابقة. الصور تُرفع عبر خدمة الوسائط المحمية في الخادم. الفيديوهات تُدرج كرابط بعد التحقق من صلاحياتها.</p>
+      <p className="field-hint">لا يتم حذف النظام المخصص نهائيًا حتى لا تتأثر روابط العملاء وطلباتهم السابقة. الصور تُرفع عبر خدمة الوسائط المحمية في الخادم. الفيديوهات تُدرج كرابط بعد التحقق من صلاحياتها.</p>
     </section>}
   </div>;
 }
