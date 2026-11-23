@@ -129,6 +129,21 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
   submitInFlight.current=true;setSubmittingDraft(true);
   setMessage(t("جارٍ إرسال المتطلبات للإدارة...","Submitting requirements to management..."));
   try{
+   // The configurator saves the invoice to the account workspace first.
+   // Attach those selections to the chosen project draft before submitting it.
+   // Never overwrite an already configured project with another workspace snapshot.
+   const accountSelection=workspace;
+   const draftHasSelection=Boolean(target.draft?.packageId||target.draft?.sectorSlug||target.draft?.draftInvoice);
+   if(!draftHasSelection&&accountSelection?.draftInvoice){
+    const patch=Object.fromEntries(Object.entries(accountSelection).filter(([key,value])=>value!==undefined&&key!=="assistantMessages"));
+    const saved=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(target.id)}`,{
+     method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},
+     body:JSON.stringify({expectedRevision:target.revision,patch})
+    });
+    const savedBody=await saved.json().catch(()=>({}));
+    if(!saved.ok)throw Error(saved.status===409?t("تغيرت المسودة. حدّث الصفحة ثم أعد المحاولة.","Draft changed. Refresh and retry."):String(savedBody.error||t("تعذر نقل الفاتورة إلى مشروعك.","Could not save invoice to your project.")));
+    setProjectDrafts(previous=>previous.map(item=>item.id===target.id?savedBody.projectDraft:item));
+   }
    const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(target.id)}/submit`,{method:"POST",credentials:"include"});
    const result=await response.json().catch(()=>({}));
    if(!response.ok){const errorCode=String(result.code||"");const message=errorCode==="PROJECT_REQUIREMENTS_INCOMPLETE"?t("أكمل متطلبات المشروع قبل إرساله للإدارة.","Complete project requirements before submission."):String(result.error||t("تعذر إرسال الطلب. حاول مجددًا.","Submission failed. Please try again."));throw Error(message);}
