@@ -262,9 +262,18 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Project not found'});
   const parsed=z.object({body:z.string().trim().min(2).max(2000)}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:'Invalid message'});
-  const result=await pool.query("INSERT INTO customer_journey_messages(project_id,actor,body) SELECT linked_journey_id,'customer',$3 FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 AND linked_journey_id IS NOT NULL RETURNING id,actor,body,created_at",[req.params.id,req.customer.id,parsed.data.body]);
-  if(!result.rowCount)return res.status(404).json({error:'Submit project before messaging'});
-  res.status(201).json({message:result.rows[0]});
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   const result=await client.query("INSERT INTO customer_journey_messages(project_id,actor,body) SELECT linked_journey_id,'customer',$3 FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 AND linked_journey_id IS NOT NULL RETURNING id,project_id,actor,body,created_at",[req.params.id,req.customer.id,parsed.data.body]);
+   if(!result.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Submit project before messaging'});}
+   const table=await client.query("SELECT to_regclass('public.platform_notifications') AS name");
+   if(table.rows[0].name){
+    await client.query("INSERT INTO platform_notifications(recipient_type,recipient_id,project_id,event_type,title,body,target_path) VALUES('team',$1,$2,'journey.customer_message',$3,$4,$5)",["00000000-0000-4000-8000-000000000001",result.rows[0].project_id,"رسالة جديدة من العميل",parsed.data.body.slice(0,300),"/admin"]);
+   }
+   await client.query('COMMIT');
+   res.status(201).json({message:result.rows[0]});
+  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
  }));
  router.get('/project-drafts/:id',requireCustomer,safe(async(req,res)=>{
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Not found'});
