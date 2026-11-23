@@ -7,7 +7,7 @@ export const NOTIFICATION_EVENTS = Object.freeze({
  PROJECT_UPDATED: 'project_updated'
 });
 export function validateNotificationTarget(path) {
- return typeof path === 'string' && path.startsWith('/') && !path.startsWith('//') && !/[\\r\\n]/.test(path) && path.length <= 500;
+ return typeof path === 'string' && path.startsWith('/') && !path.startsWith('//') && !Array.from(path).some(char => char.charCodeAt(0) === 10 || char.charCodeAt(0) === 13) && path.length <= 500;
 }
 export function telegramReady(env = process.env) {
  return env.TELEGRAM_NOTIFICATIONS_ENABLED === 'true' && Boolean(env.TELEGRAM_BOT_TOKEN?.trim()) && Boolean(env.TELEGRAM_ADMIN_CHAT_ID?.trim());
