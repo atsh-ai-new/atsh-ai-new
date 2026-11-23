@@ -83,6 +83,20 @@ FROM packages p CROSS JOIN (VALUES
 WHERE p.is_published=true AND NOT EXISTS(SELECT 1 FROM package_options existing WHERE existing.package_id=p.id AND existing.code=o.code);
 
 
+-- Shared add-ons for custom systems. Preserve domain products for website packages.
+UPDATE package_options SET visibility='packages'
+WHERE code IN ('domain_com','domain_eg') AND visibility='both';
+
+INSERT INTO package_options(package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,visibility)
+SELECT p.id,a.code,a.name,a.description,a.price,a.pricing_type,'',false,true,a.sort_order,'systems'
+FROM packages p CROSS JOIN (VALUES
+ ('smart_bot','البوت الذكي','ردود آلية محفوظة',500,'fixed',110),
+ ('ai_assistant','المساعد الذكي','شبيه بمساعد ATSH AI',2500,'yearly',120)
+) AS a(code,name,description,price,pricing_type,sort_order)
+WHERE p.is_published=true
+AND NOT EXISTS(SELECT 1 FROM package_options o WHERE o.package_id=p.id AND o.code=a.code);
+
+
 -- ATSH customer journey: additive migration; preserves pricing, team and content studio.
 CREATE TABLE IF NOT EXISTS customer_journey_projects (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
