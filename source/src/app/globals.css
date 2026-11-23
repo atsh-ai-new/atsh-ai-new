@@ -693,3 +693,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .atsh-social-header svg{width:18px;height:18px}
 .atsh-social-header .pending{opacity:.6;cursor:default}
 @media(max-width:600px){.atsh-global-language{right:12px;bottom:calc(14px + env(safe-area-inset-bottom,0px) + 5 * 59px)}.atsh-social-header{top:8px;left:8px;gap:3px;padding:3px}.atsh-social-header a,.atsh-social-header span{width:24px;height:24px}.atsh-social-header svg{width:16px;height:16px}}
+
+/* Social links belong to the page header, never a floating overlay. */
+.atsh-social-inline-slot{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-width:0}
+.atsh-social-inline-slot .atsh-social-header{position:static;inset:auto;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0;background:transparent;box-shadow:none;border-radius:0;z-index:auto}
+.atsh-social-inline-slot .atsh-social-header a,.atsh-social-inline-slot .atsh-social-header span{width:27px;height:27px}
+@media(max-width:620px){.atsh-social-inline-slot{margin-inline:2px}.atsh-social-inline-slot .atsh-social-header{gap:3px}.atsh-social-inline-slot .atsh-social-header a,.atsh-social-inline-slot .atsh-social-header span{width:23px;height:23px}.platform-header .atsh-social-inline-slot{order:0}}
