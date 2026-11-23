@@ -238,13 +238,13 @@ app.delete("/api/admin/journey/projects/:id",requireAdmin,requirePermission("cus
  }catch(e){await client.query("ROLLBACK");if(e.code==="23503")return res.status(409).json({error:"المشروع مرتبط بسجلات أخرى ولا يمكن حذفه نهائيًا. استخدم الأرشفة لإخفائه من المشروعات النشطة."});throw e;}finally{client.release();}
 }));
 app.get("/api/admin/journey/projects",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
- const result=await pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at FROM customer_journey_projects WHERE status <> 'archived' ORDER BY created_at DESC LIMIT 100");
+ const result=await pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at,customer_approved_at,admin_approved_at FROM customer_journey_projects WHERE status <> 'archived' ORDER BY created_at DESC LIMIT 100");
  res.json({projects:result.rows});
 }));
 app.get("/api/admin/journey/projects/:id",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const [project,messages,drafts,assignments]=await Promise.all([
-  pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at FROM customer_journey_projects WHERE id=$1",[req.params.id]),
+  pool.query("SELECT id,customer_name,customer_email,template_id,status,created_at,updated_at,customer_approved_at,admin_approved_at FROM customer_journey_projects WHERE id=$1",[req.params.id]),
   pool.query("SELECT id,actor,body,created_at FROM customer_journey_messages WHERE project_id=$1 ORDER BY id LIMIT 200",[req.params.id]),
   pool.query("SELECT id,title,draft,revision,updated_at FROM customer_project_drafts WHERE linked_journey_id=$1 ORDER BY updated_at DESC LIMIT 1",[req.params.id]),
   pool.query(`SELECT o.id,o.reference,o.status,o.assigned_to,t.display_name AS assigned_to_name,t.is_active AS assignee_active
@@ -358,6 +358,24 @@ app.get("/api/admin/journey/catalog",requireAdmin,requirePermission("customers")
   pool.query("SELECT id,package_id,code,name,description,price,pricing_type,is_required FROM package_options WHERE is_active=true ORDER BY sort_order LIMIT 300")
  ]);
  res.json({packages:packages.rows,options:options.rows,authoritative:true,note:"Final totals must be calculated by the existing order pricing endpoint."});
+}));
+// Independent admin approval: does not change payment or preview lifecycle status.
+const adminAcceptanceSchema=z.object({decision:z.enum(["approve","withdraw"])}).strict();
+app.post("/api/admin/journey/projects/:id/acceptance",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
+ const parsed=adminAcceptanceSchema.safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid approval decision"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const existing=await client.query("SELECT id,status,admin_approved_at,customer_approved_at FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
+  if(!existing.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
+  if(existing.rows[0].status==="archived"){await client.query("ROLLBACK");return res.status(409).json({error:"Archived project"});}
+  const approve=parsed.data.decision==="approve";
+  const result=await client.query("UPDATE customer_journey_projects SET admin_approved_at=CASE WHEN $2 THEN COALESCE(admin_approved_at,now()) ELSE NULL END,admin_approval_revoked_at=CASE WHEN $2 THEN admin_approval_revoked_at ELSE now() END,updated_at=now() WHERE id=$1 RETURNING id,status,admin_approved_at,customer_approved_at",[req.params.id,approve]);
+  await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,before_data,after_data) VALUES($1,$2,'customer_journey_project',$3,$4::jsonb,$5::jsonb)",[req.admin.email,approve?"journey.admin_acceptance.approved":"journey.admin_acceptance.withdrawn",req.params.id,JSON.stringify({adminApprovedAt:existing.rows[0].admin_approved_at}),JSON.stringify({adminApprovedAt:result.rows[0].admin_approved_at})]);
+  await client.query("COMMIT");res.set("Cache-Control","private, no-store").json({project:result.rows[0]});
+ }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }));
 const journeyTransitionSchema=z.object({status:z.enum(["configured","quoted","payment_pending","building","preview_ready","approved","delivered","support"]),note:z.string().trim().max(1000).optional()}).strict();
 app.post("/api/admin/journey/projects/:id/transition",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
