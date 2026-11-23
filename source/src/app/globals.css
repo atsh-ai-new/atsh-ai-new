@@ -665,3 +665,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .catalog-addon-section .catalog-addon-grid .select-card-copy small{font-size:12px;line-height:1.5}
 .catalog-addon-section .catalog-addon-grid .select-card-copy b{font-size:13px;line-height:1.5}
 @media(max-width:620px){.catalog-addon-section .catalog-addon-grid{gap:10px}.catalog-addon-section .catalog-addon-grid .select-card{min-height:88px;padding:12px 14px}.catalog-addon-section .catalog-addon-grid .select-card-copy strong{font-size:13px}.catalog-addon-section .catalog-addon-grid .select-card-copy small{font-size:11px}}
+
+/* Signed-in customer shortcut in the public site header. */
+.atsh-signed-in-badge{display:inline-flex;align-items:center;gap:6px;max-width:170px;min-width:0;padding:6px 9px;border-radius:999px;background:#e7f1ff;border:1px solid #b6d3f2;color:#17446d;text-decoration:none;font-size:11px;font-weight:700;white-space:nowrap}
+.atsh-signed-in-badge>span:last-child{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.atsh-signed-in-badge-icon{display:grid;place-items:center;width:19px;height:19px;flex-shrink:0;border-radius:50%;background:#27659b;color:#fff;font-size:10px}
+@media(max-width:620px){.atsh-signed-in-badge{max-width:115px;padding:5px 7px;font-size:9px}.atsh-signed-in-badge-icon{width:16px;height:16px}}
