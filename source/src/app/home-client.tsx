@@ -171,15 +171,40 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   },[selectedSector,sectorAddonCodes]);
   useEffect(()=>{
     let active=true;
-    fetch("/api/customer/auth/me",{credentials:"include",cache:"no-store"})
-      .then(async response=>response.ok?response.json():null)
-      .then(result=>{
-        if(!active||!result?.customer)return;
-        setCustomerSignedIn(true);
-        setSignedInCustomerName(String(result.customer.name||"").trim());
-        setCustomer(existing=>({...existing,name:existing.name||result.customer.name,email:result.customer.email}));
-      }).catch(()=>undefined);
-    return()=>{active=false};
+    let retryTimer:ReturnType<typeof setTimeout>|undefined;
+    let checking=false;
+    let failures=0;
+    const checkSession=async()=>{
+      if(!active||checking)return;
+      checking=true;
+      try{
+        const response=await fetch("/api/customer/auth/me",{credentials:"include",cache:"no-store"});
+        if(!active)return;
+        if(response.ok){
+          const result=await response.json();
+          if(!active||!result?.customer)return;
+          failures=0;
+          setCustomerSignedIn(true);
+          setSignedInCustomerName(String(result.customer.name||"").trim());
+          setCustomer(existing=>({...existing,name:existing.name||result.customer.name,email:result.customer.email}));
+        }else if(response.status===401){
+          failures=0;
+          setCustomerSignedIn(false);
+          setSignedInCustomerName("");
+        }else{
+          // 429/5xx/temporary proxy errors are not proof that the customer signed out.
+          failures+=1;
+          if(failures<=3)retryTimer=setTimeout(()=>{void checkSession();},Math.min(1000*2**failures,8000));
+        }
+      }catch{
+        if(active&&++failures<=3)retryTimer=setTimeout(()=>{void checkSession();},Math.min(1000*2**failures,8000));
+      }finally{checking=false;}
+    };
+    const onFocus=()=>{if(document.visibilityState==="visible"){failures=0;if(retryTimer)clearTimeout(retryTimer);void checkSession();}};
+    void checkSession();
+    window.addEventListener("focus",onFocus);
+    document.addEventListener("visibilitychange",onFocus);
+    return()=>{active=false;if(retryTimer)clearTimeout(retryTimer);window.removeEventListener("focus",onFocus);document.removeEventListener("visibilitychange",onFocus);};
   },[]);
   useEffect(()=>{
     const draftId=new URLSearchParams(window.location.search).get("draftId");
