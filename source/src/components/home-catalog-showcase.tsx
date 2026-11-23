@@ -42,7 +42,7 @@ export default function HomeCatalogShowcase({selectedSlug,selectedAddons,onSelec
     setItems(content.items.filter((item:HomeCatalogItem)=>item&&typeof item.slug==="string"&&typeof item.name==="string"&&item.published!==false&&!item.archived).map((item:HomeCatalogItem)=>{if(!en)return item;const translated=localized.find((entry)=>entry.slug===item.slug);return {...item,name:translated?.name||englishTemplateLabel(item.slug,item.slug),description:translated?.description||englishTemplateLabel(item.slug,"Custom digital solution. Contact ATSH AI for details.","description"),features:translated?.features||englishTemplateFeatures(item.slug,[])}}));
     setSectors(en?(english?.page?.content?.sectors?normalizeCatalogSectors(english.page.content.sectors):englishCatalogSectors(normalizeCatalogSectors(content.sectors))):normalizeCatalogSectors(content.sectors));
    })
-   .catch(error=>{if(error?.name!=="AbortError")setNotice(t("تعذر تحميل الكتالوج المنشور حاليًا. يمكنك فتح معرض النماذج كاملًا.","The live catalog is temporarily unavailable; open the full solutions gallery."))})
+   .catch(error=>{if(error?.name!=="AbortError")setNotice(t("تعذر تحميل النظام المخصص المنشور حاليًا. يمكنك فتح معرض النماذج كاملًا.","The live catalog is temporarily unavailable; open the full solutions gallery."))})
    .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
   return()=>controller.abort();
  },[]);
@@ -59,7 +59,7 @@ export default function HomeCatalogShowcase({selectedSlug,selectedAddons,onSelec
  const selected=items.find(x=>x.slug===selectedSlug);
  const selectedPlace=selected?resolvePlacement(selected,sectors):null;
  const choose=(item:HomeCatalogItem)=>{onSelect(item)};const amount=(value:number)=>money(value,locale);
- return <div className="home-catalog-showcase" aria-label={t("الكتالوجات والتطبيقات المتاحة","Available solutions and applications")} style={{marginTop:34}}>
+ return <div className="home-catalog-showcase" aria-label={t("الأنظمة المخصصة والتطبيقات المتاحة","Available solutions and applications")} style={{marginTop:34}}>
   <style>{`
     .hc-filter{display:flex;gap:9px;overflow-x:auto;padding:7px 1px 13px}.hc-filter button{flex-shrink:0;border:1px solid #d7e0eb;background:white;border-radius:10px;padding:10px 13px;color:#203958;cursor:pointer;font:inherit}.hc-filter button[aria-pressed=true]{background:#203958;color:white;border-color:#203958}
     .hc-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:15px 0}
@@ -72,10 +72,10 @@ export default function HomeCatalogShowcase({selectedSlug,selectedAddons,onSelec
   `}</style>
   <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:14,flexWrap:"wrap"}}>
    <div><span className="section-kicker">{t("باقاتنا ونماذج الأعمال","Solutions & packages")}</span><h3 style={{fontSize:"clamp(23px,3vw,31px)",margin:"6px 0",color:"#203958"}}>{t("اختر نظامًا جاهزًا وجرّبه قبل الطلب","Explore interactive systems before requesting a quote")}</h3><p style={{margin:0,color:"#61718a",lineHeight:1.8}}>{t("قطاع ← تخصص ← نموذج تفاعلي ← تفاصيل وإضافات وتسعير. يمكن إضافة وتحديث النماذج من لوحة الإدارة.","Choose an industry, explore working demos, then configure features and pricing. Our team manages the published catalog.")}</p></div>
-   <Link href={`${base}/catalog`} style={{color:"#203958",fontWeight:800,textDecoration:"underline",whiteSpace:"nowrap"}}>{t("جميع القطاعات والكتالوجات ←","Explore all sectors →")}</Link>
+   <Link href={`${base}/catalog`} style={{color:"#203958",fontWeight:800,textDecoration:"underline",whiteSpace:"nowrap"}}>{t("جميع القطاعات والأنظمة المخصصة ←","Explore all sectors →")}</Link>
   </div>
   {loading?<p role="status">{t("جارٍ تحميل الأنظمة المنشورة…","Loading available solutions…")}</p>:notice?<p role="status">{notice}</p>:<>
-   <nav aria-label={t("فلترة الكتالوجات الرئيسية","Filter catalog by sector")} className="hc-filter">
+   <nav aria-label={t("فلترة الأنظمة المخصصة الرئيسية","Filter catalog by sector")} className="hc-filter">
     <button type="button" aria-pressed={activeSector==="all"} onClick={()=>{setActiveSector("all");setActiveSub("all");setExpanded(false)}}>{t("كل القطاعات","All sectors")} ({visible.length})</button>
     {published.map(s=><button type="button" key={s.id} aria-pressed={activeSector===s.id} onClick={()=>{setActiveSector(s.id);setActiveSub("all");setExpanded(false)}}>{s.icon} {s.name}</button>)}
    </nav>
