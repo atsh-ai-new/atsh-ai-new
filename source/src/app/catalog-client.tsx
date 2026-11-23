@@ -23,7 +23,7 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
    const englishBySlug=new Map<string,Partial<Item>>((Array.isArray(english?.page?.content?.items)?english.page.content.items:[]).filter((x:Item)=>x&&typeof x.slug==="string").map((x:Item)=>[x.slug,x]));
    setItems(data.page.content.items.filter((x:Item)=>x&&typeof x.slug==="string"&&typeof x.name==="string"&&x.published!==false&&!x.archived).map((x:Item)=>en?{...x,name:englishBySlug.get(x.slug)?.name||englishTemplateLabel(x.slug,x.slug),description:englishBySlug.get(x.slug)?.description||englishTemplateLabel(x.slug,"A configurable business system. Request a detailed scope review.","description"),features:englishBySlug.get(x.slug)?.features||englishTemplateFeatures(x.slug,[])}:x));
    setSectors(en?(english?.page?.content?.sectors?normalizeCatalogSectors(english.page.content.sectors):englishCatalogSectors(normalizeCatalogSectors(data.page.content.sectors))):normalizeCatalogSectors(data.page.content.sectors));
-  }).catch(()=>{if(active)setNotice(t("نعرض النماذج الافتراضية إلى حين تفعيل الكتالوج المتصل.","Showing example solutions until the live catalog is available."));});
+  }).catch(()=>{if(active)setNotice(t("نعرض النماذج الافتراضية إلى حين تفعيل النظام المخصص المتصل.","Showing example solutions until the live catalog is available."));});
   return()=>{active=false;};
  },[]);
  useEffect(()=>{
@@ -47,7 +47,7 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
    <Link href={`${base}/#configurator`} style={{border:"1px solid #ccd1d6",padding:"10px 15px",borderRadius:10}}>{t("الباقات ومحرك التسعير","Packages & pricing")}</Link>
   </header>
   <section style={{padding:"36px 0 20px"}}>
-   <p style={{color:"#4c78ae",fontWeight:700}}>{t("كتالوجات ATSH AI","ATSH AI solution catalog")}</p>
+   <p style={{color:"#4c78ae",fontWeight:700}}>{t("أنظمة مخصصة ATSH AI","ATSH AI solution catalog")}</p>
    <h1 style={{fontSize:"clamp(29px,4vw,49px)",color:"#203958",margin:"8px 0"}}>{t("استكشف الأنظمة حسب مجالك","Explore digital solutions by industry")}</h1>
    <p style={{lineHeight:1.9,maxWidth:730,color:"#64748b"}}>{t("قطاعات رئيسية، وتخصصات فرعية، ونماذج تفاعلية. اختر النظام المناسب، ثم أضف مواصفاتك واحسب السعر.","Browse sectors, explore interactive demos and customize a solution before requesting a quote.")}</p>
    {notice&&<small role="status" style={{color:"#99660b"}}>{notice}</small>}
@@ -57,7 +57,7 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
    {published.map(sector=><button key={sector.id} type="button" aria-pressed={sectorId===sector.id} onClick={()=>{setSectorId(sector.id);setSubId("all");}} style={{flexShrink:0,border:"1px solid #ccd6e1",borderRadius:12,padding:"11px 15px",background:sectorId===sector.id?"#203958":"white",color:sectorId===sector.id?"white":"#203958",cursor:"pointer"}}>{sector.icon} {sector.name}</button>)}
   </nav>
   <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:20}}>
-   <input type="search" aria-label={t("البحث في الكتالوجات","Search catalog")} value={query} onChange={e=>setQuery(e.target.value)} placeholder={t("ابحث باسم النظام أو الميزة...","Search solutions or features...")} style={{flex:"2 1 220px",minWidth:0,padding:12,border:"1px solid #cbd5e1",borderRadius:10}}/>
+   <input type="search" aria-label={t("البحث في الأنظمة المخصصة","Search catalog")} value={query} onChange={e=>setQuery(e.target.value)} placeholder={t("ابحث باسم النظام أو الميزة...","Search solutions or features...")} style={{flex:"2 1 220px",minWidth:0,padding:12,border:"1px solid #cbd5e1",borderRadius:10}}/>
    {activeSector&&<select value={subId} aria-label={t("التصنيف الفرعي","Subcategory")} onChange={e=>setSubId(e.target.value)} style={{flex:"1 1 180px",padding:12,border:"1px solid #cbd5e1",borderRadius:10}}>
     <option value="all">{t("كل التخصصات","All specialties")}</option>
     {activeSector.subcategories.filter(c=>c.isPublished).sort((a,b)=>a.sortOrder-b.sortOrder).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
