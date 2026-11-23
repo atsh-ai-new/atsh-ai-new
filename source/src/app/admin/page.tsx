@@ -264,8 +264,14 @@ export default function AdminPage() {
     setBusy(true); setError(""); setNotice("");
     try {
       await api(`options/${item.id}`, { method: "DELETE" });
-      await loadData();
-      setNotice("تم إيقاف الإضافة للطلبات الجديدة دون حذف الطلبات السابقة.");
+      // Verify persisted catalog state before reporting that the option is disabled.
+      const verified = await api("packages");
+      const remaining = (verified.options ?? []).find((option: Option) => option.id === item.id);
+      if (remaining?.is_active) throw new Error("استقبلنا طلب إيقاف الإضافة، لكن الخادم ما زال يعرضها نشطة. راجع حالة الحفظ قبل إعادة المحاولة.");
+      setOptions((verified.options ?? []).filter((option: Option) => option.is_active));
+      setNotice("تم التحقق من إيقاف الإضافة للطلبات الجديدة مع الاحتفاظ بسجل الطلبات السابقة.");
+      // Other dashboard sections are secondary to the verified catalog mutation.
+      try { await loadData(); } catch { setNotice("تم إيقاف الإضافة والتحقق من ذلك، لكن تعذر تحديث بعض أقسام اللوحة."); }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر إيقاف الإضافة."); }
     finally { setBusy(false); }
   };
