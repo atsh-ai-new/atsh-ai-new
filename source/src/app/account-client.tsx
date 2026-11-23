@@ -138,9 +138,11 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    // Attach those selections to the chosen project draft before submitting it.
    // Never overwrite an already configured project with another workspace snapshot.
    const accountSelection=workspace;
-   const draftHasSelection=Boolean(target.draft?.packageId||target.draft?.sectorSlug||target.draft?.draftInvoice);
-   if(!draftHasSelection&&accountSelection?.draftInvoice){
-    const patch=Object.fromEntries(Object.entries(accountSelection).filter(([key,value])=>value!==undefined&&key!=="assistantMessages"));
+   // A configured project can still lack its invoice. Persist the invoice
+   // before submission so clearing the temporary workspace cannot erase it.
+   const invoiceToSave=target.draft?.draftInvoice?null:(accountSelection?.draftInvoice||loadGuestWorkspace().draftInvoice);
+   if(invoiceToSave){
+    const patch={draftInvoice:invoiceToSave};
     const saved=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(target.id)}`,{
      method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},
      body:JSON.stringify({expectedRevision:target.revision,patch})
