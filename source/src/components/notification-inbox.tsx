@@ -64,8 +64,9 @@ export default function NotificationInbox({customer=false}:{customer?:boolean}){
   const timer=window.setInterval(()=>{if(document.visibilityState==="visible")void refresh()},POLL_MS);
   const onFocus=()=>void refresh();
   window.addEventListener("focus",onFocus);
+  window.addEventListener("atsh-project-deleted",onFocus);
   document.addEventListener("visibilitychange",onFocus);
-  return()=>{window.clearInterval(timer);window.removeEventListener("focus",onFocus);document.removeEventListener("visibilitychange",onFocus)};
+  return()=>{window.clearInterval(timer);window.removeEventListener("focus",onFocus);window.removeEventListener("atsh-project-deleted",onFocus);document.removeEventListener("visibilitychange",onFocus)};
  },[refresh]);
  const unread=items.filter(x=>!x.read_at).length;
  function toggleSound(){

@@ -109,7 +109,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  router.get('/notifications',requireCustomer,safe(async(req,res)=>{
   const table=await pool.query("SELECT to_regclass('public.platform_notifications') AS name");
   if(!table.rows[0].name)return res.status(503).json({error:'Notification database migration required'});
-  const q=await pool.query("SELECT id,project_id,event_type,title,body,target_path,read_at,created_at FROM platform_notifications WHERE recipient_type='customer' AND recipient_id=$1 ORDER BY created_at DESC LIMIT 50",[req.customer.id]);
+  const q=await pool.query("SELECT n.id,n.project_id,n.event_type,n.title,n.body,n.target_path,n.read_at,n.created_at FROM platform_notifications n WHERE n.recipient_type='customer' AND n.recipient_id=$1 AND (n.project_id IS NULL OR EXISTS (SELECT 1 FROM customer_journey_projects p WHERE p.id=n.project_id AND p.status<>'archived')) ORDER BY n.created_at DESC LIMIT 50",[req.customer.id]);
   res.set('Cache-Control','private, no-store').json({notifications:q.rows,unread:q.rows.filter(n=>!n.read_at).length});
  }));
  router.post('/notifications/:id/read',requireCustomer,safe(async(req,res)=>{
@@ -196,11 +196,10 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   res.json({services:services.rows});
  }));
  router.get('/project-drafts',requireCustomer,safe(async(req,res)=>{
-  const result=await pool.query("SELECT id,title,draft,revision,linked_journey_id,updated_at,created_at FROM customer_project_drafts WHERE customer_id=$1 AND deleted_at IS NULL ORDER BY updated_at DESC",[req.customer.id]);
+  const result=await pool.query("SELECT d.id,d.title,d.draft,d.revision,d.linked_journey_id,d.updated_at,d.created_at FROM customer_project_drafts d WHERE d.customer_id=$1 AND d.deleted_at IS NULL AND (d.linked_journey_id IS NULL OR EXISTS (SELECT 1 FROM customer_journey_projects p WHERE p.id=d.linked_journey_id AND p.status<>'archived')) ORDER BY d.updated_at DESC",[req.customer.id]);
   res.set('Cache-Control','private, no-store').json({drafts:result.rows});
  }));
- // Deleting an unsubmitted draft is permanent; submitted projects are removed from the portal
- // while accounting, contractual and audit records remain intact.
+ // Delete a customer-owned project atomically. Never remove commercial or active service records.
  router.delete('/project-drafts/:id',requireCustomer,safe(async(req,res)=>{
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Project not found'});
   const client=await pool.connect();
@@ -208,13 +207,31 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    await client.query('BEGIN');
    const owned=await client.query('SELECT id,linked_journey_id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 AND deleted_at IS NULL FOR UPDATE',[req.params.id,req.customer.id]);
    if(!owned.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Project not found'});}
-   if(owned.rows[0].linked_journey_id){
-    await client.query('UPDATE customer_project_drafts SET deleted_at=now(),updated_at=now() WHERE id=$1 AND customer_id=$2',[req.params.id,req.customer.id]);
+   const journeyId=owned.rows[0].linked_journey_id;
+   if(journeyId){
+    const journey=await client.query('SELECT id FROM customer_journey_projects WHERE id=$1 AND customer_account_id=$2 FOR UPDATE',[journeyId,req.customer.id]);
+    if(!journey.rowCount)throw Error('Linked project ownership mismatch');
+    const blockers=await client.query(`
+     SELECT
+      (SELECT count(*)::int FROM commercial_order_quote_links WHERE project_id=$1)+
+      (SELECT count(*)::int FROM commercial_custom_quote_links WHERE project_id=$1)+
+      (SELECT count(*)::int FROM customer_journey_order_links WHERE project_id=$1)+
+      (SELECT count(*)::int FROM customer_service_entitlements WHERE project_draft_id=$2 AND status IN ('active','paused','expired')) AS total
+    `,[journeyId,req.params.id]);
+    if(blockers.rows[0].total>0){await client.query('ROLLBACK');return res.status(409).json({error:'Project has commercial orders, quotes or services; deletion requires administrator review'});}
+    // Delete project-scoped child records before deleting their parent.
+    await client.query('DELETE FROM customer_deliverables WHERE project_id=$1',[journeyId]);
+    await client.query('DELETE FROM customer_journey_access WHERE project_id=$1',[journeyId]);
+    await client.query('DELETE FROM customer_journey_messages WHERE project_id=$1',[journeyId]);
+    await client.query('DELETE FROM customer_journey_tasks WHERE project_id=$1',[journeyId]);
+    await client.query('DELETE FROM platform_notifications WHERE project_id=$1',[journeyId]);
+    await client.query('DELETE FROM customer_project_drafts WHERE id=$1 AND customer_id=$2',[req.params.id,req.customer.id]);
+    await client.query('DELETE FROM customer_journey_projects WHERE id=$1 AND customer_account_id=$2',[journeyId,req.customer.id]);
    }else{
     await client.query('DELETE FROM customer_project_drafts WHERE id=$1 AND customer_id=$2',[req.params.id,req.customer.id]);
    }
    await client.query('COMMIT');
-   res.set('Cache-Control','private, no-store').json({ok:true,mode:owned.rows[0].linked_journey_id?'removed_from_portal':'deleted'});
+   res.set('Cache-Control','private, no-store').json({ok:true,mode:'deleted'});
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
  }));
  router.post('/project-drafts',requireCustomer,safe(async(req,res)=>{

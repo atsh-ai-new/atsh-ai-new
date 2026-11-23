@@ -27,7 +27,7 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
  // Customer-controlled approval, scoped strictly to their own linked project.
  router.get('/projects/:id/acceptance',safe(async(req,res)=>{
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:'Invalid project id'});
-  const result=await pool.query('SELECT id,status,customer_approved_at,admin_approved_at FROM customer_journey_projects WHERE id=$1 AND customer_account_id=$2',[req.params.id,req.customer.id]);
+  const result=await pool.query('SELECT id,status,customer_approved_at,admin_approved_at FROM customer_journey_projects WHERE id=$1 AND customer_account_id=$2 AND status<>$3',[req.params.id,req.customer.id,'archived']);
   if(!result.rowCount)return res.status(404).json({error:'Project not found'});
   res.set('Cache-Control','private, no-store').json({project:result.rows[0]});
  }));
