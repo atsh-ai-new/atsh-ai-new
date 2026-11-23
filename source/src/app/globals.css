@@ -704,3 +704,15 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .atsh-fab-telegram{background:#229ed9;opacity:.65;cursor:default}
 .atsh-global-language{bottom:calc(18px + 5 * 65px)}
 @media(max-width:600px){.atsh-global-language{bottom:calc(14px + env(safe-area-inset-bottom,0px) + 5 * 59px)}}
+
+/* Keep ATSH AI brand and inline social links on one header row, without scaling typography. */
+.platform-header{display:flex;align-items:center;flex-wrap:nowrap}
+.platform-header .platform-brand{flex:0 1 auto;min-width:0;white-space:nowrap}
+.platform-header .platform-brand strong{white-space:nowrap}
+.platform-header .atsh-social-inline-slot{flex:0 0 auto;white-space:nowrap}
+.platform-header .platform-header-actions{margin-inline-start:auto;min-width:0}
+@media(max-width:620px){
+ .platform[lang="ar"] .platform-header .platform-brand,.platform[lang="en"] .platform-header .platform-brand{flex:0 1 auto;min-width:0}
+ .platform-header{column-gap:6px}
+ .platform-header .atsh-social-inline-slot{margin-inline:0}
+}
