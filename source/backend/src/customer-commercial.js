@@ -24,6 +24,29 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
   if(['POST','PATCH','DELETE','PUT'].includes(req.method)&&(!req.get('origin')||!allowedOrigins.includes(req.get('origin'))))return res.status(403).json({error:'Customer commercial origin not allowed'});
   next();
  });
+ // Customer-controlled approval, scoped strictly to their own linked project.
+ router.get('/projects/:id/acceptance',safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:'Invalid project id'});
+  const result=await pool.query('SELECT id,status,customer_approved_at,admin_approved_at FROM customer_journey_projects WHERE id=$1 AND customer_account_id=$2',[req.params.id,req.customer.id]);
+  if(!result.rowCount)return res.status(404).json({error:'Project not found'});
+  res.set('Cache-Control','private, no-store').json({project:result.rows[0]});
+ }));
+ router.post('/projects/:id/acceptance',safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:'Invalid project id'});
+  const parsed=z.object({decision:z.enum(['approve','withdraw'])}).strict().safeParse(req.body);
+  if(!parsed.success)return res.status(400).json({error:'Invalid approval decision'});
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   const found=await client.query('SELECT id,status,customer_approved_at,admin_approved_at FROM customer_journey_projects WHERE id=$1 AND customer_account_id=$2 FOR UPDATE',[req.params.id,req.customer.id]);
+   if(!found.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Project not found'});}
+   if(found.rows[0].status==='archived'){await client.query('ROLLBACK');return res.status(409).json({error:'Archived project'});}
+   const approve=parsed.data.decision==='approve';
+   const result=await client.query('UPDATE customer_journey_projects SET customer_approved_at=CASE WHEN $2 THEN COALESCE(customer_approved_at,now()) ELSE NULL END,customer_approval_revoked_at=CASE WHEN $2 THEN customer_approval_revoked_at ELSE now() END,updated_at=now() WHERE id=$1 RETURNING id,status,customer_approved_at,admin_approved_at',[req.params.id,approve]);
+   await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,before_data,after_data) VALUES($1,$2,'customer_journey_project',$3,$4::jsonb,$5::jsonb)",[req.customer.email,approve?'journey.customer_acceptance.approved':'journey.customer_acceptance.withdrawn',req.params.id,JSON.stringify({customerApprovedAt:found.rows[0].customer_approved_at}),JSON.stringify({customerApprovedAt:result.rows[0].customer_approved_at})]);
+   await client.query('COMMIT');res.set('Cache-Control','private, no-store').json({project:result.rows[0]});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+ }));
  router.post('/quotes/claim',safe(async(req,res)=>{
   const parsed=z.object({quoteId:z.number().int().positive(),reviewToken:z.string().min(20).max(512)}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:'Invalid claim request'});
