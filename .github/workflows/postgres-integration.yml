@@ -86,5 +86,21 @@ jobs:
           await db.end();
           NODE
 
+          # Notification inbox migration must succeed without changing customer login.
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          import assert from 'node:assert/strict';
+          import {readFile} from 'node:fs/promises';
+          const db=new pg.Client({connectionString:process.env.DATABASE_URL});
+          await db.connect();
+          try {
+            await db.query(await readFile('db/notification_foundation_20261123.sql','utf8'));
+            for(const name of ['platform_notifications','notification_push_subscriptions','notification_delivery_attempts']){
+              const result=await db.query('SELECT to_regclass($1) AS name',[name]);
+              assert.ok(result.rows[0].name, 'Missing notification table: '+name);
+            }
+          } finally { await db.end(); }
+          NODE
+
           node test/integration-smoke.mjs
           node test/persistence-restart.mjs
