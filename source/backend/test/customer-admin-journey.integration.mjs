@@ -4,6 +4,7 @@ import {spawn} from "node:child_process";
 import {randomUUID} from "node:crypto";
 import bcrypt from "bcryptjs";
 import pg from "pg";
+import {readFile} from "node:fs/promises";
 test("real customer login, concurrent submission and admin parity", {timeout:120000},async()=>{
  const db=process.env.TEST_DATABASE_URL;assert.ok(db);
  const pool=new pg.Pool({connectionString:db});
@@ -16,6 +17,8 @@ test("real customer login, concurrent submission and admin parity", {timeout:120
  try{
   let ready=false;for(let i=0;i<90;i++){if(child.exitCode!==null)break;try{const r=await fetch(base+"/api/catalog",{signal:AbortSignal.timeout(1000)});if(r.status<500){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,500));}
   assert.ok(ready,"API failed to start: "+output.slice(-3000));
+  // The server bootstraps the base schema; apply additive acceptance columns before HTTP assertions.
+  await pool.query(await readFile(new URL("../db/project_acceptance_gate_20261123.sql",import.meta.url),"utf8"));
   const email="journey-"+randomUUID()+"@example.test";
   await pool.query("INSERT INTO customer_accounts(name,email,password_hash,email_verified_at,is_active) VALUES($1,$2,$3,now(),true)",["Journey Test",email,await bcrypt.hash(password,4)]);
   const login=await api("/api/customer/auth/login","POST",{email,password});assert.equal(login.status,200,JSON.stringify(login.data));assert.ok(login.cookie);
