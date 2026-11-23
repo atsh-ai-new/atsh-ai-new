@@ -276,7 +276,7 @@ app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requirePermissi
    if(notificationSchema.rows[0].table_name){
     await client.query(
      "INSERT INTO platform_notifications(recipient_type,recipient_id,project_id,event_type,title,body,target_path) VALUES('customer',$1,$2,'journey.admin_message',$3,$4,$5)",
-     [project.rows[0].customer_account_id,req.params.id,"رسالة جديدة من الإدارة",parsed.data.body.slice(0,300),"/customer"]
+     [project.rows[0].customer_account_id,req.params.id,"رسالة جديدة من الإدارة",parsed.data.body.slice(0,300),"/customer-portal"]
     );
    }
   }
