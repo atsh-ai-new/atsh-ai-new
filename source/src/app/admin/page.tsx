@@ -1,5 +1,5 @@
-import NotificationInbox from "../../components/notification-inbox";
 "use client";
+import NotificationInbox from "../../components/notification-inbox";
 
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { formatEgp } from "@/lib/catalog";
