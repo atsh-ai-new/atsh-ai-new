@@ -88,8 +88,14 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
     try {
       if(publish){
         await adminApi(`pages/${draft.slug}`,{method:"PATCH",body:JSON.stringify({locale:draft.locale||"ar",content:draft.content,isPublished:true})});
+        // Re-read the persisted page instead of assuming the write reached the intended locale.
+        const verified = await adminApi("pages");
+        const published = (verified.pages ?? [] as PageRecord[]).find((item:PageRecord)=>item.slug===draft.slug&&item.locale===(draft.locale||"ar")) as PageRecord|undefined;
+        if(!published?.is_published||JSON.stringify(published.content)!==JSON.stringify(draft.content)){
+          throw new Error("تم إرسال التعديل، لكن بيانات الصفحة المحفوظة لا تطابق التعديل. تحقق من قاعدة البيانات قبل إعادة النشر.");
+        }
         setDraft(current=>current?{...current,is_published:true}:current);
-        setNotice("تم حفظ الصفحة ونشرها للزوار.");
+        setNotice("تم حفظ الصفحة والتحقق من محتواها المنشور في قاعدة البيانات.");
       }else{
         await adminApi(`page-drafts/${draft.slug}`,{method:"PUT",body:JSON.stringify({locale:draft.locale||"ar",content:draft.content})});
         setNotice("تم حفظ المسودة فقط، دون تغيير الصفحة المنشورة.");
