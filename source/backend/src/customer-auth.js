@@ -249,6 +249,10 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
     'Requirements: '+String(item.draft.requirements||'')
    ].join('\\n').slice(0,4000);
    await client.query('INSERT INTO customer_journey_messages(project_id,actor,body) VALUES($1,$2,$3)',[projectId,'customer',summary]);
+   const notifications=await client.query("SELECT to_regclass('public.platform_notifications') AS name");
+   if(notifications.rows[0].name){
+    await client.query("INSERT INTO platform_notifications(recipient_type,recipient_id,project_id,event_type,title,body,target_path) VALUES('team',$1,$2,'journey.project_submitted',$3,$4,$5)",["00000000-0000-4000-8000-000000000001",projectId,"طلب مشروع جديد",item.title.slice(0,180),"/admin"]);
+   }
    await client.query('COMMIT');
    res.status(201).json({projectId,status:created.status});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
