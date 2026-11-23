@@ -65,9 +65,8 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    setSelectedProjectDraft(previous=>previous||body.drafts?.[0]?.id||"");
 
   }catch{setMessage("تعذر تحميل مسودات مشروعاتك");}
- },[])
- useEffect(()=>{if(action!=="dashboard"||accountStatus!=="authenticated"||hubTab!=="projects")return;const refresh=()=>{if(document.visibilityState==="visible"){void loadProjects();void loadDrafts();}};const timer=window.setInterval(refresh,15000);return()=>window.clearInterval(timer);},[action,accountStatus,hubTab,loadProjects,loadDrafts]);
-;
+ },[]);
+
  useEffect(()=>{
   if(hubTab!=="services"||!selectedProjectDraft){setActiveServices([]);return;}
   let live=true;setServicesError("");
@@ -175,6 +174,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
   finally{setMerging(false);}
  };
  const loadProjects=useCallback(async()=>{try{const r=await fetch("/api/customer/auth/projects",{credentials:"include",cache:"no-store"});if(!r.ok)throw Error();const d=await r.json();setProjects(d.projects);}catch{setMessage("سجّل الدخول لعرض مشروعاتك");}},[]);
+ useEffect(()=>{if(action!=="dashboard"||accountStatus!=="authenticated"||hubTab!=="projects")return;const refresh=()=>{if(document.visibilityState==="visible"){void loadProjects();void loadDrafts();}};const timer=window.setInterval(refresh,15000);return()=>window.clearInterval(timer);},[action,accountStatus,hubTab,loadProjects,loadDrafts]);
  const request=useCallback(async(path:string,data:Record<string,string>={})=>{setMessage("جارٍ التنفيذ...");try{const response=await fetch(`/api/customer/auth/${path}`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});const body=await response.json().catch(()=>({error:response.status>=500?"خدمة الحسابات غير متاحة حاليًا (HTTP "+response.status+"). راجع اتصال الواجهة بالخادم في Coolify.":"تعذر قراءة استجابة الخدمة (HTTP "+response.status+")."}));setMessage(response.ok&&(path==="register"||path==="verification/resend")
   ?"لو البريد مؤهل، هتوصلك رسالة التأكيد. افتح الرابط المرسل ثم سجّل دخولك."
   :response.ok?body.message||"تم بنجاح":body.error||"تعذر إتمام الطلب");if(response.ok&&(path==="login"||path==="google"))location.href=`${base}/account/dashboard`;if(response.ok&&path==="logout")location.href=`${base}/account/login`;if(response.ok&&path==="projects/claim"){setAccessToken("");await loadProjects();}}catch{setMessage("تعذر الوصول إلى خدمة الحسابات. تحقق من اتصال الموقع بالخادم ثم حاول مجددًا.");}},[loadProjects]);
