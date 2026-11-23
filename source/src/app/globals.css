@@ -759,3 +759,19 @@ html[dir="ltr"] .atsh-contact-submenu{right:calc(100% + 10px)}
 .admin-customer-services form{grid-template-columns:minmax(0,1fr)!important}
 .admin-customer-services textarea{min-height:92px}
 }
+
+/* Mobile admin: prioritize the customer list; hide public-site floating actions and reduce navigation chrome. */
+body:has(.admin-page) .atsh-floating-actions,body:has(.admin-page) .atsh-global-language{display:none!important}
+@media(max-width:640px){
+ .admin-page,.admin-layout,.admin-main,.admin-sidebar,.admin-content-card{min-width:0;max-width:100%;box-sizing:border-box}
+ .admin-page{overflow-x:clip}
+ .admin-topbar{padding:10px 12px!important;gap:8px!important;align-items:center!important}
+ .admin-topbar h1{font-size:clamp(19px,5vw,25px)!important;line-height:1.35;margin:0}
+ .admin-top-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+ .admin-top-actions .admin-identity{max-width:100%;min-width:0}
+ .admin-top-actions .admin-identity strong{font-size:12px;overflow-wrap:anywhere}
+ .admin-nav{max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain}
+ .admin-content-card[aria-label="مشروعات العملاء المقدمة"] .admin-content-title h2{font-size:20px;line-height:1.5}
+ .admin-content-card[aria-label="مشروعات العملاء المقدمة"] .admin-content-title p{font-size:12px;line-height:1.5}
+ .admin-intake-card-head strong{font-size:18px}
+}
