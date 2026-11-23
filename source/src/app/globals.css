@@ -704,3 +704,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .atsh-fab-telegram{background:#229ed9;opacity:.65;cursor:default}
 .atsh-global-language{bottom:calc(18px + 5 * 65px)}
 @media(max-width:600px){.atsh-global-language{bottom:calc(14px + env(safe-area-inset-bottom,0px) + 5 * 59px)}}
+
+/* Keep floating controls on the trailing edge of the reading direction. */
+html[dir="rtl"] .atsh-floating-actions,html[dir="rtl"] .atsh-global-language{left:18px;right:auto}
+html[dir="ltr"] .atsh-floating-actions,html[dir="ltr"] .atsh-global-language{right:18px;left:auto}
+@media(max-width:600px){
+ html[dir="rtl"] .atsh-floating-actions,html[dir="rtl"] .atsh-global-language{left:12px;right:auto}
+ html[dir="ltr"] .atsh-floating-actions,html[dir="ltr"] .atsh-global-language{right:12px;left:auto}
+}
