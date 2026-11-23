@@ -35,6 +35,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   const localizePackage=(id:string,original:string,type:"name"|"short"|"description")=>isEnglish?(englishPackages[id]?.[type] || original):original;
   const t=(ar:string,en:string)=>isEnglish?en:ar;
   const [showOtherDetails,setShowOtherDetails]=useState(false);
+  const [signedInCustomerName,setSignedInCustomerName]=useState("");
   const [step, setStep] = useState(1);
   const [showConfigurator,setShowConfigurator]=useState(configuratorOnly);
   const [packageId, setPackageId] = useState<PackageId | null>(null);
@@ -173,6 +174,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
       .then(result=>{
         if(!active||!result?.customer)return;
         setCustomerSignedIn(true);
+        setSignedInCustomerName(String(result.customer.name||"").trim());
         setCustomer(existing=>({...existing,name:existing.name||result.customer.name,email:result.customer.email}));
       }).catch(()=>undefined);
     return()=>{active=false};
@@ -462,18 +464,17 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
           <span><strong>ATSH <b>AI</b></strong><small>{copy("brandTagline")}</small></span>
         </a>
         <nav className="platform-nav" aria-label={copy("mainNavigationLabel")}>
-          <a href={isEnglish?"/en/account/register":"/account/register"}>{t("إنشاء حساب","Create account")}</a><a href={isEnglish?"/en/account/login":"/account/login"}>{t("تسجيل دخول","Sign in")}</a><a href="#faq">{copy("navFaq")}</a>{pageLinks.filter(item=>!/(سجل\s*الأعمال|معرض\s*الأعمال|portfolio|our\s*work|case\s*studies)/i.test(`${item.title} ${item.slug}`)).map((item) => <a key={item.slug} href={`${isEnglish?"/en":""}/${item.slug}`}>{item.title}</a>)}
+          {!customerSignedIn&&<><a href={isEnglish?"/en/account/register":"/account/register"}>{t("إنشاء حساب","Create account")}</a><a href={isEnglish?"/en/account/login":"/account/login"}>{t("تسجيل دخول","Sign in")}</a></>}<a href="#faq">{copy("navFaq")}</a>{pageLinks.filter(item=>!/(سجل\s*الأعمال|معرض\s*الأعمال|portfolio|our\s*work|case\s*studies)/i.test(`${item.title} ${item.slug}`)).map((item) => <a key={item.slug} href={`${isEnglish?"/en":""}/${item.slug}`}>{item.title}</a>)}
         </nav>
         <details className="atsh-mobile-nav"><summary aria-label={t("فتح القائمة","Open menu")}>☰ <span>{t("القائمة","Menu")}</span></summary>
           <nav aria-label={copy("mainNavigationLabel")}>
-            <a href={isEnglish?"/en/account/login":"/account/login"}>{t("تسجيل دخول","Sign in")}</a>
-            <a href={isEnglish?"/en/account/register":"/account/register"}>{t("إنشاء حساب","Create account")}</a>
+            {customerSignedIn?<a href={isEnglish?"/en/account/dashboard":"/account/dashboard"}>{t("حساب","Account")} {signedInCustomerName||t("العميل","customer")}</a>:<><a href={isEnglish?"/en/account/login":"/account/login"}>{t("تسجيل دخول","Sign in")}</a><a href={isEnglish?"/en/account/register":"/account/register"}>{t("إنشاء حساب","Create account")}</a></>}
             <a href={isEnglish?"/en#packages":"/#packages"}>{t("الباقات","Packages")}</a>
             <a href="#faq">{copy("navFaq")}</a>
             {pageLinks.filter(item=>!/(سجل\s*الأعمال|معرض\s*الأعمال|portfolio|our\s*work|case\s*studies)/i.test(`${item.title} ${item.slug}`)).map(item=><a key={item.slug} href={`${isEnglish?"/en":""}/${item.slug}`}>{item.title}</a>)}
           </nav>
         </details>
-        <div className="platform-header-actions"><a className="language-pill header-language-switch" href={isEnglish?"/ar":"/en"} hrefLang={isEnglish?"ar":"en"} aria-label={isEnglish?"Switch to Arabic":"Switch to English"} onClick={(event) => { event.preventDefault(); window.location.assign(isEnglish ? "/ar" : "/en"); }}>🌐 {isEnglish?"العربية":"English"}</a><a className="button button-small" href={isEnglish?"/en#packages":"/#packages"}>{copy("navAction")} <span>←</span></a></div>
+        <div className="platform-header-actions">{customerSignedIn&&<a className="atsh-signed-in-badge" href={isEnglish?"/en/account/dashboard":"/account/dashboard"} aria-label={t(`حساب ${signedInCustomerName||"العميل"}`,`Account ${signedInCustomerName||"customer"}`)}><span className="atsh-signed-in-badge-icon" aria-hidden="true">●</span><span>{t("حساب","Account")} {signedInCustomerName||t("العميل","customer")}</span></a>}<a className="language-pill header-language-switch" href={isEnglish?"/ar":"/en"} hrefLang={isEnglish?"ar":"en"} aria-label={isEnglish?"Switch to Arabic":"Switch to English"} onClick={(event) => { event.preventDefault(); window.location.assign(isEnglish ? "/ar" : "/en"); }}>🌐 {isEnglish?"العربية":"English"}</a><a className="button button-small" href={isEnglish?"/en#packages":"/#packages"}>{copy("navAction")} <span>←</span></a></div>
       </header>}
 
       {!configuratorOnly&&<><section className={`build-hero${!copy("heroDescription").trim() ? " build-hero-compact" : ""}`} id="top">
