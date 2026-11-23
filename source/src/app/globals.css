@@ -795,3 +795,19 @@ body:has(.admin-page) .atsh-floating-actions,body:has(.admin-page) .atsh-global-
  .admin-page .admin-intake-action{font-size:13px;padding:9px 12px}
  .admin-page .admin-topbar .admin-identity small{display:none}
 }
+
+
+/* Compact, touch-friendly request and project cards. */
+.journey-mobile .admin-content-title{margin-bottom:12px}
+.journey-mobile .admin-content-title h2{font-size:clamp(1.05rem,2.5vw,1.35rem);line-height:1.4}
+.journey-secondary-panel{margin:0 0 10px;border:1px solid #e1e8f0;border-radius:12px;padding:9px 12px;background:#fbfdff}
+.journey-secondary-panel summary{cursor:pointer;font-size:13px;font-weight:650;color:#475569}
+.journey-compact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px;min-width:0}
+.journey-project-card{display:block;width:100%;margin-bottom:9px;padding:12px;text-align:start;border:1px solid #dce5ef;border-radius:13px;background:#fff;box-shadow:0 2px 8px #142f470a;cursor:pointer;transition:border-color .15s,background .15s;min-height:76px}
+.journey-project-card:hover,.journey-project-card:focus-visible{border-color:#6598c6;background:#f7fbff}
+.journey-project-card[aria-pressed="true"]{border:2px solid #27659b;background:#f0f7ff}
+.journey-project-name{font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.journey-project-status{background:#eaf1f9;border-radius:999px;padding:3px 8px;color:#234b76;font-size:11px;white-space:nowrap}
+.journey-project-meta{display:block;margin-top:6px;color:#52657c;font-size:12px;overflow-wrap:anywhere;line-height:1.5}
+.journey-project-date{display:block;margin-top:4px;color:#64748b;font-size:11px}
+@media(max-width:600px){.journey-mobile{padding:12px!important}.journey-compact-grid{grid-template-columns:minmax(0,1fr);gap:10px}.journey-project-card{padding:11px 12px;margin-bottom:7px}.journey-mobile button{max-width:100%}.journey-mobile input,.journey-mobile textarea,.journey-mobile select{max-width:100%;min-width:0}}
