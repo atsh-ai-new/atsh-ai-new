@@ -58,14 +58,15 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    return()=>{active=false;};
  },[action]);
  const deleteCustomerProject=async(id:string,title:string,submitted:boolean)=>{
-  const question=submitted?t(`إزالة «${title}» من حسابك؟ ستبقى السجلات والعقود لدى الإدارة، ولن يُلغى المشروع أو الخدمة تلقائيًا.`,`Remove “${title}” from your account? Management records and contracts remain, and services are not automatically cancelled.`):t(`حذف مسودة «${title}» نهائيًا؟ لا يمكن التراجع.`,`Permanently delete draft “${title}”? This cannot be undone.`);
+  const question=t(`حذف «${title}» نهائيًا من حسابك ولوحة الإدارة؟ لا يمكن التراجع.`,`Permanently delete “${title}” from your account and admin dashboard? This cannot be undone.`);
   if(!window.confirm(question))return;
   try{
    const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(id)}`,{method:"DELETE",credentials:"include"});
    const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||t("فشل الحذف","Deletion failed"));
    setProjectDrafts(previous=>previous.filter(item=>item.id!==id));
    if(selectedProjectDraft===id)setSelectedProjectDraft(projectDrafts.find(item=>item.id!==id)?.id||"");
-   setMessage(data.mode==="deleted"?t("حُذفت المسودة نهائيًا.","Draft permanently deleted."):t("أُزيل المشروع من حسابك، مع الاحتفاظ بالسجلات الإدارية.","Project removed from your account; administrative records retained."));
+   setMessage(t("تم حذف المشروع نهائيًا.","Project permanently deleted."));
+   window.dispatchEvent(new Event("atsh-project-deleted"));
   }catch(error){setMessage(error instanceof Error?error.message:t("تعذر الحذف","Could not delete project"));}
  };
  const loadDrafts=useCallback(async()=>{
