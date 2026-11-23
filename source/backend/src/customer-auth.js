@@ -28,14 +28,14 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  };
  router.use((req,res,next)=>{if(['POST','PUT','PATCH','DELETE'].includes(req.method)){const origin=req.get('origin');if(!origin||!allowedOrigins.includes(origin))return res.status(403).json({error:'Origin not allowed'});}next();});
  router.post('/register',safe(async(req,res)=>{
-  const p=z.object({name:z.string().trim().min(2).max(120),email:emailSchema,password:passwordSchema}).safeParse(req.body);
+  const p=z.object({name:z.string().trim().min(2).max(120),email:emailSchema,password:passwordSchema,notificationConsent:z.boolean().optional().default(false)}).safeParse(req.body);
   if(!p.success)return res.status(400).json({error:'بيانات التسجيل غير صحيحة؛ راجع الاسم والبريد وكلمة المرور.'});
   if(!publicUrl||!process.env.BREVO_API_KEY)return res.status(503).json({error:'إنشاء الحسابات بالبريد غير مفعّل بعد: يجب إعداد عنوان الموقع وخدمة إرسال رسائل التأكيد.'});
-  const {name,email,password}=p.data;
+  const {name,email,password,notificationConsent}=p.data;
   const client=await pool.connect();let token=null;
   try{await client.query('BEGIN');
    const existing=await client.query('SELECT id FROM customer_accounts WHERE email=$1',[email]);
-   if(!existing.rowCount){const passwordHash=await bcrypt.hash(password,12);const inserted=await client.query('INSERT INTO customer_accounts(name,email,password_hash) VALUES($1,$2,$3) RETURNING id',[name,email,passwordHash]);token=await issue(client,inserted.rows[0].id,'verify');await sendLink({email,name,token,purpose:'verify'});}
+   if(!existing.rowCount){const passwordHash=await bcrypt.hash(password,12);const inserted=await client.query('INSERT INTO customer_accounts(name,email,password_hash,notification_consent_at) VALUES($1,$2,$3,CASE WHEN $4 THEN now() ELSE NULL END) RETURNING id',[name,email,passwordHash,notificationConsent]);token=await issue(client,inserted.rows[0].id,'verify');await sendLink({email,name,token,purpose:'verify'});}
    await client.query('COMMIT');
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
   res.status(202).json({message:'If eligible, a verification email has been sent'});
