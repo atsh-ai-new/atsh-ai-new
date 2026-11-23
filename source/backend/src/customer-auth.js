@@ -105,6 +105,20 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  }));
  const requireCustomer=safe(async(req,res,next)=>{let payload;try{payload=jwt.verify(req.cookies?.[sessionCookie],process.env.JWT_SECRET,{issuer:'atsh-ai-api',audience:'atsh-customer'});}catch{return res.status(401).json({error:'Sign in required'});}const q=await pool.query('SELECT id,name,email,is_active,session_version FROM customer_accounts WHERE id=$1',[payload.sub]);if(!q.rowCount||!q.rows[0].is_active)return res.status(401).json({error:'Session revoked'});if(payload.ver!==undefined&&payload.ver!==q.rows[0].session_version)return res.status(401).json({error:'Session revoked'});req.customer=q.rows[0];next();});
  router.get('/me',requireCustomer,(req,res)=>res.json({customer:{name:req.customer.name,email:req.customer.email}}));
+ // Notifications are scoped to the authenticated customer, never a supplied ID.
+ router.get('/notifications',requireCustomer,safe(async(req,res)=>{
+  const table=await pool.query("SELECT to_regclass('public.platform_notifications') AS name");
+  if(!table.rows[0].name)return res.status(503).json({error:'Notification database migration required'});
+  const q=await pool.query("SELECT id,project_id,event_type,title,body,target_path,read_at,created_at FROM platform_notifications WHERE recipient_type='customer' AND recipient_id=$1 ORDER BY created_at DESC LIMIT 50",[req.customer.id]);
+  res.set('Cache-Control','private, no-store').json({notifications:q.rows,unread:q.rows.filter(n=>!n.read_at).length});
+ }));
+ router.post('/notifications/:id/read',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:'Invalid notification id'});
+  const q=await pool.query("UPDATE platform_notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND recipient_type='customer' AND recipient_id=$2 RETURNING id,read_at",[req.params.id,req.customer.id]);
+  if(!q.rowCount)return res.status(404).json({error:'Notification not found'});
+  res.set('Cache-Control','private, no-store').json({notification:q.rows[0]});
+ }));
+
  // Project ownership is explicit: a matching email address alone never grants access.
  router.post('/projects/claim',requireCustomer,safe(async(req,res)=>{
   const p=z.object({projectId:z.string().uuid(),accessToken:z.string().regex(/^[a-f0-9]{64}$/)}).safeParse(req.body);
@@ -235,6 +249,10 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
     'Requirements: '+String(item.draft.requirements||'')
    ].join('\\n').slice(0,4000);
    await client.query('INSERT INTO customer_journey_messages(project_id,actor,body) VALUES($1,$2,$3)',[projectId,'customer',summary]);
+   const notifications=await client.query("SELECT to_regclass('public.platform_notifications') AS name");
+   if(notifications.rows[0].name){
+    await client.query("INSERT INTO platform_notifications(recipient_type,recipient_id,project_id,event_type,title,body,target_path) VALUES('team',$1,$2,'journey.project_submitted',$3,$4,$5)",["00000000-0000-4000-8000-000000000001",projectId,"طلب مشروع جديد",item.title.slice(0,180),"/admin"]);
+   }
    await client.query('COMMIT');
    res.status(201).json({projectId,status:created.status});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
@@ -248,9 +266,18 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Project not found'});
   const parsed=z.object({body:z.string().trim().min(2).max(2000)}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:'Invalid message'});
-  const result=await pool.query("INSERT INTO customer_journey_messages(project_id,actor,body) SELECT linked_journey_id,'customer',$3 FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 AND linked_journey_id IS NOT NULL RETURNING id,actor,body,created_at",[req.params.id,req.customer.id,parsed.data.body]);
-  if(!result.rowCount)return res.status(404).json({error:'Submit project before messaging'});
-  res.status(201).json({message:result.rows[0]});
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   const result=await client.query("INSERT INTO customer_journey_messages(project_id,actor,body) SELECT linked_journey_id,'customer',$3 FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 AND linked_journey_id IS NOT NULL RETURNING id,project_id,actor,body,created_at",[req.params.id,req.customer.id,parsed.data.body]);
+   if(!result.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Submit project before messaging'});}
+   const table=await client.query("SELECT to_regclass('public.platform_notifications') AS name");
+   if(table.rows[0].name){
+    await client.query("INSERT INTO platform_notifications(recipient_type,recipient_id,project_id,event_type,title,body,target_path) VALUES('team',$1,$2,'journey.customer_message',$3,$4,$5)",["00000000-0000-4000-8000-000000000001",result.rows[0].project_id,"رسالة جديدة من العميل",parsed.data.body.slice(0,300),"/admin"]);
+   }
+   await client.query('COMMIT');
+   res.status(201).json({message:result.rows[0]});
+  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
  }));
  router.get('/project-drafts/:id',requireCustomer,safe(async(req,res)=>{
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Not found'});
