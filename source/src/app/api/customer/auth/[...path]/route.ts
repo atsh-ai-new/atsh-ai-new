@@ -16,6 +16,9 @@ async function proxy(req:Request,ctx:{params:Promise<{path:string[]}>}){
  try{response=await fetch(url,{method:req.method,headers,body,cache:'no-store',redirect:'manual'});}
  catch{return NextResponse.json({error:"Customer API temporarily unavailable",code:"CUSTOMER_API_UNREACHABLE"},{status:502});}
  const out=new NextResponse(response.body,{status:response.status});const contentType=response.headers.get('content-type');if(contentType)out.headers.set('content-type',contentType);
+ // Preserve upstream throttling evidence so a 429 can be attributed without exposing credentials.
+ if(response.status===429){out.headers.set('X-ATSH-429-Source','customer-api-upstream');const retryAfter=response.headers.get('retry-after');if(retryAfter)out.headers.set('Retry-After',retryAfter);}
+ out.headers.set('Cache-Control','private, no-store');
  const cookies=response.headers.getSetCookie();for(const c of cookies)out.headers.append('set-cookie',c);return out;
 }
 export {proxy as GET,proxy as POST,proxy as PATCH,proxy as PUT,proxy as DELETE};
