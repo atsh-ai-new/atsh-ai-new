@@ -795,3 +795,13 @@ body:has(.admin-page) .atsh-floating-actions,body:has(.admin-page) .atsh-global-
  .admin-page .admin-intake-action{font-size:13px;padding:9px 12px}
  .admin-page .admin-topbar .admin-identity small{display:none}
 }
+
+
+.journey-acceptance-card{border:1px solid #d7e4ee;background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;display:grid;gap:11px;min-width:0}
+.journey-acceptance-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:15px}
+.journey-acceptance-states{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:#42566d}
+.journey-acceptance-states span{padding:6px 9px;border:1px solid #e0e8ef;border-radius:9px;background:#f8fafc}
+.journey-acceptance-actions{display:flex;gap:8px;flex-wrap:wrap}
+.journey-acceptance-actions button{min-height:40px;border-radius:10px}
+.journey-acceptance-card>small{font-size:11px;color:#64748b;line-height:1.5}
+@media(max-width:600px){.journey-acceptance-card{padding:12px}.journey-acceptance-actions button{width:100%}}
