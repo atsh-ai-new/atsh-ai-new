@@ -1,2 +1,2 @@
-import StartProject from "../../start-client";
-export default function EnglishStart(){return <StartProject locale="en"/>;}
+import {redirect} from "next/navigation";
+export default function RetiredStartPage(){redirect("/en/catalog");}
