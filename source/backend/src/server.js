@@ -227,10 +227,24 @@ app.delete("/api/admin/journey/projects/:id",requireAdmin,requirePermission("cus
   await client.query("BEGIN");
   const before=await client.query("SELECT * FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
   if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
-  const links=await client.query("SELECT 1 FROM customer_journey_order_links WHERE project_id=$1 LIMIT 1",[req.params.id]);
-  if(links.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"المشروع مرتبط بطلب تجاري. استخدم الأرشفة للحفاظ على الطلب والسجل المالي."});}
-  const drafts=await client.query("SELECT 1 FROM customer_project_drafts WHERE linked_journey_id=$1 LIMIT 1",[req.params.id]);
-  if(drafts.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"المشروع مرتبط بمسودة عميل. استخدم الأرشفة بدل الحذف النهائي."});}
+  const linked=await client.query(`
+   SELECT
+    (SELECT count(*)::int FROM customer_journey_order_links WHERE project_id=$1)+
+    (SELECT count(*)::int FROM commercial_order_quote_links WHERE project_id=$1)+
+    (SELECT count(*)::int FROM commercial_custom_quote_links WHERE project_id=$1) AS total
+  `,[req.params.id]);
+  if(linked.rows[0].total>0){await client.query("ROLLBACK");return res.status(409).json({error:"المشروع مرتبط بطلب أو عرض سعر تجاري؛ لا يمكن حذفه نهائيًا."});}
+  const drafts=await client.query("SELECT id FROM customer_project_drafts WHERE linked_journey_id=$1 FOR UPDATE",[req.params.id]);
+  for(const draft of drafts.rows){
+   const services=await client.query("SELECT 1 FROM customer_service_entitlements WHERE project_draft_id=$1 AND status IN ('active','paused','expired') LIMIT 1",[draft.id]);
+   if(services.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"المشروع مرتبط بخدمات عميل؛ لا يمكن حذفه نهائيًا."});}
+  }
+  await client.query("DELETE FROM customer_deliverables WHERE project_id=$1",[req.params.id]);
+  await client.query("DELETE FROM customer_journey_access WHERE project_id=$1",[req.params.id]);
+  await client.query("DELETE FROM customer_journey_messages WHERE project_id=$1",[req.params.id]);
+  await client.query("DELETE FROM customer_journey_tasks WHERE project_id=$1",[req.params.id]);
+  await client.query("DELETE FROM platform_notifications WHERE project_id=$1",[req.params.id]);
+  await client.query("DELETE FROM customer_project_drafts WHERE linked_journey_id=$1",[req.params.id]);
   const removed=await client.query("DELETE FROM customer_journey_projects WHERE id=$1 RETURNING id",[req.params.id]);
   if(removed.rowCount!==1)throw new Error("Project deletion was not confirmed");
   await auditChange(client,req.admin.email,"journey.project.deleted","customer_journey_project",req.params.id,before.rows[0],null);
