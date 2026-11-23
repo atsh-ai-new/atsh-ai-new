@@ -20,3 +20,6 @@ CREATE TABLE IF NOT EXISTS customer_project_logos (
  updated_at timestamptz NOT NULL DEFAULT now(),
  CONSTRAINT customer_project_logo_size CHECK (octet_length(data) BETWEEN 1 AND 2097152)
 );
+
+-- Customer removal hides submitted projects without destroying financial/audit records.
+ALTER TABLE customer_project_drafts ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
