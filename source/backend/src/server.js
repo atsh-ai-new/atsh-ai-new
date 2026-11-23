@@ -830,16 +830,16 @@ app.get("/api/admin/notifications",requireAdmin,route(async(req,res)=>{
  const table=await pool.query("SELECT to_regclass('public.platform_notifications') AS name");
  if(!table.rows[0].name)return res.status(503).json({error:"Notification database migration required"});
  // Owner has a shared operations inbox. Staff notifications remain identity-scoped.
- const recipient=req.admin.userId||null;
- const q=recipient
-  ?await pool.query("SELECT id,project_id,event_type,title,body,target_path,read_at,created_at FROM platform_notifications WHERE recipient_type='team' AND recipient_id=$1 ORDER BY created_at DESC LIMIT 50",[recipient])
-  :{rows:[]};
+ const recipient=req.admin.role==="owner"?"00000000-0000-4000-8000-000000000001":req.admin.userId;
+ if(!recipient)return res.status(403).json({error:"Team account required"});
+ const q=await pool.query("SELECT id,project_id,event_type,title,body,target_path,read_at,created_at FROM platform_notifications WHERE recipient_type='team' AND recipient_id=$1 ORDER BY created_at DESC LIMIT 50",[recipient]);
  res.set("Cache-Control","private, no-store").json({notifications:q.rows,unread:q.rows.filter(n=>!n.read_at).length});
 }));
 app.post("/api/admin/notifications/:id/read",requireAdmin,route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid notification id"});
- if(!req.admin.userId)return res.status(403).json({error:"Team account required"});
- const q=await pool.query("UPDATE platform_notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND recipient_type='team' AND recipient_id=$2 RETURNING id,read_at",[req.params.id,req.admin.userId]);
+ const recipient=req.admin.role==="owner"?"00000000-0000-4000-8000-000000000001":req.admin.userId;
+ if(!recipient)return res.status(403).json({error:"Team account required"});
+ const q=await pool.query("UPDATE platform_notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND recipient_type='team' AND recipient_id=$2 RETURNING id,read_at",[req.params.id,recipient]);
  if(!q.rowCount)return res.status(404).json({error:"Notification not found"});
  res.set("Cache-Control","private, no-store").json({notification:q.rows[0]});
 }));
