@@ -105,6 +105,20 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  }));
  const requireCustomer=safe(async(req,res,next)=>{let payload;try{payload=jwt.verify(req.cookies?.[sessionCookie],process.env.JWT_SECRET,{issuer:'atsh-ai-api',audience:'atsh-customer'});}catch{return res.status(401).json({error:'Sign in required'});}const q=await pool.query('SELECT id,name,email,is_active,session_version FROM customer_accounts WHERE id=$1',[payload.sub]);if(!q.rowCount||!q.rows[0].is_active)return res.status(401).json({error:'Session revoked'});if(payload.ver!==undefined&&payload.ver!==q.rows[0].session_version)return res.status(401).json({error:'Session revoked'});req.customer=q.rows[0];next();});
  router.get('/me',requireCustomer,(req,res)=>res.json({customer:{name:req.customer.name,email:req.customer.email}}));
+ // Notifications are scoped to the authenticated customer, never a supplied ID.
+ router.get('/notifications',requireCustomer,safe(async(req,res)=>{
+  const table=await pool.query("SELECT to_regclass('public.platform_notifications') AS name");
+  if(!table.rows[0].name)return res.status(503).json({error:'Notification database migration required'});
+  const q=await pool.query("SELECT id,project_id,event_type,title,body,target_path,read_at,created_at FROM platform_notifications WHERE recipient_type='customer' AND recipient_id=$1 ORDER BY created_at DESC LIMIT 50",[req.customer.id]);
+  res.set('Cache-Control','private, no-store').json({notifications:q.rows,unread:q.rows.filter(n=>!n.read_at).length});
+ }));
+ router.post('/notifications/:id/read',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:'Invalid notification id'});
+  const q=await pool.query("UPDATE platform_notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND recipient_type='customer' AND recipient_id=$2 RETURNING id,read_at",[req.params.id,req.customer.id]);
+  if(!q.rowCount)return res.status(404).json({error:'Notification not found'});
+  res.set('Cache-Control','private, no-store').json({notification:q.rows[0]});
+ }));
+
  // Project ownership is explicit: a matching email address alone never grants access.
  router.post('/projects/claim',requireCustomer,safe(async(req,res)=>{
   const p=z.object({projectId:z.string().uuid(),accessToken:z.string().regex(/^[a-f0-9]{64}$/)}).safeParse(req.body);
