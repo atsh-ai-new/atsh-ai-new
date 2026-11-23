@@ -152,6 +152,10 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(target.id)}/submit`,{method:"POST",credentials:"include"});
    const result=await response.json().catch(()=>({}));
    if(!response.ok){const errorCode=String(result.code||"");const message=errorCode==="PROJECT_REQUIREMENTS_INCOMPLETE"?t("أكمل متطلبات المشروع قبل إرساله للإدارة.","Complete project requirements before submission."):String(result.error||t("تعذر إرسال الطلب. حاول مجددًا.","Submission failed. Please try again."));throw Error(message);}
+   // Keep the submitted draft selected while the account lists refresh.
+   setProjectDrafts(previous=>previous.map(item=>item.id===target.id?{...item,linked_journey_id:result.projectId||item.linked_journey_id}:item));
+   setSelectedProjectDraft(target.id);
+   setHubTab("projects");
    await Promise.all([loadDrafts(),loadProjects()]);
    setMessage(result.alreadySubmitted?t("هذا الطلب مسجل بالفعل لدى الإدارة.","This request is already registered with management."):t("تم إرسال المتطلبات للإدارة. يمكنك متابعة المشروع من لوحة التحكم.","Requirements sent to management. Track the project in your dashboard."));
   }catch(error){setMessage(error instanceof Error?error.message:"Submission failed");}
@@ -189,6 +193,9 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    if(!sent.ok)throw Error(String(sentBody.error||t("لم يُرسل الطلب. راجع متطلبات المشروع وأعد المحاولة.","Request not sent. Review project requirements and retry.")));
    try{sessionStorage.removeItem("atsh_customer_workspace_v1");}catch{}
    setGuestPending(false);
+   setProjectDrafts(previous=>previous.map(item=>item.id===createdId?{...item,linked_journey_id:sentBody.projectId||item.linked_journey_id}:item));
+   setSelectedProjectDraft(createdId);
+   setHubTab("projects");
    await Promise.all([loadDrafts(),loadProjects()]);
    setMessage(t("تم إرسال الطلب للإدارة بنجاح.","Request submitted to management successfully.")+(sentBody.reference?` #${sentBody.reference}`:""));
   }catch(error){setMessage((error instanceof Error?error.message:"Submission failed")+(createdId?t(" — تم حفظ المشروع كمسودة ولم يتم تأكيد الإرسال."," — Project saved as a draft; submission not confirmed."):""));}
