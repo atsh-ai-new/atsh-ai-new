@@ -4,6 +4,7 @@ import {useParams,useSearchParams} from "next/navigation";
 import { syncCustomerWorkspace, loadGuestWorkspace, type CustomerWorkspace } from "@/lib/customer-workspace";
 import CustomerJourneyHub,{type HubTab} from "@/components/customer-journey-hub";
 import CustomerProjectAcceptance from "@/components/customer-project-acceptance";
+import NotificationInbox from "@/components/notification-inbox";
 
 type Order={id:string;reference:string;status:string;total:number;currency:string;project_id:string};
 type Quote={id:number;status:string;total_piasters:number;currency:string};
@@ -280,6 +281,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    <div style={{display:"flex",flexWrap:"wrap",gap:11}}><a href={`${base}/account/login`} style={{padding:"11px 15px",background:"#203958",color:"white",borderRadius:10}}>{t("تسجيل الدخول","Sign in")}</a><a href={`${base}/account/register`} style={{padding:"11px 15px",border:"1px solid #cbd5e1",borderRadius:10}}>{t("إنشاء حساب","Create account")}</a></div>
   </section>}
  {action==="dashboard"&&accountStatus==="authenticated"&&<>
+ <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}><NotificationInbox customer /></div>
  <CustomerJourneyHub locale={locale} active={hubTab} onTab={setHubTab} draftCount={projectDrafts.length} projectCount={projects.length} orderCount={orders.length} quoteCount={quotes.length} contractCount={contracts.length} invoiceCount={invoices.length} deliveryCount={deliverables.length}
   currentProject={selectedProjectDraft?(()=>{const project=projectDrafts.find(d=>d.id===selectedProjectDraft);return project?{title:project.title,sectorName:project.draft?.sectorName,id:project.id,revision:project.revision}:undefined})():undefined}
   currentPreviewStatus={selectedProjectDraft&&previewVersions.length?previewVersions[0].approval_status:undefined}
