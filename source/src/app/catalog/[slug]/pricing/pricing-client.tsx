@@ -28,9 +28,11 @@ export default function CatalogPricingClient({slug}:{slug:string}){
    if(!active)return;
    const byCode=new Map<string,Addon>();
    for(const option of data?.options??[]){
-    if(!option?.code||option.visibility==="packages"||!Number.isFinite(Number(option.price))||["logo_design","visual_identity"].includes(option.code))continue;
+    if(!option?.code||option.visibility==="packages"||!Number.isFinite(Number(option.price))||["logo_design","visual_identity","domain_com","domain_eg"].includes(option.code))continue;
     if(!byCode.has(option.code))byCode.set(option.code,{code:option.code,name:option.name,description:option.description??"",price:Number(option.price),pricingType:option.pricing_type==="monthly"?"monthly":option.pricing_type==="yearly"?"yearly":"fixed"});
    }
+   if(!byCode.has("smart_bot"))byCode.set("smart_bot",{code:"smart_bot",name:"البوت الذكي",description:"ردود آلية محفوظة",price:500,pricingType:"fixed"});
+   if(!byCode.has("ai_assistant"))byCode.set("ai_assistant",{code:"ai_assistant",name:"المساعد الذكي",description:"شبيه بمساعد ATSH AI",price:2500,pricingType:"yearly"});
    setSharedAddons([...byCode.values()]);
   }).catch(()=>{if(active)setSharedAddons([]);});
   return()=>{active=false};
