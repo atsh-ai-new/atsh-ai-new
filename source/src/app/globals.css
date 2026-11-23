@@ -737,3 +737,16 @@ html[dir="rtl"] .atsh-contact-submenu{left:calc(100% + 10px)}
 html[dir="ltr"] .atsh-contact-submenu{right:calc(100% + 10px)}
 .atsh-global-language{bottom:calc(18px + 2 * 65px)}
 @media(max-width:600px){.atsh-global-language{bottom:calc(14px + env(safe-area-inset-bottom,0px) + 2 * 59px)}}
+
+/* Mobile header: reserve dedicated grid tracks so social icons never cover the ATSH logo. */
+@media(max-width:620px){
+ .platform[lang="ar"] .platform-header,.platform[lang="en"] .platform-header{display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-rows:auto auto;align-items:center;column-gap:12px;row-gap:8px;padding-block:10px;min-width:0}
+ .platform-header .platform-brand{grid-column:1;grid-row:1;min-width:0;max-width:100%;overflow:hidden;gap:6px}
+ .platform-header .platform-brand img{flex-shrink:0}
+ .platform-header .platform-brand span{min-width:0;overflow:hidden}
+ .platform-header .platform-brand strong,.platform-header .platform-brand small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .platform-header .atsh-social-inline-slot{grid-column:2;grid-row:1;margin:0;min-width:max-content;justify-self:center}
+ .platform-header .atsh-social-header{gap:6px}
+ .platform-header .atsh-mobile-nav{grid-column:3;grid-row:1;justify-self:end;min-width:0}
+ .platform-header .platform-header-actions{grid-column:1/-1;grid-row:2;justify-self:stretch;justify-content:flex-start;margin:0;min-width:0}
+}
