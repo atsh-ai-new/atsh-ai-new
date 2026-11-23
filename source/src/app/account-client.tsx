@@ -64,7 +64,10 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    const response=await fetch(`/api/customer/auth/project-drafts/${encodeURIComponent(id)}`,{method:"DELETE",credentials:"include"});
    const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||t("فشل الحذف","Deletion failed"));
    setProjectDrafts(previous=>previous.filter(item=>item.id!==id));
+   if(submitted)setProjects(previous=>previous.filter(item=>item.id!==projectDrafts.find(d=>d.id===id)?.linked_journey_id));
    if(selectedProjectDraft===id)setSelectedProjectDraft(projectDrafts.find(item=>item.id!==id)?.id||"");
+   if(projectDrafts.length===1){setWorkspace(previous=>previous?{...previous,draftInvoice:undefined}:previous);setGuestPending(false);}
+   void fetch("/api/customer/auth/projects",{credentials:"include",cache:"no-store"}).then(r=>r.ok?r.json():null).then(d=>{if(d)setProjects(d.projects||[])}).catch(()=>{});
    setMessage(t("تم حذف المشروع نهائيًا.","Project permanently deleted."));
    window.dispatchEvent(new Event("atsh-project-deleted"));
   }catch(error){setMessage(error instanceof Error?error.message:t("تعذر الحذف","Could not delete project"));}
@@ -75,7 +78,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    if(!response.ok)throw Error();
    const body=await response.json();
    setProjectDrafts(body.drafts||[]);
-   setSelectedProjectDraft(previous=>previous||body.drafts?.[0]?.id||"");
+   setSelectedProjectDraft(previous=>body.drafts?.some((d:ProjectDraft)=>d.id===previous)?previous:(body.drafts?.[0]?.id||""));
 
   }catch{setMessage("تعذر تحميل مسودات مشروعاتك");}
  },[]);
@@ -310,7 +313,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
   {(projectDrafts.find(d=>d.id===selectedProjectDraft)?.linked_journey_id||projects[0]?.id)&&<CustomerProjectAcceptance key={projectDrafts.find(d=>d.id===selectedProjectDraft)?.linked_journey_id||projects[0]?.id} projectId={projectDrafts.find(d=>d.id===selectedProjectDraft)?.linked_journey_id||projects[0].id} locale={locale}/>}
   {projectDrafts.length>0&&<details style={{marginBottom:14,border:"1px solid #dce4ef",borderRadius:12,padding:12,background:"#fff"}}><summary style={{cursor:"pointer",fontWeight:700}}>{t("إدارة مشروعاتي","Manage my projects")} ({projectDrafts.length})</summary><div style={{display:"grid",gap:8,marginTop:12}}>{projectDrafts.map(item=><div key={item.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:10,border:"1px solid #e2e8f0",borderRadius:10}}><button type="button" onClick={()=>setSelectedProjectDraft(item.id)} style={{flex:1,textAlign:"start",border:0,background:"transparent",font:"inherit",cursor:"pointer"}}>{item.title}</button><button type="button" aria-label={t("حذف مشروع","Delete project")+" "+item.title} onClick={()=>void deleteCustomerProject(item.id,item.title,!!item.linked_journey_id)} style={{color:"#b42318",border:"1px solid #f0b5b0",background:"#fff5f4",padding:"8px 11px",borderRadius:9,cursor:"pointer"}}>{t("حذف","Delete")}</button></div>)}</div></details>}
   {projectDrafts.length>1&&<select aria-label={t("المشروع","Project")} value={selectedProjectDraft} onChange={e=>setSelectedProjectDraft(e.target.value)} style={{width:"100%",padding:12,marginBottom:14,borderRadius:10}}>{projectDrafts.map(d=><option key={d.id} value={d.id}>{d.title}</option>)}</select>}
-  {(()=>{const draft=projectDrafts.find(d=>d.id===selectedProjectDraft);const inv=(guestPending?loadGuestWorkspace().draftInvoice:null)||draft?.draft.draftInvoice||workspace?.draftInvoice;const slug=(guestPending?loadGuestWorkspace().sectorSlug:null)||draft?.draft.sectorSlug||workspace?.sectorSlug;const project=projects.find(p=>p.id===draft?.linked_journey_id);return <>
+  {(()=>{const draft=projectDrafts.find(d=>d.id===selectedProjectDraft);const inv=draft?.draft.draftInvoice||(guestPending?loadGuestWorkspace().draftInvoice:null);const slug=(guestPending?loadGuestWorkspace().sectorSlug:null)||draft?.draft.sectorSlug||workspace?.sectorSlug;const project=projects.find(p=>p.id===draft?.linked_journey_id);return <>
    <h2 style={{margin:"0 0 14px"}}>{t("فاتورة طلبي","My order invoice")}</h2>
    {inv?<div style={{border:"1px solid #dce4ef",borderRadius:14,padding:16,background:"#fafcff"}}>
     <strong style={{fontSize:19}}>{inv.title}</strong>
