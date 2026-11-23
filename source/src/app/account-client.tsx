@@ -166,8 +166,9 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    // Account workspace may contain historical/extra properties that trigger HTTP 400.
    const allowedDraftKeys=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","domainName","brandColor","options","sectorAddonCodes","projectMode","solutionType","requirements","pages","bilingual","identity","contentMode","hosting","domainChoice","maintenance","startWindow","contactWindow","stylePreference","inspirationLinks","compliance","logoName","customerName","customerEmail","customerPhone","optionQuantities","deliveryMethod","assistantMessages","source"]);
    const selections=Object.fromEntries(Object.entries({...guest,...workspace}).filter(([key,value])=>allowedDraftKeys.has(key)&&value!==undefined));
-   // The invoice is a display estimate, not a server-authoritative price.
-   // Keep it in the customer workspace; the draft only needs its selected package/sector.
+   // Persist the client-visible estimate with the submitted project for admin review.
+   // This remains indicative and must not be treated as an approved commercial quote.
+   selections.draftInvoice=invoice;
    if(!selections.packageId&&!selections.sectorSlug&&selections.projectMode!=="custom"){
     throw Error(t("الفاتورة موجودة لكن بيانات الباقة أو المجال غير محفوظة. ارجع للتسعير واحفظ الاختيارات أولًا.","Invoice found, but package/sector selections are missing. Save your choices in the configurator first."));
    }
