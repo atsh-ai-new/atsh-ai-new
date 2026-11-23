@@ -25,7 +25,7 @@ export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;loc
    return()=>{active=false};
  },[slug]);
  if(!ready&&!item)return <main lang={locale} dir={en?"ltr":"rtl"} style={{padding:30}}>{t("جارٍ تحميل المعاينة…","Loading interactive demo…")}</main>;
- if(!item)return <main lang={locale} dir={en?"ltr":"rtl"} style={{padding:30}}><h1>{t("الكتالوج غير متاح","Demo unavailable")}</h1><Link href={`${base}/catalog`}>{t("العودة إلى المعرض","Back to catalog")}</Link></main>;
+ if(!item)return <main lang={locale} dir={en?"ltr":"rtl"} style={{padding:30}}><h1>{t("النظام المخصص غير متاح","Demo unavailable")}</h1><Link href={`${base}/catalog`}>{t("العودة إلى المعرض","Back to catalog")}</Link></main>;
  // A persisted catalog entry can contain an older, shortened module list.
  // Keep every operational tab of the built-in interactive demos, then append
  // admin-defined extra sections without overwriting the CMS entry or its pricing.
@@ -33,7 +33,7 @@ export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;loc
  const modules=[...new Set([...(builtIn?.modules??[]),...(Array.isArray(item.modules)?item.modules:[])].filter((value):value is string=>typeof value==="string"&&value.trim().length>0))];
  return <>
   {item.previewUrl?.startsWith("https://")&&<div dir={en?"ltr":"rtl"} style={{maxWidth:1280,margin:"12px auto 0",padding:"12px 18px",background:"#eef6ff",border:"1px solid #d6e4f4",borderRadius:12}}>
-    <strong>{t("نسخة تفاعلية إضافية منشورة لهذا الكتالوج","An additional interactive demo is available")}</strong>
+    <strong>{t("نسخة تفاعلية إضافية منشورة لهذا النظام المخصص","An additional interactive demo is available")}</strong>
     <a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginInlineStart:14,color:"#174e83",fontWeight:700,textDecoration:"underline"}}>{t("افتح النسخة الخارجية ↗","Open external demo ↗")}</a>
     <small style={{display:"block",color:"#64748b",marginTop:5}}>{t("الرابط يُدار من لوحة التحكم وقد يفتح موقعًا خارجيًا مستقلًا عن ATSH AI.","The linked demo is managed by ATSH AI and may open an external website.")}</small>
   </div>}
