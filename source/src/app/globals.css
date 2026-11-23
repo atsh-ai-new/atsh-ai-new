@@ -712,3 +712,15 @@ html[dir="ltr"] .atsh-floating-actions,html[dir="ltr"] .atsh-global-language{rig
  html[dir="rtl"] .atsh-floating-actions,html[dir="rtl"] .atsh-global-language{left:12px;right:auto}
  html[dir="ltr"] .atsh-floating-actions,html[dir="ltr"] .atsh-global-language{right:12px;left:auto}
 }
+
+/* Keep ATSH AI brand and inline social links on one header row, without scaling typography. */
+.platform-header{display:flex;align-items:center;flex-wrap:nowrap}
+.platform-header .platform-brand{flex:0 1 auto;min-width:0;white-space:nowrap}
+.platform-header .platform-brand strong{white-space:nowrap}
+.platform-header .atsh-social-inline-slot{flex:0 0 auto;white-space:nowrap}
+.platform-header .platform-header-actions{margin-inline-start:auto;min-width:0}
+@media(max-width:620px){
+ .platform[lang="ar"] .platform-header .platform-brand,.platform[lang="en"] .platform-header .platform-brand{flex:0 1 auto;min-width:0}
+ .platform-header{column-gap:6px}
+ .platform-header .atsh-social-inline-slot{margin-inline:0}
+}
