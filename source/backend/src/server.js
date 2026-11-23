@@ -270,6 +270,15 @@ app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requirePermissi
   const result=await client.query("INSERT INTO customer_journey_messages(project_id,actor,body) VALUES($1,'admin',$2) RETURNING id,actor,body,created_at",[req.params.id,parsed.data.body]);
   if(project.rows[0].customer_account_id){
    await queueJourneyEvent(client,"journey.admin_message",`journey.admin_message:${result.rows[0].id}`,{projectId:req.params.id,messageId:result.rows[0].id,customerAccountId:project.rows[0].customer_account_id});
+   // In-app notification shares the message transaction; do not block existing
+   // customer messaging until the additive notification migration is applied.
+   const notificationSchema=await client.query("SELECT to_regclass('public.platform_notifications') AS table_name");
+   if(notificationSchema.rows[0].table_name){
+    await client.query(
+     "INSERT INTO platform_notifications(recipient_type,recipient_id,project_id,event_type,title,body,target_path) VALUES('customer',$1,$2,'journey.admin_message',$3,$4,$5)",
+     [project.rows[0].customer_account_id,req.params.id,"رسالة جديدة من الإدارة",parsed.data.body.slice(0,300),"/customer"]
+    );
+   }
   }
   await client.query("COMMIT");
   res.status(201).set("Cache-Control","private, no-store").json({message:result.rows[0]});
