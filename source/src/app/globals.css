@@ -699,3 +699,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .atsh-social-inline-slot .atsh-social-header{position:static;inset:auto;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0;background:transparent;box-shadow:none;border-radius:0;z-index:auto}
 .atsh-social-inline-slot .atsh-social-header a,.atsh-social-inline-slot .atsh-social-header span{width:27px;height:27px}
 @media(max-width:620px){.atsh-social-inline-slot{margin-inline:2px}.atsh-social-inline-slot .atsh-social-header{gap:3px}.atsh-social-inline-slot .atsh-social-header a,.atsh-social-inline-slot .atsh-social-header span{width:23px;height:23px}.platform-header .atsh-social-inline-slot{order:0}}
+
+/* Floating controls: language, assistant, call, WhatsApp, Messenger, Telegram. */
+.atsh-fab-telegram{background:#229ed9;opacity:.65;cursor:default}
+.atsh-global-language{bottom:calc(18px + 5 * 65px)}
+@media(max-width:600px){.atsh-global-language{bottom:calc(14px + env(safe-area-inset-bottom,0px) + 5 * 59px)}}
