@@ -174,8 +174,26 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   res.json({services:services.rows});
  }));
  router.get('/project-drafts',requireCustomer,safe(async(req,res)=>{
-  const result=await pool.query("SELECT id,title,draft,revision,linked_journey_id,updated_at,created_at FROM customer_project_drafts WHERE customer_id=$1 ORDER BY updated_at DESC",[req.customer.id]);
+  const result=await pool.query("SELECT id,title,draft,revision,linked_journey_id,updated_at,created_at FROM customer_project_drafts WHERE customer_id=$1 AND deleted_at IS NULL ORDER BY updated_at DESC",[req.customer.id]);
   res.set('Cache-Control','private, no-store').json({drafts:result.rows});
+ }));
+ // Deleting an unsubmitted draft is permanent; submitted projects are removed from the portal
+ // while accounting, contractual and audit records remain intact.
+ router.delete('/project-drafts/:id',requireCustomer,safe(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Project not found'});
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   const owned=await client.query('SELECT id,linked_journey_id FROM customer_project_drafts WHERE id=$1 AND customer_id=$2 AND deleted_at IS NULL FOR UPDATE',[req.params.id,req.customer.id]);
+   if(!owned.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Project not found'});}
+   if(owned.rows[0].linked_journey_id){
+    await client.query('UPDATE customer_project_drafts SET deleted_at=now(),updated_at=now() WHERE id=$1 AND customer_id=$2',[req.params.id,req.customer.id]);
+   }else{
+    await client.query('DELETE FROM customer_project_drafts WHERE id=$1 AND customer_id=$2',[req.params.id,req.customer.id]);
+   }
+   await client.query('COMMIT');
+   res.set('Cache-Control','private, no-store').json({ok:true,mode:owned.rows[0].linked_journey_id?'removed_from_portal':'deleted'});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
  }));
  router.post('/project-drafts',requireCustomer,safe(async(req,res)=>{
   const parsed=z.object({title:z.string().trim().min(1).max(120).default('مشروع جديد'),draft:draftSchema.default({})}).strict().safeParse(req.body);
