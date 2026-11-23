@@ -1,6 +1,8 @@
 // Browser-only guest preference handoff. Never store passwords, access codes or payment data here.
 export type AssistantMessage = {who:"assistant"|"customer";text:string};
+export type DraftInvoice = {title:string;items:{name:string;amount:number;period:"fixed"|"monthly"|"yearly"}[];subtotal:number;vat:number;total:number;fixed:number;monthly:number;yearly:number;currency:"EGP";savedAt:string};
 export type CustomerWorkspace = {
+  draftInvoice?:DraftInvoice;
   assistantMessages?:AssistantMessage[];
   sectorSlug?:string; sectorName?:string; packageId?:string; businessName?:string;
   projectMode?:"ready"|"custom"; solutionType?:"website"|"store"|"mobile"|"management"|"ai"|"other"; requirements?:string;
@@ -24,7 +26,7 @@ function guestStorage():Storage|null{
     return window.sessionStorage;
   }catch{return null;}
 }
-const allowed=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","brandColor","options","sectorAddonCodes","projectMode","solutionType","requirements","deliveryMethod","domainName","source","assistantMessages"]);
+const allowed=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","brandColor","options","sectorAddonCodes","projectMode","solutionType","requirements","deliveryMethod","domainName","source","assistantMessages","draftInvoice"]);
 export function loadGuestWorkspace():CustomerWorkspace {
   if(typeof window==="undefined")return {};
   try{
