@@ -42,7 +42,7 @@ export default function SectorPricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  };
  return <main dir={en?"ltr":"rtl"} style={{background:"#f8f7f3",minHeight:"100vh",padding:"24px 16px",color:"#203958"}}>
  <div style={{maxWidth:1000,margin:"auto"}}>
- <nav style={{display:"flex",justifyContent:"space-between",gap:12}}><Link href={base+"/catalog"}>{t("العودة للكتالوج","Back to catalog")}</Link><Link href={(en?"":"/en")+"/catalog/"+encodeURIComponent(slug)+"/pricing"}>{en?"العربية":"English"}</Link></nav>
+ <nav style={{display:"flex",justifyContent:"space-between",gap:12}}><Link href={base+"/catalog"}>{t("العودة للنظام مخصص","Back to catalog")}</Link><Link href={(en?"":"/en")+"/catalog/"+encodeURIComponent(slug)+"/pricing"}>{en?"العربية":"English"}</Link></nav>
  <h1>{t("تخصيص النظام والفاتورة المباشرة","Customize your solution & live estimate")}</h1>
  {loading&&<p>{t("جارٍ تحميل النظام...","Loading solution...")}</p>}
  {error&&<p role="alert" style={{color:"#a33"}}>{error}</p>}
