@@ -724,3 +724,16 @@ html[dir="ltr"] .atsh-floating-actions,html[dir="ltr"] .atsh-global-language{rig
  .platform-header{column-gap:6px}
  .platform-header .atsh-social-inline-slot{margin-inline:0}
 }
+
+/* Three visible floating controls; contact submenu opens toward page content. */
+.atsh-contact-group{position:relative;display:flex;align-items:center;justify-content:center}
+.atsh-fab-contact-menu{background:#27659b}
+.atsh-contact-symbols{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;align-items:center;justify-items:center;width:32px;height:32px;font-size:15px;line-height:1;font-weight:800}
+.atsh-contact-symbols span:nth-child(2){color:#79f0a3}
+.atsh-contact-symbols span:nth-child(3){color:#a7d5ff}
+.atsh-contact-symbols span:nth-child(4){color:#9de0ff}
+.atsh-contact-submenu{position:absolute;bottom:0;display:flex;flex-direction:column;gap:9px;align-items:center;z-index:2}
+html[dir="rtl"] .atsh-contact-submenu{left:calc(100% + 10px)}
+html[dir="ltr"] .atsh-contact-submenu{right:calc(100% + 10px)}
+.atsh-global-language{bottom:calc(18px + 2 * 65px)}
+@media(max-width:600px){.atsh-global-language{bottom:calc(14px + env(safe-area-inset-bottom,0px) + 2 * 59px)}}
