@@ -310,7 +310,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
        const chosenPackage=packageId||savedDraft.packageId;
        const customRequirements=(customer.details||savedDraft.requirements||"").trim();
        if(!chosenSector&&!chosenPackage&&!(savedDraft.projectMode==="custom"&&customRequirements))throw Error(t("لم يتم تحديد نوع المشروع في المسودة. ارجع لاختيار باقة أو مشروع من النظام المخصص، ثم أكمل الإضافات.","No project type is selected in this draft. Choose a package or catalog project, then continue with add-ons."));
-       const patch={...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes,source:"catalog" as const}:{}),...(packageId?{packageId,source:"configurator" as const}:{}),options:[...addons,...selectedExtraOptionIds].slice(0,30),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||savedDraft.businessName||"",requirements:customRequirements,
+       const patch={draftInvoice:currentDraftInvoice(),...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes,source:"catalog" as const}:{}),...(packageId?{packageId,source:"configurator" as const}:{}),options:[...addons,...selectedExtraOptionIds].slice(0,30),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||savedDraft.businessName||"",requirements:customRequirements,
         pages,bilingual,identity,contentMode:content==="writing"?"writing" as const:"provided" as const,
         hosting,domainChoice:domain,maintenance,startWindow:startWindowLabel,contactWindow:contactWindowLabel,
         stylePreference,inspirationLinks:inspirationLinks.filter(Boolean).slice(0,20),
@@ -459,6 +459,11 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     }
   };
 
+  const currentDraftInvoice = () => ({
+    title:selectedPackage?.name||selectedSector?.name||t("طلب مشروع","Project request"),
+    items:[...localizedQuoteItems.map(item=>({name:item.label,amount:item.amount,period:(item.period==="سنوي"||item.period==="annual"?"yearly":item.period==="شهري"||item.period==="monthly"?"monthly":"fixed") as "fixed"|"monthly"|"yearly"})),...(selectedSector&&sectorPrice&&!sectorPrice.needsCustomQuote?sectorPrice.items.map(item=>({name:item.name,amount:item.price,period:item.pricingType})):[])],
+    subtotal:quoteSubtotal,vat:quoteTax,total:quoteTotal,fixed:quoteSummary.oneTime,monthly:quoteSummary.monthly,yearly:quoteSummary.yearly,currency:"EGP" as const,savedAt:new Date().toISOString()
+  });
   const continueFromContact = () => {
     // Account creation is the next step. Validate contact details at final order submission,
     // not here: an incomplete phone number must not freeze account navigation.
@@ -466,7 +471,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     saveGuestWorkspace({
       packageId:packageId??undefined,domainName:requestedDomainName,
       sectorSlug:selectedSector?.slug,sectorName:selectedSector?.name,
-      sectorAddonCodes,source:"configurator"
+      sectorAddonCodes,draftInvoice:currentDraftInvoice(),source:"configurator"
     });
     window.location.assign(isEnglish
       ?(customerSignedIn?"/en/account/dashboard":"/en/account/register")
