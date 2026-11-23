@@ -76,5 +76,15 @@ jobs:
           await db.end();
           NODE
 
+          # API bootstrap creates base tables; apply the additive approval migration before smoke tests.
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          import {readFile} from 'node:fs/promises';
+          const db=new pg.Client({connectionString:process.env.DATABASE_URL});
+          await db.connect();
+          await db.query(await readFile('db/project_acceptance_gate_20261123.sql','utf8'));
+          await db.end();
+          NODE
+
           node test/integration-smoke.mjs
           node test/persistence-restart.mjs
