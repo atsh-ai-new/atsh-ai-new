@@ -7,7 +7,6 @@ import { readPagePreview } from "@/lib/page-preview";
 import { siteCopyEn, englishPackages, englishOptions, englishPrice } from "@/lib/site-copy-en";
 import { findSector } from "@/lib/sector-catalog";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
-import Concierge from "@/components/concierge";
 import DomainLookup from "@/components/domain-lookup";
 import HomeCatalogShowcase, {type HomeCatalogItem} from "@/components/home-catalog-showcase";
 import { combinedQuoteSummary } from "@/lib/quote-breakdown";
@@ -484,7 +483,6 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
 
   return (
     <main className="platform" lang={locale} dir={isEnglish?"ltr":"rtl"} style={{ "--navy": siteConfig.theme?.navy, "--navy-2": siteConfig.theme?.blue, "--blue": siteConfig.theme?.blue, "--gold": siteConfig.theme?.gold, "--page": siteConfig.theme?.page, "--site-font": siteConfig.theme?.fontFamily ? `\"${siteConfig.theme.fontFamily}\", system-ui, sans-serif` : undefined, "--card-radius": siteConfig.theme?.cardRadius === undefined ? undefined : `${siteConfig.theme.cardRadius}px`, backgroundImage: siteConfig.theme?.backgroundImageUrl ? `linear-gradient(rgba(250,249,245,.94), rgba(250,249,245,.94)), url(${JSON.stringify(siteConfig.theme.backgroundImageUrl)})` : undefined, backgroundSize: siteConfig.theme?.backgroundImageUrl ? "cover" : undefined, backgroundAttachment: siteConfig.theme?.backgroundImageUrl ? "fixed" : undefined } as CSSProperties}>
-      <Concierge locale={locale} />
       {!configuratorOnly&&<header className="platform-header">
         <a className="platform-brand" href="#top" aria-label={copy("homeAriaLabel")}>
           <img src={siteConfig.theme?.logoUrl || "/images/atsh-logo.jpg"} alt={copy("logoAlt")} />
