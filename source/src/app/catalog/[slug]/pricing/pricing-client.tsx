@@ -45,7 +45,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
  const monthly=addons.filter(a=>selected.includes(a.code)&&a.pricingType==="monthly").reduce((n,a)=>n+Number(a.price),0);
  const yearly=addons.filter(a=>selected.includes(a.code)&&a.pricingType==="yearly").reduce((n,a)=>n+Number(a.price),0);
  const money=(n:number)=>n.toLocaleString(en?"en-EG":"ar-EG",{maximumFractionDigits:2})+" "+t("ج.م","EGP");
- const save=()=>{if(!catalog)return;saveGuestWorkspace({sectorSlug:slug,sectorName:catalog.name,sectorAddonCodes:selected,source:"catalog",businessDescription:[pages>0?`${pages} ${t("صفحات إضافية","additional pages")}`:"",details].filter(Boolean).join(" — ")});};
+ const save=()=>{if(!catalog)return;const items=[{name:catalog.name,amount:base??0,period:"fixed" as const},...addons.filter(a=>a.code!=="extra_page"&&selected.includes(a.code)).map(a=>({name:a.name,amount:Number(a.price),period:a.pricingType})),...(pages>0&&pageAddon?[{name:`صفحات إضافية × ${pages}`,amount:pages*Number(pageAddon.price),period:"fixed" as const}]:[])];const subtotal=(base??0)+fixed+monthly+yearly;saveGuestWorkspace({sectorSlug:slug,sectorName:catalog.name,sectorAddonCodes:selected,source:"catalog",projectMode:"ready",businessDescription:[pages>0?`${pages} صفحات إضافية`:"",details].filter(Boolean).join(" — "),draftInvoice:{title:catalog.name,items,subtotal,vat:subtotal*.14,total:subtotal*1.14,fixed:(base??0)+fixed,monthly,yearly,currency:"EGP",savedAt:new Date().toISOString()}});};
  const cardStyle={border:"1px solid #d8e1eb",borderRadius:12,padding:"12px 14px",background:"#fff"} as const;
  return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:780,margin:"0 auto",padding:"18px 14px 70px",color:"#203958"}}>
   <Link href={en?"/en/catalog":"/catalog"} style={{color:"#203958"}}>{t("← العودة","← Back")}</Link>
@@ -70,7 +70,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
     {[[t("رسوم لمرة واحدة","One-time fees"),base===null?"—":money(base+fixed)],[t("رسوم شهرية متكررة","Recurring monthly fees"),money(monthly)],[t("رسوم سنوية متكررة","Recurring annual fees"),money(yearly)]].map(([label,value])=><div key={label} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"14px 12px",marginBottom:10,background:"#f7f7f4",borderRadius:12,fontSize:13,color:"#687584"}}><span>{label}</span><strong>{value}</strong></div>)}
     <p style={{fontSize:12,color:"#87919d",textAlign:"center",margin:"18px 0 0"}}>{t("الأسعار استرشادية بالجنيه المصري؛ تُراجع البنود والضريبة قبل إصدار عرض رسمي.","Indicative EGP pricing; line items and taxes are reviewed before a formal quote.")}</p>
    </section>
-   <Link href={en?"/en/start":"/start"} onClick={save} style={{background:"#203958",color:"#fff",borderRadius:11,padding:15,textAlign:"center",fontWeight:800,textDecoration:"none"}}>{t("استكمل طلب النظام المخصص ←","Continue catalog request →")}</Link>
+   <Link href={en?"/en/account/dashboard?tab=invoices":"/account/dashboard?tab=invoices"} onClick={save} style={{background:"#203958",color:"#fff",borderRadius:11,padding:15,textAlign:"center",fontWeight:800,textDecoration:"none"}}>{t("استكمل طلب النظام المخصص ←","Continue catalog request →")}</Link>
   </div>}
  </main>;
 }
