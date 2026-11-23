@@ -29,7 +29,6 @@ export default function NotificationInbox({customer=false}:{customer?:boolean}){
  const [items,setItems]=useState<Notice[]>([]);
  const [error,setError]=useState("");
  const [soundOn,setSoundOn]=useState(false);
- const [soundReady,setSoundReady]=useState(false);
  const base=customer?"/api/customer/auth/notifications":"/api/admin/notifications";
  const storageKey=customer?"atsh-customer-notification-sound":"atsh-admin-notification-sound";
  const previousIds=useRef<Set<string>|null>(null);
@@ -39,11 +38,6 @@ export default function NotificationInbox({customer=false}:{customer?:boolean}){
   const enabled=window.localStorage.getItem(storageKey)==="on";
   setSoundOn(enabled);
   soundRef.current=enabled;
-  // Browsers require a user gesture before audible playback.
-  const activate=()=>setSoundReady(true);
-  window.addEventListener("pointerdown",activate,{once:true});
-  window.addEventListener("keydown",activate,{once:true});
-  return()=>{window.removeEventListener("pointerdown",activate);window.removeEventListener("keydown",activate)};
  },[storageKey]);
  const refresh=useCallback(async()=>{
   if(busy.current)return;
@@ -79,7 +73,7 @@ export default function NotificationInbox({customer=false}:{customer?:boolean}){
   soundRef.current=next;
   setSoundOn(next);
   window.localStorage.setItem(storageKey,next?"on":"off");
-  if(next){setSoundReady(true);playChime();}
+  if(next)playChime();
  }
  async function mark(id:string){
   const r=await fetch(base+"/"+encodeURIComponent(id)+"/read",{method:"POST",credentials:"include"});
