@@ -11,6 +11,7 @@ import AssistantKnowledge from "./assistant-knowledge";
 import IntegrationStatus from "./integration-status";
 import ContentStudio from "./content-studio";
 import JourneyManager from "./journey-manager";
+import CustomerServicesAdmin from "./customer-services-admin";
 import CommercialManager from "./commercial-manager";
 
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
@@ -372,7 +373,7 @@ export default function AdminPage() {
         {view === "pages" && <ContentManager onSaved={loadData} />}
         {view === "works" && <ContentManager initialSlug="works" onSaved={loadData} />}
         {view === "content-studio" && canEditContent && <ContentStudio />}
-        {view === "journey" && <JourneyManager mode="projects" canManageTasks={canEditCatalog} canArchive={user.role === "owner" || user.role === "admin"} canDelete={user.role === "owner"} />}
+        {view === "journey" && <><JourneyManager mode="projects" canManageTasks={canEditCatalog} canArchive={user.role === "owner" || user.role === "admin"} canDelete={user.role === "owner"} />{(user.role === "owner" || user.role === "admin") && <CustomerServicesAdmin canEdit={true} />}</>}
       {view === "commercial" && <CommercialManager />}
 
         {view === "options" && <section className="admin-content-card" aria-label="المعروض"><h2>المعروض</h2><p>إدارة الباقات والأنظمة المخصصة من مكان واحد، دون تكرار نماذج الإنشاء.</p><div role="tablist" aria-label="أقسام المعروض" style={{display:"flex",gap:8,flexWrap:"wrap"}}><button type="button" role="tab" aria-selected={offeringTab==="packages"} className={offeringTab==="packages"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("packages")}>الباقات</button><button type="button" role="tab" aria-selected={offeringTab==="systems"} className={offeringTab==="systems"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("systems")}>أنظمة مخصصة</button><button type="button" role="tab" aria-selected={offeringTab==="addons"} className={offeringTab==="addons"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("addons")}>الإضافات</button><button type="button" role="tab" aria-selected={offeringTab==="preview"} className={offeringTab==="preview"?"button button-small":"button button-outline button-small"} onClick={previewOfferings}>معاينة</button></div></section>}
