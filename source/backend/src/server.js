@@ -1907,6 +1907,33 @@ for(const group of [false,true]){
  if(!q.rowCount)return res.sendStatus(404);res.set({"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","Content-Disposition":"attachment; filename*=UTF-8''"+encodeURIComponent(q.rows[0].filename),"Content-Type":"application/octet-stream"}).send(q.rows[0].data);
  }));
 }
+
+await pool.query(`CREATE TABLE IF NOT EXISTS live_support_threads (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), token_hash text UNIQUE NOT NULL,
+ assigned_to uuid REFERENCES team_members(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now()
+); CREATE TABLE IF NOT EXISTS live_support_messages (
+ id bigserial PRIMARY KEY, thread_id uuid NOT NULL REFERENCES live_support_threads(id) ON DELETE CASCADE,
+ sender text NOT NULL CHECK(sender IN ('visitor','staff')), actor_id uuid, body text NOT NULL CHECK(length(body) BETWEEN 1 AND 2000), created_at timestamptz NOT NULL DEFAULT now()
+); CREATE INDEX IF NOT EXISTS live_support_messages_thread ON live_support_messages(thread_id,id);
+CREATE TABLE IF NOT EXISTS live_support_settings (singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton), assigned_to uuid REFERENCES team_members(id) ON DELETE SET NULL);`);
+const supportHash=t=>createHash("sha256").update(t).digest("hex");
+const supportBody=z.object({body:z.string().trim().min(1).max(2000)});
+app.post("/api/visitor/live-support/start",route(async(req,res)=>{
+ const token=randomBytes(32).toString("hex");
+ const q=await pool.query("INSERT INTO live_support_threads(token_hash,assigned_to) VALUES($1,(SELECT s.assigned_to FROM live_support_settings s JOIN team_members t ON t.id=s.assigned_to AND t.is_active WHERE singleton)) RETURNING id",[supportHash(token)]);
+ res.set("Cache-Control","no-store").status(201).json({id:q.rows[0].id,token});
+}));
+async function supportVisitor(req,res,next){try{const token=req.get("x-support-token")||"";if(!/^[a-f0-9]{64}$/.test(token))return res.sendStatus(401);const q=await pool.query("SELECT id FROM live_support_threads WHERE token_hash=$1",[supportHash(token)]);if(!q.rowCount)return res.sendStatus(404);req.supportThread=q.rows[0].id;next();}catch(e){next(e);}}
+async function supportStaff(req,res,next){try{if(!z.string().uuid().safeParse(req.params.id).success)return res.sendStatus(404);const q=await pool.query("SELECT id FROM live_support_threads WHERE id=$1 AND ($2::boolean OR assigned_to=$3)",[req.params.id,req.admin.role==="owner",internalActor(req)]);if(!q.rowCount)return res.sendStatus(404);req.supportThread=q.rows[0].id;next();}catch(e){next(e);}}
+const supportRead=route(async(req,res)=>{const q=await pool.query("SELECT id,sender,body,created_at FROM live_support_messages WHERE thread_id=$1 ORDER BY id DESC LIMIT 200",[req.supportThread]);res.set("Cache-Control","private, no-store").json({messages:q.rows.reverse()});});
+const supportSend=sender=>route(async(req,res)=>{const v=supportBody.safeParse(req.body);if(!v.success)return res.sendStatus(400);const q=await pool.query("INSERT INTO live_support_messages(thread_id,sender,actor_id,body) VALUES($1,$2,$3,$4) RETURNING id,sender,body,created_at",[req.supportThread,sender,sender==="staff"?internalActor(req):null,v.data.body]);res.status(201).json({message:q.rows[0]});});
+app.get("/api/visitor/live-support/messages",supportVisitor,supportRead);
+app.post("/api/visitor/live-support/messages",supportVisitor,supportSend("visitor"));
+app.get("/api/admin/live-support",requireAdmin,route(async(req,res)=>{const q=await pool.query("SELECT t.id,t.assigned_to,t.created_at,(SELECT body FROM live_support_messages WHERE thread_id=t.id ORDER BY id DESC LIMIT 1) AS last_message FROM live_support_threads t WHERE ($1::boolean OR t.assigned_to=$2) ORDER BY t.created_at DESC LIMIT 200",[req.admin.role==="owner",internalActor(req)]);res.set("Cache-Control","private, no-store").json({threads:q.rows});}));
+app.get("/api/admin/live-support/:id",requireAdmin,supportStaff,supportRead);
+app.post("/api/admin/live-support/:id",requireAdmin,supportStaff,supportSend("staff"));
+app.put("/api/admin/live-support-assignment",requireAdmin,route(async(req,res)=>{if(req.admin.role!=="owner")return res.sendStatus(403);const v=z.object({assigned_to:z.string().uuid().nullable()}).safeParse(req.body);if(!v.success)return res.sendStatus(400);if(v.data.assigned_to){const q=await pool.query("SELECT id FROM team_members WHERE id=$1 AND is_active",[v.data.assigned_to]);if(!q.rowCount)return res.sendStatus(400);}await pool.query("INSERT INTO live_support_settings(singleton,assigned_to) VALUES(true,$1) ON CONFLICT(singleton) DO UPDATE SET assigned_to=excluded.assigned_to",[v.data.assigned_to]);res.json({ok:true});}));
+app.put("/api/admin/live-support/:id/assignment",requireAdmin,supportStaff,route(async(req,res)=>{if(req.admin.role!=="owner")return res.sendStatus(403);const v=z.object({assigned_to:z.string().uuid().nullable()}).safeParse(req.body);if(!v.success)return res.sendStatus(400);if(v.data.assigned_to){const q=await pool.query("SELECT id FROM team_members WHERE id=$1 AND is_active",[v.data.assigned_to]);if(!q.rowCount)return res.sendStatus(400);}await pool.query("UPDATE live_support_threads SET assigned_to=$1 WHERE id=$2",[v.data.assigned_to,req.supportThread]);res.json({ok:true});}));
 app.use((err,_req,res,_next)=>{
   if(err?.type==="entity.too.large")return res.status(413).json({error:"حجم الملف أكبر من الحد المسموح."});
   console.error(err);
