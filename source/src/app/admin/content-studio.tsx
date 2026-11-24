@@ -83,6 +83,10 @@ export default function ContentStudio() {
   const [logo, setLogo] = useState<File | null>(null);
   const [audio, setAudio] = useState<File | null>(null);
   const [managerNotes, setManagerNotes] = useState("");
+  const [idea,setIdea]=useState("");
+  const [audience,setAudience]=useState("");
+  const [duration,setDuration]=useState("15");
+  const [platform,setPlatform]=useState("Facebook / Instagram Reels");
   const [analysisConsent, setAnalysisConsent] = useState(false);
   const [productionConsent, setProductionConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -153,17 +157,18 @@ export default function ContentStudio() {
 
   async function analyze(event: ChangeEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!file) { setError("اختر ملف المدير أولًا."); return; }
-    if (file.size > 8 * 1024 * 1024) { setError("الحد الأقصى للملف 8 ميجابايت."); return; }
+    const source = file || (idea.trim().length>=10 ? new File([`فكرة الإعلان: ${idea}\nالجمهور: ${audience}\nالمدة المطلوبة: ${duration} ثانية\nمنصة العرض: ${platform}`],"manual-brief.txt",{type:"text/plain"}) : null);
+    if (!source) { setError("اكتب فكرة الإعلان أو اختر ملف التكليف."); return; }
+    if (source.size > 8 * 1024 * 1024) { setError("الحد الأقصى للملف 8 ميجابايت."); return; }
     if (!analysisConsent) { setError("أكد موافقتك على إرسال الملف إلى OpenAI للتحليل."); return; }
     setBusy(true); setError(""); setNotice("");
     try {
       const managerNotesBase64 = btoa(unescape(encodeURIComponent(managerNotes.trim())));
-      const response = await fetch("/api/admin/content-studio/analyze", { method: "POST", credentials: "include", cache: "no-store", headers: { "Content-Type": file.type || "application/octet-stream", "X-File-Name": encodeURIComponent(file.name), "X-Analysis-Consent": "openai", "X-Manager-Notes-Base64": managerNotesBase64 }, body: file });
+      const response = await fetch("/api/admin/content-studio/analyze", { method: "POST", credentials: "include", cache: "no-store", headers: { "Content-Type": source.type || "application/octet-stream", "X-File-Name": encodeURIComponent(source.name), "X-Analysis-Consent": "openai", "X-Manager-Notes-Base64": managerNotesBase64 }, body: source });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || result.message || "تعذر تحليل الملف.");
       const created = result.draft as Draft;
-      setDraft(created); setItems((current) => [created, ...current.filter((item) => item.id !== created.id)]); setFile(null); setAnalysisConsent(false); setManagerNotes("");
+      setDraft(created); setItems((current) => [created, ...current.filter((item) => item.id !== created.id)]); setFile(null); setIdea(""); setAnalysisConsent(false); setManagerNotes("");
       setNotice("جهزت المسودة. راجع النص والمشاهد وعدّلها قبل اعتمادها.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر تحليل الملف."); }
     finally { setBusy(false); }
@@ -226,10 +231,10 @@ export default function ContentStudio() {
         <div className={service.workflowConfigured ? "studio-connection is-ready" : "studio-connection is-pending"}><i /> ورَك فلو الفيديو: {service.workflowConfigured ? "إعداد الاتصال موجود" : "أضف رابط Webhook واعتمادها في Coolify"}</div>
       </div>
       <form className="studio-upload-form" onSubmit={(event) => void analyze(event)}>
-        <label className="admin-field">ملف التكليف<input type="file" accept={accept} disabled={busy || !service.aiConfigured} onChange={(event) => void handleFile(event, "source")} /><small>PDF، Word، PowerPoint، Excel أو نص · حتى 8 ميجابايت · {file?.name ?? "لم يُختر ملف"}</small></label>
+        <label className="admin-field">فكرة الإعلان مباشرة<textarea rows={4} maxLength={6000} value={idea} onChange={e=>setIdea(e.target.value)} placeholder="اكتب المنتج أو الخدمة والرسالة المطلوبة" /></label><label className="admin-field">الجمهور المستهدف<input value={audience} onChange={e=>setAudience(e.target.value)} /></label><label className="admin-field">المدة المطلوبة<select value={duration} onChange={e=>setDuration(e.target.value)}>{[8,12,15,20,24,30].map(n=><option key={n} value={n}>{n} ثانية</option>)}</select></label><label className="admin-field">منصة العرض<select value={platform} onChange={e=>setPlatform(e.target.value)}>{["Facebook / Instagram Reels","TikTok","YouTube Shorts"].map(p=><option key={p}>{p}</option>)}</select></label><label className="admin-field">أو ملف التكليف<input type="file" accept={accept} disabled={busy || !service.aiConfigured} onChange={(event) => void handleFile(event, "source")} /><small>PDF، Word، PowerPoint، Excel أو نص · حتى 8 ميجابايت · {file?.name ?? "لم يُختر ملف"}</small></label>
         <label className="admin-field">ملاحظات المدير (اختياري)<textarea rows={2} maxLength={3000} value={managerNotes} onChange={(event) => setManagerNotes(event.target.value)} placeholder="المنصة، الجمهور، المدة أو أي توجيهات إضافية" /></label>
-        <label className="check-row studio-consent"><input type="checkbox" checked={analysisConsent} onChange={(event) => setAnalysisConsent(event.target.checked)} /> أوافق على إرسال الملف إلى OpenAI لتحويله إلى خطة إعلان. لن تُحفظ نسخة الملف في قاعدة بيانات المنصة.</label>
-        <button className="button" disabled={busy || !service.aiConfigured || !file}>{busy ? "جارٍ تجهيز الخطة…" : "حلّل الملف وجهّز الخطة ✦"}</button>
+        <label className="check-row studio-consent"><input type="checkbox" checked={analysisConsent} onChange={(event) => setAnalysisConsent(event.target.checked)} /> أوافق على إرسال فكرة الإعلان أو الملف إلى OpenAI لتحويله إلى خطة إعلان. لن تُحفظ نسخة الملف في قاعدة بيانات المنصة.</label>
+        <button className="button" disabled={busy || !service.aiConfigured || (!file && idea.trim().length<10)}>{busy ? "جارٍ تجهيز الخطة…" : "جهّز خطة الإعلان ✦"}</button>
       </form>
     </section>
 
