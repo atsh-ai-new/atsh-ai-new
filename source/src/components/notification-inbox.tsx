@@ -1,7 +1,7 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from "react";
 
-type Notice={id:string;title:string;body:string;target_path:string;created_at:string;read_at:string|null};
+type Notice={event_type?:string;id:string;title:string;body:string;target_path:string;created_at:string;read_at:string|null};
 const POLL_MS=5000;
 function playChime(){
  // One restrained two-note chime for every notification type. No external audio asset.
@@ -92,7 +92,7 @@ export default function NotificationInbox({customer=false}:{customer?:boolean}){
      <strong>{item.title}</strong><p style={{margin:"4px 0",overflowWrap:"anywhere"}}>{item.body}</p>
      <small>{new Date(item.created_at).toLocaleString("ar-EG")}</small>
      <div style={{display:"flex",gap:8,marginTop:5}}>
-      {item.target_path.startsWith("/")&&!item.target_path.startsWith("//")&&<a href={item.target_path} onClick={e=>{const url=new URL(item.target_path,window.location.origin);if(!customer&&url.pathname.replace(/\/$/,"")==="/admin"&&url.searchParams.get("view")==="messages"){e.preventDefault();window.history.pushState(null,"",url.pathname+url.search);window.dispatchEvent(new Event("atsh-open-chat"));e.currentTarget.closest("details")?.removeAttribute("open");if(!item.read_at)void mark(item.id);}}}>فتح</a>}
+      {item.target_path.startsWith("/")&&!item.target_path.startsWith("//")&&<a href={item.target_path} onClick={e=>{const url=new URL(item.target_path,window.location.origin);if(!customer&&url.pathname.replace(/\/$/,"")==="/admin"&&(url.searchParams.get("view")==="messages"||item.event_type==="support.message")){if(item.event_type==="support.message"&&!url.searchParams.get("thread")){url.searchParams.set("view","messages");url.searchParams.set("chat","support");}e.preventDefault();window.history.pushState(null,"",url.pathname+url.search);window.dispatchEvent(new CustomEvent("atsh-open-chat",{detail:url.search}));e.currentTarget.closest("details")?.removeAttribute("open");if(!item.read_at)void mark(item.id);}}}>فتح</a>}
       {!item.read_at&&<button type="button" onClick={()=>void mark(item.id)}>تحديد كمقروء</button>}
      </div>
     </article>)}
