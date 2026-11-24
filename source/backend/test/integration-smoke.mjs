@@ -44,6 +44,35 @@ try{
  await pool.query("INSERT INTO customer_accounts(id,name,email,password_hash,email_verified_at) VALUES($1,'Client A',$2,'ci-salted-not-for-login',now()),($3,'Client B',$4,'ci-salted-not-for-login',now())",[accountA,`first-${suffix}@example.test`,accountB,`second-${suffix}@example.test`]);
  const cookieFor=id=>`atsh_customer=${jwt.sign({sub:id,kind:"customer",ver:0},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-customer",expiresIn:"10m"})}`;
  const adminCookie=`atsh_admin=${ownerToken}`;
+ const chatA=randomUUID(),chatB=randomUUID(),chatC=randomUUID();
+ for(const [id,name] of [[chatA,"Chat A"],[chatB,"Chat B"],[chatC,"Chat C"]])await pool.query("INSERT INTO team_members(id,email,display_name,role,password_hash,is_active) VALUES($1,$2,$3,'viewer','ci-test',true)",[id,id+"@example.test",name]);
+ const teamCookie=id=>"atsh_admin="+jwt.sign({role:"viewer",userId:id,email:id+"@example.test"},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-admin",expiresIn:"10m"});
+ const chatPath="/api/admin/internal-chat/";
+ assert.equal((await req(chatPath+"contacts")).status,401);
+ assert.equal((await req(chatPath+"contacts",{cookie:cookieFor(accountA)})).status,401);
+ assert.equal((await req(chatPath+"contacts",{cookie:teamCookie(chatA)})).status,200);
+ const sentChat=await req(chatPath+chatB,{method:"POST",cookie:teamCookie(chatA),body:{body:"CI private message"}});
+ assert.equal(sentChat.status,201,JSON.stringify(sentChat));
+ const receivedChat=await req(chatPath+chatA,{cookie:teamCookie(chatB)});
+ assert.equal(receivedChat.status,200);assert.ok(receivedChat.result.messages.some(m=>m.body==="CI private message"));
+ const isolatedChat=await req(chatPath+chatA,{cookie:teamCookie(chatC)});
+ assert.equal(isolatedChat.status,200);assert.equal(isolatedChat.result.messages.length,0);
+ assert.equal((await pool.query("SELECT count(*)::int AS n FROM platform_notifications WHERE recipient_id=$1 AND event_type='internal.message'",[chatB])).rows[0].n,1);
+ const chatProject=(await pool.query("INSERT INTO customer_journey_projects(customer_name,customer_email,created_by) VALUES('CI chat','chat@example.test','ci') RETURNING id")).rows[0].id;
+ await pool.query("INSERT INTO customer_journey_tasks(project_id,title,assigned_to,created_by,updated_by) VALUES($1,'CI task',$2,'ci','ci')",[chatProject,chatA]);
+ const groupPath="/api/admin/internal-groups/"+chatProject;
+ assert.equal((await req(groupPath,{cookie:teamCookie(chatC)})).status,404);
+ assert.equal((await req(groupPath,{method:"POST",cookie:teamCookie(chatC),body:{body:"forbidden"}})).status,404);
+ const groupSent=await req(groupPath,{method:"POST",cookie:adminCookie,body:{body:"CI group message"}});
+ assert.equal(groupSent.status,201,JSON.stringify(groupSent));
+ const groupReceived=await req(groupPath,{cookie:teamCookie(chatA)});
+ assert.equal(groupReceived.status,200);assert.ok(groupReceived.result.messages.some(m=>m.body==="CI group message"));
+ assert.equal((await pool.query("SELECT count(*)::int AS n FROM platform_notifications WHERE recipient_id=$1 AND project_id=$2 AND event_type='internal.group'",[chatA,chatProject])).rows[0].n,1);
+ await pool.query("DELETE FROM customer_journey_projects WHERE id=$1",[chatProject]);
+ assert.equal((await pool.query("SELECT count(*)::int AS n FROM internal_project_messages WHERE project_id=$1",[chatProject])).rows[0].n,0);
+ await pool.query("UPDATE team_members SET is_active=false WHERE id=$1",[chatA]);
+ assert.equal((await req(chatPath+"contacts",{cookie:teamCookie(chatA)})).status,401);
+
  // Owner creates, versions and archives a contract template; historical signed snapshots are immutable.
  let v=await req("/api/admin/commercial/contracts/templates",{method:"POST",cookie:adminCookie,body:{title:"اشتراك مُدار تجريبي",body:"العقد الأصلي بنطاق خدمة مُدار وتوصيف مبدئي لحقوق العميل.",category:"managed_monthly",isPublished:true}});
  assert.equal(v.status,201,JSON.stringify(v));
