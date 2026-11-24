@@ -49,6 +49,12 @@ test("real customer login, concurrent submission and admin parity", {timeout:120
   sr=await support("messages/files/"+file);assert.equal(sr.status,200);assert.equal(await sr.text(),"attachment-test");
   sr=await support("messages/files/"+file,"GET",undefined,second.data.token);assert.equal(sr.status,404);
   sr=await fetch(base+"/api/admin/live-support/"+thread+"/files/"+file,{headers:{Cookie:admin.cookie}});assert.equal(sr.status,200);assert.equal(await sr.text(),"attachment-test");
+  for(const filename of ["document.pdf","document.doc","document.docx"]){
+   const bytes=Buffer.from("attachment-"+filename);
+   sr=await support("messages/files","POST",bytes,token,{"Content-Type":"application/octet-stream","x-file-name":filename});assert.equal(sr.status,201);const uploaded=(await sr.json()).message;assert.equal(uploaded.filename,filename);
+   const downloaded=await fetch(base+"/api/admin/live-support/"+thread+"/files/"+uploaded.file_id,{headers:{Cookie:admin.cookie}});assert.equal(downloaded.status,200);assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()),bytes);
+   const sent=await fetch(base+"/api/admin/live-support/"+thread+"/files",{method:"POST",headers:{Cookie:admin.cookie,Origin:origin,"Content-Type":"application/octet-stream","x-file-name":filename},body:bytes});assert.equal(sent.status,201);const replyFile=(await sent.json()).message;sr=await support("messages/files/"+replyFile.file_id);assert.equal(sr.status,200);assert.deepEqual(Buffer.from(await sr.arrayBuffer()),bytes);
+  }
   const ping=await api("/api/admin/live-support-presence","POST",undefined,admin.cookie);assert.equal(ping.status,200);
   sr=await support("status");assert.equal((await sr.json()).online,true);
   const notices=await pool.query("SELECT count(*)::int AS n FROM platform_notifications WHERE recipient_id=$1 AND event_type='support.message'",["00000000-0000-4000-8000-000000000001"]);assert.ok(notices.rows[0].n>=2);
