@@ -103,7 +103,7 @@ export default function Concierge({locale="ar",embedded=false}:{locale?:"ar"|"en
    setHint("");
    try{
      const history=next.filter(m=>m!==initialMessage).slice(-8).map(m=>({role:m.who==="customer"?"user":"assistant",content:m.text}));
-     const response=await fetch("/api/visitor/assistant",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:history})});
+     const response=await fetch("/api/visitor/assistant",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:history,locale})});
      const data=await response.json().catch(()=>({}));
      if(!response.ok||typeof data.answer!=="string")throw Error(`HTTP ${response.status}: ${typeof data.error==="string"?data.error:"GPT unavailable"}`);
      setMessages(prev=>{const updated=[...prev,{who:"assistant" as const,text:data.answer}];storeMessages(updated);return updated;});
@@ -117,7 +117,7 @@ export default function Concierge({locale="ar",embedded=false}:{locale?:"ar"|"en
    {(open||embedded)&&<section className={embedded?"atsh-assistant-dialog-embedded":"atsh-assistant-dialog"} role="dialog" aria-label={t("مساعد ATSH AI الإرشادي","ATSH AI assistant")} style={{width:embedded?"100%":"min(370px,calc(100vw - 36px))",height:embedded?"min(650px,75dvh)":"min(560px,calc(100dvh - 100px))",background:"#fff",borderRadius:20,boxShadow:"0 18px 65px #0d244050",border:"1px solid #d7e1eb",display:"flex",flexDirection:"column",overflow:"hidden",marginBottom:12,marginRight:64}}>
      <header style={{padding:16,background:"#203958",color:"white",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}><div><strong>{t("مساعد ATSH AI","ATSH AI assistant")}</strong></div><button aria-label={t("إغلاق المساعد","Close assistant")} onClick={()=>setOpen(false)} hidden={embedded} style={{background:"transparent",border:0,color:"white",fontSize:25,cursor:"pointer"}}>×</button></header>
      <div aria-live="polite" style={{flex:1,overflowY:"auto",padding:15,display:"flex",flexDirection:"column",gap:10}}>
-       {messages.map((m,i)=><div key={i} style={{padding:"10px 12px",borderRadius:14,lineHeight:1.8,fontSize:13,maxWidth:"95%",alignSelf:m.who==="customer"?"flex-start":"flex-end",background:m.who==="customer"?"#e8f0fb":"#f3f5f8",color:"#203958"}}>{m.text}</div>)}
+       {messages.map((m,i)=><div key={i} style={{padding:"10px 12px",borderRadius:14,lineHeight:1.8,fontSize:13,maxWidth:"95%",alignSelf:m.who==="customer"?"flex-start":"flex-end",background:m.who==="customer"?"#e8f0fb":"#f3f5f8",color:"#203958"}}>{m===initialMessage||m.text===initial.text||m.text==="Welcome to ATSH AI. Tell me about your business or the software you need, and I will guide you toward a solution, demo or quote."?initialMessage.text:m.text}</div>)}
        {hint&&<small style={{color:"#96610e"}}>{hint}</small>}
      </div>
      <nav aria-label={t("اختصارات المساعد","Assistant shortcuts")} style={{display:"flex",gap:7,flexWrap:"wrap",padding:"5px 12px"}}>
