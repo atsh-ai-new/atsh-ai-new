@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormE
 import { formatEgp } from "@/lib/catalog";
 import { siteCopyDefaults, siteCopyFields } from "@/lib/site-copy";
 import ContentManager from "./content-manager";
+import VideoManager from "./video-manager";
 import { createPagePreviewUrl } from "@/lib/page-preview";
 import CatalogManager from "./catalog-manager";
 import AssistantKnowledge from "./assistant-knowledge";
@@ -15,7 +16,7 @@ import CustomerServicesAdmin from "./customer-services-admin";
 import CommercialManager from "./commercial-manager";
 
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
-type View = "messages" | "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "theme" | "inbox" | "team" | "audit";
+type View = "videos" | "messages" | "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "theme" | "inbox" | "team" | "audit";
 type Package = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
 type Option = { id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
 type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; linked_project_id?: string | null; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
@@ -34,6 +35,7 @@ const nav: Array<{ id: View; label: string; icon: string }> = [
   { id: "overview", label: "نظرة عامة", icon: "◫" }, { id: "integrations", label: "حالة الربط", icon: "🔌" }, { id:"assistant-knowledge",label:"تعريفات GPT والردود",icon:"✦" }, { id: "content", label: "تعديل المحتوى", icon: "▤" },
   { id: "pages", label: "صفحات المنصة", icon: "▧" }, { id: "works", label: "سجل الأعمال السابقة", icon: "▣" },
   { id: "content-studio", label: "منشئ المحتوى", icon: "✦" },
+  { id: "videos", label: "إدارة الفيديوهات", icon: "▶" },
   { id: "messages", label: "مركز المراسلات", icon: "✉" },
   { id: "journey", label: "المشاريع", icon: "◎" },
   { id: "commercial", label: "العروض والعقود", icon: "▤" },
@@ -47,7 +49,7 @@ const adminGroups: Array<{label:string;views:View[]}>= [
  {label:"العملاء",views:["inbox","journey"]},
  {label:"المراسلات",views:["messages"]},
  {label:"الفريق",views:["team"]},
- {label:"محتوى المنصة",views:["pages","content-studio"]},
+ {label:"محتوى المنصة",views:["pages","content-studio","videos"]},
  {label:"المنتجات",views:["options"]}
 ];
 const defaultTheme: Theme = { navy: "#203958", blue: "#4c78ae", gold: "#b59a6b", page: "#faf9f5", logoUrl: "/images/atsh-logo.jpg", heroImageUrl: "/images/atsh-hero.jpg", backgroundImageUrl: "", fontFamily: "IBM Plex Sans Arabic", cardRadius: 16 };
@@ -182,7 +184,7 @@ export default function AdminPage() {
   const viewPermissions: Partial<Record<View, string>> = {
     integrations:"settings", "assistant-knowledge":"assistant", team:"team", audit:"audit",
     options:"products", theme:"settings", content:"content", pages:"content",
-    works:"content", "content-studio":"assistant", journey:"customers",
+    works:"content", videos:"content", "content-studio":"assistant", journey:"customers",
     commercial:"customers", inbox:"customers"
   };
   const visibleNav = nav.filter(item => !viewPermissions[item.id] || permitted(viewPermissions[item.id]!));
@@ -372,6 +374,7 @@ export default function AdminPage() {
         {view === "integrations" && canEditCatalog && <IntegrationStatus />}
         
         {view === "assistant-knowledge" && canEditContent && <AssistantKnowledge />}
+        {view === "videos" && canEditContent && <VideoManager />}
         {view === "pages" && <ContentManager onSaved={loadData} />}
         {view === "works" && <ContentManager initialSlug="works" onSaved={loadData} />}
         {view === "content-studio" && canEditContent && <ContentStudio />}
