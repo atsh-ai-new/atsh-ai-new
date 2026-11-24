@@ -75,7 +75,8 @@ async function proxy(request: Request, context: RouteContext) {
       if (length && (!/^\d+$/.test(length) || Number(length) > PRIVATE_DELIVERY_BYTES)) return NextResponse.json({message:"الملف أكبر من 512 ميجابايت"},{status:413});
       body = request.body ?? undefined;
     } else {
-      const limited = await readLimitedBody(request, isContentStudioFile || isContentStudioRequest ? CONTENT_STUDIO_BODY_BYTES : DEFAULT_ADMIN_BODY_BYTES);
+      const isChatFile = (path[0] === "internal-chat" || path[0] === "internal-groups") && path[2] === "files";
+      const limited = await readLimitedBody(request, isChatFile ? 20 * 1024 * 1024 : isContentStudioFile || isContentStudioRequest ? CONTENT_STUDIO_BODY_BYTES : DEFAULT_ADMIN_BODY_BYTES);
       if (limited.tooLarge) return NextResponse.json({ message: "حجم الطلب أكبر من الحد المسموح." }, { status: 413 });
       body = limited.body;
     }
@@ -89,6 +90,7 @@ async function proxy(request: Request, context: RouteContext) {
     const responseHeaders = new Headers();
     const contentType = upstream.headers.get("content-type");
     if (contentType) responseHeaders.set("content-type", contentType);
+    for (const name of ["content-disposition","x-content-type-options"]) { const value=upstream.headers.get(name); if(value) responseHeaders.set(name,value); }
     const cacheControl = upstream.headers.get("cache-control");
     if (cacheControl) responseHeaders.set("cache-control", cacheControl);
     for (const cookie of upstream.headers.getSetCookie()) responseHeaders.append("set-cookie", cookie);
