@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 const MAX_BYTES=12*1024;
 async function proxy(request:Request,context:{params:Promise<{action:string}>}) {
- const {action}=await context.params; if(!["start","messages"].includes(action)||(action==="start"&&request.method!=="POST"))return new Response(null,{status:404});
+ const {action}=await context.params; if(!["start","messages","files"].includes(action)||(action==="start"&&request.method!=="POST"))return new Response(null,{status:404});
   const originHeader=request.headers.get("origin");
   // Traefik may forward the request to Next.js over internal HTTP; request.url
   // is therefore not a reliable public-site origin in production.
@@ -23,8 +23,9 @@ async function proxy(request:Request,context:{params:Promise<{action:string}>}) 
          : requestedOrigin.host===`www.${canonical.host}`));
   }catch{/* Reject missing or malformed origins. */}
   if(request.method!=="GET"&&(!allowedOrigin||!originHeader))return NextResponse.json({error:"Origin not allowed"},{status:403});
-  const raw=await request.text();
-  if(Buffer.byteLength(raw,"utf8")>MAX_BYTES)return NextResponse.json({error:"Request too large"},{status:413});
+  const limit=action==="files"?20*1024*1024:MAX_BYTES;
+  const reader=request.body?.getReader();const chunks:Uint8Array[]=[];let size=0;if(reader){while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>limit){await reader.cancel();return new Response(null,{status:413});}chunks.push(value);}}const raw=new ArrayBuffer(size);let offset=0;for(const chunk of chunks){new Uint8Array(raw).set(chunk,offset);offset+=chunk.byteLength;}
+  if(size>limit)return NextResponse.json({error:"Request too large"},{status:413});
   let base:URL;
   try{
     base=new URL(process.env.ATSH_API_BASE_URL??"");
@@ -33,16 +34,16 @@ async function proxy(request:Request,context:{params:Promise<{action:string}>}) 
     if(!["http:","https:"].includes(base.protocol))throw Error("Invalid scheme");
   }catch{return NextResponse.json({error:"API unavailable"},{status:503});}
   try{
-    const upstream=await fetch(new URL("/api/visitor/live-support/"+action,base),{
-      method:request.method,headers:{"Content-Type":"application/json","x-support-token":request.headers.get("x-support-token")||"","Origin":process.env.NODE_ENV==="production" ? new URL(process.env.ATSH_SITE_ORIGIN??"https://atsh-ai.com").origin : (originHeader||new URL(request.url).origin)},body:request.method==="GET"?undefined:raw,
+    const upstream=await fetch(new URL("/api/visitor/live-support/"+(action==="files"?"messages/files"+(request.method==="GET"?"/"+encodeURIComponent(new URL(request.url).searchParams.get("id")||""):""):action),base),{
+      method:request.method,headers:{"Content-Type":action==="files"?"application/octet-stream":"application/json","x-file-name":request.headers.get("x-file-name")||"","x-support-token":request.headers.get("x-support-token")||"","Origin":process.env.NODE_ENV==="production" ? new URL(process.env.ATSH_SITE_ORIGIN??"https://atsh-ai.com").origin : (originHeader||new URL(request.url).origin)},body:request.method==="GET"?undefined:raw,
       cache:"no-store",redirect:"manual",signal:AbortSignal.timeout(30000)
     });
     const contentType=upstream.headers.get("content-type");
     return new Response(await upstream.arrayBuffer(),{
       status:upstream.status,
-      headers:{"content-type":contentType?.includes("application/json")?"application/json":"application/json","cache-control":"no-store"}
+      headers:{"content-type":contentType||"application/json","cache-control":"no-store","x-content-type-options":"nosniff"}
     });
-  }catch{return NextResponse.json({error:"GPT connection unavailable"},{status:502});}
+  }catch{return NextResponse.json({error:"Support connection unavailable"},{status:502});}
 }
 
 export const GET=proxy; export const POST=proxy;
