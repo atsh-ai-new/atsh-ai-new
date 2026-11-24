@@ -271,7 +271,7 @@ app.get("/api/admin/journey/projects/:id",requireAdmin,requirePermission("custom
  // The draft remains account-owned and is never modified by this read-only endpoint.
  res.set('Cache-Control','private, no-store').json({project:project.rows[0],messages:messages.rows,submittedDraft:drafts.rows[0]||null,linkedOrderAssignments:assignments.rows});
 }));
-app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+app.post("/api/admin/journey/projects/:id/messages",requireAdmin,(req,res,next)=>hasPermission(req.admin.role,req.admin.permissions,"customers")?next():assignedChatAccess(req,res,next),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const parsed=journeyMessageSchema.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid message"});
@@ -300,7 +300,14 @@ app.post("/api/admin/journey/projects/:id/messages",requireAdmin,requirePermissi
 }));
 
 // Each team member can see only their own assignments; owner sees the whole queue.
-app.get("/api/admin/journey/my-tasks",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+async function assignedChatAccess(req,res,next){
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:"Project not found"});
+ try{const q=await pool.query("SELECT p.id FROM customer_journey_projects p WHERE p.id=$1 AND p.status<>'archived' AND ($2::boolean OR EXISTS(SELECT 1 FROM customer_journey_tasks t WHERE t.project_id=p.id AND t.assigned_to=$3::uuid))",[req.params.id,req.admin.role==="owner",req.admin.userId||null]);if(!q.rowCount)return res.status(403).json({error:"Project not assigned"});next();}catch(e){next(e);}
+}
+app.get("/api/admin/journey/assigned-chat/:id",requireAdmin,assignedChatAccess,route(async(req,res)=>{
+ const q=await pool.query("SELECT id,actor,body,created_at FROM customer_journey_messages WHERE project_id=$1 ORDER BY id DESC LIMIT 200",[req.params.id]);res.set("Cache-Control","private, no-store").json({messages:q.rows.reverse()});
+}));
+app.get("/api/admin/journey/my-tasks",requireAdmin,route(async(req,res)=>{
  const scope=taskInboxScope(req.admin);
  if(!scope)return res.status(403).json({error:"Team account required"});
  const tasks=await pool.query(`SELECT t.id,t.project_id,t.title,t.description,t.status,t.created_at,t.updated_at,
@@ -315,7 +322,7 @@ app.get("/api/admin/journey/my-tasks",requireAdmin,requirePermission("customers"
 }));
 
 // Assigned employees can change only the status of their own task, never its owner or contents.
-app.patch("/api/admin/journey/my-tasks/:taskId/status",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+app.patch("/api/admin/journey/my-tasks/:taskId/status",requireAdmin,route(async(req,res)=>{
  const scope=taskInboxScope(req.admin);
  if(!scope)return res.status(403).json({error:"Team account required"});
  if(!z.string().uuid().safeParse(req.params.taskId).success)return res.status(400).json({error:"Invalid task"});
