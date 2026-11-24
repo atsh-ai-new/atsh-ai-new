@@ -46,10 +46,11 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
    <Link href={en?"/en":"/"} style={{fontWeight:800,color:"#203958"}}>ATSH AI</Link><Link href={`${base}/start`} style={{color:"#203958",fontWeight:700}}>{t("ابدأ مشروعك","Start a project")}</Link>
    <Link href={`${base}/#configurator`} style={{border:"1px solid #ccd1d6",padding:"10px 15px",borderRadius:10}}>{t("الباقات ومحرك التسعير","Packages & pricing")}</Link>
   </header>
-  <section style={{padding:"36px 0 20px"}}>
+  <section style={{padding:"24px 0 16px"}}>
    <p style={{color:"#4c78ae",fontWeight:700}}>{t("أنظمة مخصصة ATSH AI","ATSH AI solution catalog")}</p>
-   <h1 style={{fontSize:"clamp(29px,4vw,49px)",color:"#203958",margin:"8px 0"}}>{t("استكشف الأنظمة حسب مجالك","Explore digital solutions by industry")}</h1>
+   <h1 style={{fontSize:"clamp(29px,4vw,49px)",color:"#203958",margin:"8px 0"}}>{t("لا تكيّف أعمالك مع نظام جاهز، بل امتلك نظامًا يتكيف مع أعمالك.","Don’t adapt your business to ready-made software. Get a system that adapts to your business.")}</h1>
    <p style={{lineHeight:1.9,maxWidth:730,color:"#64748b"}}>{t("قطاعات رئيسية، وتخصصات فرعية، ونماذج تفاعلية. اختر النظام المناسب، ثم أضف مواصفاتك واحسب السعر.","Browse sectors, explore interactive demos and customize a solution before requesting a quote.")}</p>
+   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,145px),1fr))",gap:8,margin:"14px 0"}}>{[t("برمجة خاصة","Custom software"),t("تحكم متكامل","Integrated control"),t("قابلية التوسع","Scalability"),t("هوية مستقلة","Distinct identity"),t("تكامل ذكي","Smart integration"),t("أسعار تنافسية","Competitive pricing")].map(label=><span key={label} style={{fontSize:13,fontWeight:600,color:"#203958"}}>✓ {label}</span>)}</div>
    {notice&&<small role="status" style={{color:"#99660b"}}>{notice}</small>}
   </section>
   <nav aria-label={t("القطاعات الرئيسية","Industry sectors")} style={{display:"flex",gap:9,overflowX:"auto",padding:"0 0 14px",marginBottom:14}}>
