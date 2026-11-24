@@ -33,6 +33,24 @@ test("real customer login, concurrent submission and admin parity", {timeout:120
   const count=await pool.query("SELECT count(*)::int AS n FROM customer_journey_projects WHERE id=$1",[projectId]);assert.equal(count.rows[0].n,1);
   const linked=await pool.query("SELECT linked_journey_id,draft FROM customer_project_drafts WHERE id=$1",[draftId]);assert.equal(linked.rows[0].linked_journey_id,projectId);assert.deepEqual(linked.rows[0].draft,draft);
   const admin=await api("/api/admin/login","POST",{email:"admin@example.test",password:adminPassword});assert.equal(admin.status,200,JSON.stringify(admin.data));assert.ok(admin.cookie);
+  // Live support: real database and HTTP, two independent guest sessions.
+  const start=await api("/api/visitor/live-support/start","POST");assert.equal(start.status,201);
+  const second=await api("/api/visitor/live-support/start","POST");assert.equal(second.status,201);
+  const token=start.data.token,thread=start.data.id;
+  const support=async(path,method="GET",body,key=token,extra={})=>fetch(base+"/api/visitor/live-support/"+path,{method,headers:{Origin:origin,"x-support-token":key,...extra},body});
+  let sr=await support("messages","POST",JSON.stringify({body:"Live support acceptance"}),token,{"Content-Type":"application/json"});assert.equal(sr.status,201,await sr.text());
+  const inbox=await api("/api/admin/live-support","GET",undefined,admin.cookie);assert.equal(inbox.status,200);assert.ok(inbox.data.threads.some(t=>t.id===thread));
+  const reply=await api("/api/admin/live-support/"+thread,"POST",{body:"Owner reply"},admin.cookie);assert.equal(reply.status,201);
+  sr=await support("messages");assert.equal(sr.status,200);assert.deepEqual((await sr.json()).messages.map(m=>m.body),["Live support acceptance","Owner reply"]);
+  sr=await support("messages","GET",undefined,second.data.token);assert.equal((await sr.json()).messages.length,0);
+  sr=await support("messages","GET",undefined,"invalid");assert.equal(sr.status,401);
+  sr=await support("messages/files","POST",Buffer.from("attachment-test"),token,{"Content-Type":"application/octet-stream","x-file-name":"test.txt"});assert.equal(sr.status,201);const file=(await sr.json()).message.file_id;assert.ok(file);
+  sr=await support("messages/files/"+file);assert.equal(sr.status,200);assert.equal(await sr.text(),"attachment-test");
+  sr=await support("messages/files/"+file,"GET",undefined,second.data.token);assert.equal(sr.status,404);
+  sr=await fetch(base+"/api/admin/live-support/"+thread+"/files/"+file,{headers:{Cookie:admin.cookie}});assert.equal(sr.status,200);assert.equal(await sr.text(),"attachment-test");
+  const ping=await api("/api/admin/live-support-presence","POST",undefined,admin.cookie);assert.equal(ping.status,200);
+  sr=await support("status");assert.equal((await sr.json()).online,true);
+  const notices=await pool.query("SELECT count(*)::int AS n FROM platform_notifications WHERE recipient_id=$1 AND event_type='support.message'",["00000000-0000-4000-8000-000000000001"]);assert.ok(notices.rows[0].n>=2);
   const detail=await api("/api/admin/journey/projects/"+projectId,"GET",undefined,admin.cookie);
   assert.equal(detail.status,200,JSON.stringify(detail.data));assert.equal(detail.data.project.id,projectId);assert.equal(detail.data.submittedDraft.id,draftId);assert.deepEqual(detail.data.submittedDraft.draft,draft);
   const retry=await api("/api/customer/auth/project-drafts/"+draftId+"/submit","POST",undefined,login.cookie);
