@@ -1837,6 +1837,30 @@ app.post('/api/admin/project-reviews/:id/publish',requireAdmin,requireRole('owne
   res.json({status:'testing',publishedFiles:result.results.length,note:'Not yet tested or preview deployed'});
  }catch(e){await recordReviewStage(pool,{draftId:req.params.id,status:'failed',detail:{error:String(e.message).slice(0,200)}});throw e;}
 }));
+
+const internalActor=req=>req.admin.role==="owner"?"00000000-0000-4000-8000-000000000001":req.admin.userId;
+await pool.query(`CREATE TABLE IF NOT EXISTS internal_team_messages (
+ id bigserial PRIMARY KEY, sender_id uuid NOT NULL, recipient_id uuid NOT NULL,
+ body text NOT NULL CHECK(length(body) BETWEEN 2 AND 2000), created_at timestamptz NOT NULL DEFAULT now()
+); CREATE INDEX IF NOT EXISTS internal_team_messages_pair_idx ON internal_team_messages(sender_id,recipient_id,id);`);
+app.get("/api/admin/internal-chat/contacts",requireAdmin,route(async(req,res)=>{
+ const me=internalActor(req);if(!me)return res.sendStatus(403);
+ const q=await pool.query("SELECT id,display_name FROM team_members WHERE is_active AND id<>$1 ORDER BY display_name",[me]);
+ const contacts=q.rows;if(req.admin.role!=="owner")contacts.unshift({id:"00000000-0000-4000-8000-000000000001",display_name:"الإدارة"});
+ res.set("Cache-Control","private, no-store").json({me,contacts});
+}));
+async function internalPeer(req,res,next){
+ try{const me=internalActor(req),peer=req.params.peer;if(!me||!z.string().uuid().safeParse(peer).success||peer===me)return res.sendStatus(404);
+ if(peer!=="00000000-0000-4000-8000-000000000001"){const q=await pool.query("SELECT 1 FROM team_members WHERE id=$1 AND is_active",[peer]);if(!q.rowCount)return res.sendStatus(404);}next();}catch(e){next(e);}
+}
+app.get("/api/admin/internal-chat/:peer",requireAdmin,internalPeer,route(async(req,res)=>{
+ const q=await pool.query("SELECT id,sender_id,body,created_at FROM internal_team_messages WHERE (sender_id=$1 AND recipient_id=$2) OR (sender_id=$2 AND recipient_id=$1) ORDER BY id DESC LIMIT 200",[internalActor(req),req.params.peer]);
+ res.set("Cache-Control","private, no-store").json({messages:q.rows.reverse()});
+}));
+app.post("/api/admin/internal-chat/:peer",requireAdmin,internalPeer,route(async(req,res)=>{
+ const p=z.object({body:z.string().trim().min(2).max(2000)}).strict().safeParse(req.body);if(!p.success)return res.status(400).json({error:"Invalid message"});
+ const q=await pool.query("INSERT INTO internal_team_messages(sender_id,recipient_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at",[internalActor(req),req.params.peer,p.data.body]);res.status(201).json({message:q.rows[0]});
+}));
 app.use((err,_req,res,_next)=>{
   if(err?.type==="entity.too.large")return res.status(413).json({error:"حجم الملف أكبر من الحد المسموح."});
   console.error(err);
