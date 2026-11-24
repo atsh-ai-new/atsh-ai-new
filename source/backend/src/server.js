@@ -1861,6 +1861,27 @@ app.post("/api/admin/internal-chat/:peer",requireAdmin,internalPeer,route(async(
  const p=z.object({body:z.string().trim().min(2).max(2000)}).strict().safeParse(req.body);if(!p.success)return res.status(400).json({error:"Invalid message"});
  const q=await pool.query("INSERT INTO internal_team_messages(sender_id,recipient_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at",[internalActor(req),req.params.peer,p.data.body]);res.status(201).json({message:q.rows[0]});
 }));
+
+await pool.query(`CREATE TABLE IF NOT EXISTS internal_project_messages (
+ id bigserial PRIMARY KEY, project_id uuid NOT NULL REFERENCES customer_journey_projects(id) ON DELETE CASCADE,
+ sender_id uuid NOT NULL, body text NOT NULL CHECK(length(body) BETWEEN 2 AND 2000), created_at timestamptz NOT NULL DEFAULT now()
+); CREATE INDEX IF NOT EXISTS internal_project_messages_idx ON internal_project_messages(project_id,id);`);
+const internalProjectScope="p.status<>'archived' AND ($1::boolean OR EXISTS(SELECT 1 FROM customer_journey_tasks t WHERE t.project_id=p.id AND t.assigned_to=$2::uuid))";
+app.get("/api/admin/internal-groups",requireAdmin,route(async(req,res)=>{
+ const q=await pool.query("SELECT p.id FROM customer_journey_projects p WHERE "+internalProjectScope+" ORDER BY p.id",[req.admin.role==="owner",internalActor(req)]);
+ res.set("Cache-Control","private, no-store").json({groups:q.rows});
+}));
+async function internalGroupAccess(req,res,next){try{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.sendStatus(404);
+ const q=await pool.query("SELECT p.id FROM customer_journey_projects p WHERE "+internalProjectScope+" AND p.id=$3",[req.admin.role==="owner",internalActor(req),req.params.id]);if(!q.rowCount)return res.sendStatus(404);next();
+}catch(e){next(e);}}
+app.get("/api/admin/internal-groups/:id",requireAdmin,internalGroupAccess,route(async(req,res)=>{
+ const q=await pool.query("SELECT m.id,m.sender_id,m.body,m.created_at,COALESCE(t.display_name,'الإدارة') AS sender_name FROM internal_project_messages m LEFT JOIN team_members t ON t.id=m.sender_id WHERE m.project_id=$1 ORDER BY m.id DESC LIMIT 200",[req.params.id]);res.set("Cache-Control","private, no-store").json({messages:q.rows.reverse()});
+}));
+app.post("/api/admin/internal-groups/:id",requireAdmin,internalGroupAccess,route(async(req,res)=>{
+ const p=z.object({body:z.string().trim().min(2).max(2000)}).strict().safeParse(req.body);if(!p.success)return res.sendStatus(400);
+ const q=await pool.query("INSERT INTO internal_project_messages(project_id,sender_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at",[req.params.id,internalActor(req),p.data.body]);res.status(201).json({message:q.rows[0]});
+}));
 app.use((err,_req,res,_next)=>{
   if(err?.type==="entity.too.large")return res.status(413).json({error:"حجم الملف أكبر من الحد المسموح."});
   console.error(err);
