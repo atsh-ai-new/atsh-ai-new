@@ -520,8 +520,8 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
       {!configuratorOnly&&<><section className={`build-hero${!copy("heroDescription").trim() ? " build-hero-compact" : ""}`} id="top">
         <div className="build-hero-copy">
 
-          <h1 style={{fontSize:"clamp(26px,3.4vw,48px)",lineHeight:1.35,color:"#203958",margin:"0 0 12px"}}>{t("برمجة خاصة بأسعار تنافس المواقع التقليدية.","Custom software at prices that rival traditional websites.")}</h1>
-          <p style={{margin:"0 0 20px",fontSize:"clamp(14px,1.3vw,18px)",lineHeight:1.7}}>{t("بدون قيود القوالب الجاهزة، نصمم مشروعك وفق احتياجاتك وميزانيتك.","Beyond ready-made templates, we build around your needs and budget.")}</p>
+          <h1 style={{fontSize:"clamp(26px,3.4vw,48px)",lineHeight:1.35,color:"#203958",margin:"0 0 12px"}}>{copy("marketingHeroTitle")}</h1>
+          <p style={{margin:"0 0 20px",fontSize:"clamp(14px,1.3vw,18px)",lineHeight:1.7}}>{copy("marketingHeroSubtitle")}</p>
           {copy("heroDescription").trim() && <p>{copy("heroDescription")}</p>}
           <div className="hero-actions"><a className="button" href="#packages">{copy("ctaText")} <span>←</span></a><a className="button button-quiet" href={isEnglish?"/en/catalog":"/catalog"}>{t("أنظمة مخصصة","Custom systems")}</a></div>
           <div className="hero-trust">{cardsFromContent("heroTrustItems", [1,2,3].map((n) => ({ id: `hero-trust-${n}`, title: copy(`heroTrust${n}`) }))).map((item, index) => <span key={item.id ?? index}>✓ {item.title}</span>)}</div>
