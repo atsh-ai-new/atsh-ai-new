@@ -84,6 +84,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
   };
 
   const previewPage = () => { if(!draft)return;setPreviewUrl(createPagePreviewUrl({slug:draft.slug,locale:draft.locale==="en"?"en":"ar",content:draft.content}));setWorkspaceTab("preview"); };
+  const canonicalContent = (value:unknown):string => JSON.stringify(value,(_key,item)=>item&&typeof item==="object"&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);
   const savePage = async (publish=false) => {
     if (!draft)return;
     setBusy(true);setError("");setNotice("");
@@ -93,7 +94,7 @@ export default function ContentManager({ initialSlug = "home", onSaved }: { init
         // Re-read the persisted page instead of assuming the write reached the intended locale.
         const verified = await adminApi("pages");
         const published = (verified.pages ?? [] as PageRecord[]).find((item:PageRecord)=>item.slug===draft.slug&&item.locale===(draft.locale||"ar")) as PageRecord|undefined;
-        if(!published?.is_published||JSON.stringify(published.content)!==JSON.stringify(draft.content)){
+        if(!published?.is_published||canonicalContent(published.content)!==canonicalContent(draft.content)){
           throw new Error("تم إرسال التعديل، لكن بيانات الصفحة المحفوظة لا تطابق التعديل. تحقق من قاعدة البيانات قبل إعادة النشر.");
         }
         setDraft(current=>current?{...current,is_published:true}:current);
