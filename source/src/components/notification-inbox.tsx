@@ -33,6 +33,7 @@ export default function NotificationInbox({customer=false}:{customer?:boolean}){
  const storageKey=customer?"atsh-customer-notification-sound":"atsh-admin-notification-sound";
  const previousIds=useRef<Set<string>|null>(null);
  const busy=useRef(false);
+ const pending=useRef(false);
  const soundRef=useRef(false);
  useEffect(()=>{
   const enabled=window.localStorage.getItem(storageKey)==="on";
@@ -40,7 +41,7 @@ export default function NotificationInbox({customer=false}:{customer?:boolean}){
   soundRef.current=enabled;
  },[storageKey]);
  const refresh=useCallback(async()=>{
-  if(busy.current)return;
+  if(busy.current){pending.current=true;return;}
   busy.current=true;
   try{
    const r=await fetch(base,{credentials:"include",cache:"no-store"});
@@ -55,8 +56,8 @@ export default function NotificationInbox({customer=false}:{customer?:boolean}){
    previousIds.current=nextIds;
    setItems(next);
    setError("");
-  }catch(e){setError(e instanceof Error?e.message:"تعذر تحميل الإشعارات");}
-  finally{busy.current=false;}
+  }catch(e){setItems([]);setError(e instanceof Error?e.message:"تعذر تحميل الإشعارات");}
+  finally{busy.current=false;if(pending.current){pending.current=false;void refresh();}}
  },[base]);
  useEffect(()=>{
   previousIds.current=null;
