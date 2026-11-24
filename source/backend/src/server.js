@@ -1866,7 +1866,8 @@ app.use((err,_req,res,_next)=>{
   res.status(500).json({error:"Internal server error"});
 });
 // Permanently invalidate legacy project access credentials on startup.
-await pool.query("DO $ BEGIN IF to_regclass('customer_journey_access') IS NOT NULL THEN DELETE FROM customer_journey_access; END IF; END $");
+const legacyAccessTable=await pool.query("SELECT to_regclass('customer_journey_access') AS name");
+if(legacyAccessTable.rows[0]?.name)await pool.query("DELETE FROM customer_journey_access");
 const port=Number(process.env.PORT||3000);
 const server=app.listen(port,"0.0.0.0",()=>console.log(`ATSH AI API listening on ${port}`));
 let eventsBusy=false;
