@@ -110,6 +110,13 @@ export default function ContentStudio() {
 
   useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
 
+  useEffect(()=>{
+    if(draft?.status!=="generating")return;
+    const id=draft.id;let active=true;
+    const poll=async()=>{try{const result=await requestJson<{draft:Draft}>(`/${id}`);if(!active)return;if(result.draft.status!=="generating"){setDraft(result.draft);await refreshList();if(result.draft.has_video){await loadVideo(id,()=>active);if(active)setNotice("الفيديو جاهز للمعاينة والتنزيل.");}else setError("لم يكتمل الإنتاج. راجع تشغيل n8n ثم أعد المحاولة.");}}catch{if(active)setError("تعذر تحديث حالة الإنتاج؛ ستتم إعادة المحاولة.");}};
+    const timer=setInterval(()=>void poll(),5000);void poll();return()=>{active=false;clearInterval(timer)};
+  },[draft?.id,draft?.status]);
+
   async function refreshList() {
     const [status, result] = await Promise.all([requestJson<ServiceStatus>("/status"), requestJson<{ drafts: DraftSummary[] }>("")]);
     setService(status); setItems(result.drafts ?? []);
@@ -131,6 +138,7 @@ export default function ContentStudio() {
   }
 
   function updateDraft(patch: Partial<Draft>) {
+    if(draft?.status==="generating")return;
     setDraft((current) => current ? { ...current, ...patch, status: "draft", has_video: false, video_generated_at: null, video_size: null } : current);
     setVideoUrl(""); setProductionConsent(false);
   }
@@ -175,7 +183,7 @@ export default function ContentStudio() {
   }
 
   async function saveDraft(status = "draft") {
-    if (!draft) return;
+    if (!draft || draft.status==="generating") return;
     setBusy(true); setError(""); setNotice("");
     try {
       const result = await requestJson<{ draft: Draft }>(`/${draft.id}`, { method: "PATCH", body: JSON.stringify({ title: draft.title, briefMarkdown: draft.brief_markdown, productionPlan: { ...draft.production_plan, approved: false }, status }) });
@@ -199,9 +207,10 @@ export default function ContentStudio() {
         const result = await response.json().catch(() => ({}));
         throw new Error(result.error || result.message || "تعذر إنتاج الفيديو عبر ورَك فلو.");
       }
-      const blob = await response.blob();
-      setVideoUrl(URL.createObjectURL(blob)); setDraft((current) => current ? { ...current, status: "video_ready", has_video: true, video_generated_at: new Date().toISOString(), video_size: blob.size } : current);
-      await refreshList(); setNotice("الفيديو جاهز. راجعه من المشغل أو نزّله لعرضه على المدير.");
+      const accepted=await response.json();
+      if(accepted.status!=="generating")throw new Error("لم يتم تأكيد بدء الإنتاج.");
+      setDraft(current=>current?.id===draft.id?{...current,status:"generating"}:current);
+      await refreshList();setNotice("بدأ إنتاج الفيديو. يمكنك مغادرة الصفحة والعودة لمتابعة النتيجة.");
       setProductionConsent(false);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر إنتاج الفيديو."); }
     finally { setBusy(false); }
@@ -268,6 +277,7 @@ export default function ContentStudio() {
         <div className="admin-actions studio-review-actions"><button type="button" className="button button-outline" disabled={busy} onClick={() => void saveDraft("draft")}>حفظ كمسودة</button><button type="button" className="button" disabled={busy} onClick={() => void saveDraft("reviewed")}>{busy ? "جارٍ الحفظ…" : "اعتماد الخطة قبل الإنتاج ✓"}</button></div>
       </section>
 
+      {draft.status === "generating" && <section className="admin-content-card" role="status"><h2>الفيديو قيد الإنتاج</h2><p>تتحدث الحالة تلقائيًا كل خمس ثوانٍ. يمكنك العودة لاحقًا.</p></section>}
       {draft.status === "reviewed" && <section className="admin-content-card studio-production-card"><div className="admin-content-title"><div><h2>إنتاج الفيديو من الورك فلو</h2><p>الورك فلو تستقبل الخطة المعتمدة وترجع فيديو MP4 إلى صفحة المدير. يمكنك إضافة شعار PNG/JPG أو ملف MP3 اختياري.</p></div></div><div className="studio-assets"><label className="admin-field">الشعار (PNG أو JPG، حتى 512 كيلوبايت)<input type="file" accept="image/png,image/jpeg" disabled={busy} onChange={(event) => void handleFile(event, "logo")} /><small>{logo?.name ?? "اختياري؛ يحوّله المتصفح إلى PNG قبل الإرسال"}</small></label><label className="admin-field">موسيقى MP3 (حتى 2 ميجابايت)<input type="file" accept="audio/mpeg,.mp3" disabled={busy} onChange={(event) => void handleFile(event, "audio")} /><small>{audio?.name ?? "اختياري؛ بدونها سيكون الفيديو صامتًا"}</small></label></div><label className="check-row studio-consent"><input type="checkbox" checked={productionConsent} onChange={(event) => setProductionConsent(event.target.checked)} /> أوافق على إرسال الخطة والشعار أو الصوت المختار إلى ورَك فلو الإنتاج لتجهيز الفيديو.</label><div className="admin-actions"><button type="button" className="button" disabled={busy || !service.workflowConfigured || !productionConsent} onClick={() => void produceVideo()}>{busy ? "جارٍ إنتاج الفيديو…" : "أرسل الخطة وأنتج الفيديو ▶"}</button></div></section>}
 
       {(draft.status === "video_ready" || videoUrl) && <section className="admin-content-card studio-video-card"><div className="admin-content-title"><div><h2>الفيديو للمراجعة</h2><p>الفيديو محفوظ في قاعدة بيانات المنصة. راجعه ثم نزّله للمدير.</p></div>{draft.video_size && <span className="status-chip">{(draft.video_size / (1024 * 1024)).toFixed(1)} ميجابايت</span>}</div>{videoUrl ? <><video className="studio-video" controls playsInline src={videoUrl}>متصفحك لا يدعم عرض الفيديو.</video><div className="admin-actions"><a className="button" href={videoUrl} download={`${safeFilename(draft.title)}.mp4`}>تنزيل الفيديو MP4 ↓</a></div></> : <button type="button" className="button button-outline" onClick={() => void loadVideo(draft.id)}>إعادة تحميل الفيديو</button>}</section>}
