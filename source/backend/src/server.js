@@ -214,6 +214,7 @@ app.patch("/api/admin/journey/projects/:id/archive",requireAdmin,requirePermissi
   await client.query("BEGIN");
   const before=await client.query("SELECT * FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
   if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
+  await client.query("DELETE FROM platform_notifications WHERE project_id=$1",[req.params.id]);
   if(before.rows[0].status==="archived"){await client.query("COMMIT");return res.json({project:before.rows[0]});}
   const updated=await client.query("UPDATE customer_journey_projects SET status='archived',updated_at=now() WHERE id=$1 RETURNING *",[req.params.id]);
   await auditChange(client,req.admin.email,"journey.project.archived","customer_journey_project",req.params.id,before.rows[0],updated.rows[0]);
@@ -1868,7 +1869,7 @@ app.use((err,_req,res,_next)=>{
 // Permanently invalidate legacy project access credentials on startup.
 // Remove orphaned journey notifications only; preserve unrelated account notices.
 const notificationCleanupTable=await pool.query("SELECT to_regclass('public.platform_notifications') AS name");
-if(notificationCleanupTable.rows[0]?.name)await pool.query("DELETE FROM platform_notifications n WHERE n.event_type LIKE 'journey.%' AND (n.project_id IS NULL OR NOT EXISTS (SELECT 1 FROM customer_journey_projects p WHERE p.id=n.project_id))");
+if(notificationCleanupTable.rows[0]?.name)await pool.query("DELETE FROM platform_notifications n WHERE n.event_type LIKE 'journey.%' AND (n.project_id IS NULL OR NOT EXISTS (SELECT 1 FROM customer_journey_projects p WHERE p.id=n.project_id AND p.status<>'archived'))");
 const legacyAccessTable=await pool.query("SELECT to_regclass('customer_journey_access') AS name");
 if(legacyAccessTable.rows[0]?.name)await pool.query("DELETE FROM customer_journey_access");
 const port=Number(process.env.PORT||3000);
