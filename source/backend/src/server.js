@@ -315,7 +315,7 @@ app.get("/api/admin/journey/my-tasks",requireAdmin,route(async(req,res)=>{
   FROM customer_journey_tasks t
   JOIN customer_journey_projects p ON p.id=t.project_id
   LEFT JOIN team_members m ON m.id=t.assigned_to
-  WHERE ($1::boolean OR t.assigned_to=$2::uuid)
+  WHERE p.status <> 'archived' AND ($1::boolean OR t.assigned_to=$2::uuid)
   ORDER BY CASE WHEN t.status='done' THEN 1 ELSE 0 END,t.updated_at DESC LIMIT 200`,
   [scope.owner,scope.userId]);
  res.set("Cache-Control","private, no-store").json({tasks:tasks.rows});
@@ -331,7 +331,7 @@ app.patch("/api/admin/journey/my-tasks/:taskId/status",requireAdmin,route(async(
  const client=await pool.connect();
  try{
   await client.query("BEGIN");
-  const before=await client.query("SELECT * FROM customer_journey_tasks WHERE id=$1 FOR UPDATE",[req.params.taskId]);
+  const before=await client.query("SELECT t.* FROM customer_journey_tasks t JOIN customer_journey_projects p ON p.id=t.project_id WHERE t.id=$1 AND p.status <> 'archived' FOR UPDATE OF t",[req.params.taskId]);
   if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Task not found"});}
   if(!canUpdateOwnTaskStatus(scope,before.rows[0].assigned_to)){await client.query("ROLLBACK");return res.status(403).json({error:"Task is not assigned to your account"});}
   const result=await client.query("UPDATE customer_journey_tasks SET status=$2,updated_by=$3,updated_at=now() WHERE id=$1 RETURNING id,status,updated_at",[req.params.taskId,parsed.data.status,req.admin.email]);
