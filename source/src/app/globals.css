@@ -870,3 +870,6 @@ body:has(.admin-page) .atsh-floating-actions,body:has(.admin-page) .atsh-global-
 /* Keep the shared social links horizontal in every header. */
 .atsh-social-inline-slot > .atsh-social-header{flex-direction:row;flex-wrap:nowrap;white-space:nowrap;width:max-content}
 .atsh-social-inline-slot > .atsh-social-header > :is(a,span){flex-shrink:0}
+
+/* Unified platform typography: bold text, preserving icon fonts. */
+body, body *:not(svg):not(svg *):not(i[class*="icon"]){font-weight:700 !important;}
