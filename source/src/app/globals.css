@@ -859,3 +859,10 @@ body:has(.admin-page) .atsh-floating-actions,body:has(.admin-page) .atsh-global-
  .managed-page .managed-hero h1{font-size:clamp(25px,7vw,34px);margin:5px 0}
 }
 @media(max-width:340px){.managed-header>.managed-brand strong{font-size:11px}.managed-header>.managed-brand img{width:26px;height:26px}.managed-header{column-gap:4px}.managed-header>.atsh-social-inline-slot .atsh-social-header a,.managed-header>.atsh-social-inline-slot .atsh-social-header span{width:19px}}
+
+/* Internal public headers: compact horizontal social links; homepage unchanged. */
+@media(max-width:767px){
+ header:not(.atsh-home-header)>.atsh-social-inline-slot[data-internal-public="true"]{flex:0 0 auto;min-width:0;width:auto;margin-inline:2px;align-self:center}
+ header>.atsh-social-inline-slot[data-internal-public="true"] .atsh-social-header{display:flex;flex-direction:row;flex-wrap:nowrap;gap:2px;width:auto;white-space:nowrap;padding:0;overflow:visible}
+ header>.atsh-social-inline-slot[data-internal-public="true"] .atsh-social-header a,header>.atsh-social-inline-slot[data-internal-public="true"] .atsh-social-header span{width:20px;height:24px;flex:none}
+}
