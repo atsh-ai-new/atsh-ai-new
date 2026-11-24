@@ -422,29 +422,6 @@ app.post("/api/admin/journey/projects/:id/transition",requireAdmin,requirePermis
 }));
 
 // Stage 5: admin-reviewed link to an order priced by the existing authoritative engine.
-const journeyLinkSchema=z.object({orderReference:z.string().trim().min(5).max(40)}).strict();
-app.post("/api/admin/journey/projects/:id/link-order",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
- if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
- const parsed=journeyLinkSchema.safeParse(req.body);
- if(!parsed.success)return res.status(400).json({error:"Invalid order reference"});
- const client=await pool.connect();
- try{
-  await client.query("BEGIN");
-  const project=await client.query("SELECT id,customer_email,status FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
-  if(!project.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
-  if(!["draft","configured","quoted","payment_pending"].includes(project.rows[0].status)){await client.query("ROLLBACK");return res.status(409).json({error:"Project stage does not allow linking"});}
-  const order=await client.query("SELECT id,reference,email,status,total,currency,snapshot FROM orders WHERE reference=$1 FOR SHARE",[parsed.data.orderReference]);
-  if(!order.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Order not found"});}
-  if(!project.rows[0].customer_email||!order.rows[0].email||project.rows[0].customer_email.toLowerCase()!==order.rows[0].email.toLowerCase()){await client.query("ROLLBACK");return res.status(409).json({error:"Customer email mismatch; verify identity before linking"});}
-  const existing=await client.query("SELECT order_id FROM customer_journey_order_links WHERE project_id=$1",[req.params.id]);
-  if(existing.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Project already linked to an order"});}
-  const linked=await client.query("INSERT INTO customer_journey_order_links(project_id,order_id,linked_by) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING project_id,order_id,linked_at",[req.params.id,order.rows[0].id,req.admin.email]);
-  if(!linked.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Order already linked"});}
-  await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,before_data,after_data) VALUES($1,'journey.order.linked','customer_journey_project',$2,'{}'::jsonb,$3::jsonb)",[req.admin.email,req.params.id,JSON.stringify({orderReference:order.rows[0].reference,orderId:order.rows[0].id})]);
-  await client.query("COMMIT");
-  res.status(201).json({link:linked.rows[0],order:{reference:order.rows[0].reference,total:order.rows[0].total,currency:order.rows[0].currency,status:order.rows[0].status},pricingSource:"orders.snapshot",paymentVerified:false});
- }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
-}));
 app.get("/api/admin/journey/projects/:id/order",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
  const result=await pool.query("SELECT o.reference,o.status,o.total,o.currency,o.snapshot,l.linked_at FROM customer_journey_order_links l JOIN orders o ON o.id=l.order_id WHERE l.project_id=$1",[req.params.id]);
