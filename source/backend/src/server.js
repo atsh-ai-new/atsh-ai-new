@@ -565,6 +565,20 @@ app.get("/api/site-pages",route(async(req,res)=>{
   const result=await pool.query("SELECT slug,content,updated_at FROM site_pages WHERE locale=$1 AND is_published=true ORDER BY slug",[locale]);
   res.json({pages:result.rows.map(page=>({slug:page.slug,title:typeof page.content?.title==='string'?page.content.title:page.slug,updatedAt:page.updated_at}))});
 }));
+await pool.query("CREATE TABLE IF NOT EXISTS site_videos (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), data bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now())");
+app.get("/api/site-video/:id",route(async(req,res)=>{
+ if(!/^[0-9a-f-]{36}$/i.test(req.params.id))return res.status(404).end();
+ const result=await pool.query("SELECT data FROM site_videos WHERE id=$1",[req.params.id]);if(!result.rowCount)return res.status(404).end();
+ const data=result.rows[0].data,n=data.length;res.set({"Content-Type":"video/mp4","Accept-Ranges":"bytes","Cache-Control":"public, max-age=3600","X-Content-Type-Options":"nosniff"});
+ const range=req.get("range");if(!range)return res.send(data);
+ const m=/^bytes=(\d*)-(\d*)$/.exec(range);let start=m?.[1]?Number(m[1]):Math.max(0,n-Number(m?.[2]||0)),end=m?.[1]&&m[2]?Math.min(n-1,Number(m[2])):n-1;
+ if(!m||(!m[1]&&!m[2])||start>=n||end<start||!Number.isSafeInteger(start)||!Number.isSafeInteger(end))return res.status(416).set("Content-Range","bytes */"+n).end();
+ return res.status(206).set("Content-Range","bytes "+start+"-"+end+"/"+n).send(data.subarray(start,end+1));
+}));
+app.post("/api/admin/video-upload",requireAdmin,requirePermission("content"),express.raw({type:"video/mp4",limit:"25mb"}),route(async(req,res)=>{
+ const b=req.body;if(!Buffer.isBuffer(b)||b.length<16||b.toString("ascii",4,8)!=="ftyp")return res.status(415).json({error:"MP4 required"});
+ const r=await pool.query("INSERT INTO site_videos(data) VALUES($1) RETURNING id",[b]);res.status(201).json({url:"/api/site-video/"+r.rows[0].id});
+}));
 app.get("/api/site-media/:id",route(async(req,res)=>{
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.params.id))return res.status(404).end();
   const media=await pool.query("SELECT content_type,byte_size,data FROM site_media WHERE id=$1",[req.params.id]);
