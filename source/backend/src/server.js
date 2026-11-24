@@ -1137,7 +1137,7 @@ app.post("/api/integrations/content-studio/:id/result",express.raw({type:["video
  const failed=req.is("application/json")&&req.body?.status==="failed";
  const video=Buffer.isBuffer(req.body)?req.body:null;
  if(!failed&&(!video||video.length<12||video.length>25*1024*1024||video.subarray(4,8).toString()!=="ftyp"))return res.status(400).json({error:"Invalid MP4"});
- const q=await pool.query("UPDATE content_studio_drafts SET status=$3,video_data=$4,video_size=$5,video_generated_at=CASE WHEN $3='video_ready' THEN now() ELSE NULL END,updated_at=now(),production_plan=production_plan-'_jobToken' WHERE id=$1 AND status='generating' AND production_plan->>'_jobToken'=$2 RETURNING id",[req.params.id,digest,failed?"reviewed":"video_ready",failed?null:video,failed?null:video.length]);
+ const q=await pool.query("UPDATE content_studio_drafts SET status=$3::text,video_data=$4,video_size=$5,video_generated_at=CASE WHEN $3::text='video_ready' THEN now() ELSE NULL END,updated_at=now(),production_plan=production_plan-'_jobToken' WHERE id=$1 AND status='generating' AND production_plan->>'_jobToken'=$2 RETURNING id",[req.params.id,digest,failed?"reviewed":"video_ready",failed?null:video,failed?null:video.length]);
  if(!q.rowCount)return res.status(409).json({error:"Job expired or already completed"});
  res.json({accepted:true});
 }));
