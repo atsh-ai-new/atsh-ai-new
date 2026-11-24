@@ -1,4 +1,13 @@
 export const siteCopyEn: Record<string,string> = {
+  marketingHeroTitle: "Custom development at prices that rival traditional websites.",
+  marketingHeroSubtitle: "Beyond ready-made templates, we build around your needs and budget.",
+  marketingCatalogTitle: "Don’t adapt your business to ready-made software. Get a system that adapts to your business.",
+  marketingCatalogBenefit1: "Custom development",
+  marketingCatalogBenefit2: "Integrated control",
+  marketingCatalogBenefit3: "Scalability",
+  marketingCatalogBenefit4: "Distinct identity",
+  marketingCatalogBenefit5: "Smart integration",
+  marketingCatalogBenefit6: "Competitive pricing",
   "navWhy": "Why us",
   "navPackages": "Packages",
   "navHow": "How it works",
