@@ -793,7 +793,7 @@ app.get("/api/admin/notifications",requireAdmin,route(async(req,res)=>{
  // Owner has a shared operations inbox. Staff notifications remain identity-scoped.
  const recipient=req.admin.role==="owner"?"00000000-0000-4000-8000-000000000001":req.admin.userId;
  if(!recipient)return res.status(403).json({error:"Team account required"});
- const q=await pool.query("SELECT n.id,n.project_id,n.event_type,n.title,n.body,n.target_path,n.read_at,n.created_at FROM platform_notifications n WHERE n.recipient_type='team' AND n.recipient_id=$1 AND (n.project_id IS NULL OR EXISTS (SELECT 1 FROM customer_journey_projects p WHERE p.id=n.project_id AND p.status<>'archived')) ORDER BY n.created_at DESC LIMIT 50",[recipient]);
+ const q=await pool.query("SELECT n.id,n.project_id,n.event_type,n.title,n.body,n.target_path,n.read_at,n.created_at FROM platform_notifications n WHERE n.recipient_type='team' AND n.recipient_id=$1 AND ((n.project_id IS NULL AND n.event_type NOT LIKE 'journey.%') OR EXISTS (SELECT 1 FROM customer_journey_projects p WHERE p.id=n.project_id AND p.status<>'archived')) ORDER BY n.created_at DESC LIMIT 50",[recipient]);
  res.set("Cache-Control","private, no-store").json({notifications:q.rows,unread:q.rows.filter(n=>!n.read_at).length});
 }));
 app.post("/api/admin/notifications/:id/read",requireAdmin,route(async(req,res)=>{
@@ -1866,6 +1866,9 @@ app.use((err,_req,res,_next)=>{
   res.status(500).json({error:"Internal server error"});
 });
 // Permanently invalidate legacy project access credentials on startup.
+// Remove orphaned journey notifications only; preserve unrelated account notices.
+const notificationCleanupTable=await pool.query("SELECT to_regclass('public.platform_notifications') AS name");
+if(notificationCleanupTable.rows[0]?.name)await pool.query("DELETE FROM platform_notifications n WHERE n.event_type LIKE 'journey.%' AND (n.project_id IS NULL OR NOT EXISTS (SELECT 1 FROM customer_journey_projects p WHERE p.id=n.project_id))");
 const legacyAccessTable=await pool.query("SELECT to_regclass('customer_journey_access') AS name");
 if(legacyAccessTable.rows[0]?.name)await pool.query("DELETE FROM customer_journey_access");
 const port=Number(process.env.PORT||3000);
