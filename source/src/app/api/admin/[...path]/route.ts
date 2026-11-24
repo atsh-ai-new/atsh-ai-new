@@ -75,7 +75,7 @@ async function proxy(request: Request, context: RouteContext) {
       if (length && (!/^\d+$/.test(length) || Number(length) > PRIVATE_DELIVERY_BYTES)) return NextResponse.json({message:"الملف أكبر من 512 ميجابايت"},{status:413});
       body = request.body ?? undefined;
     } else {
-      const isChatFile = (path[0] === "internal-chat" || path[0] === "internal-groups") && path[2] === "files";
+      const isChatFile = (path[0] === "internal-chat" || path[0] === "internal-groups" || path[0] === "live-support") && path[2] === "files";
       const limited = await readLimitedBody(request, isChatFile ? 20 * 1024 * 1024 : isContentStudioFile || isContentStudioRequest ? CONTENT_STUDIO_BODY_BYTES : DEFAULT_ADMIN_BODY_BYTES);
       if (limited.tooLarge) return NextResponse.json({ message: "حجم الطلب أكبر من الحد المسموح." }, { status: 413 });
       body = limited.body;
