@@ -527,6 +527,7 @@ function InternalMessaging({canCustomers}:{canCustomers:boolean}){
 }
 
 function LiveSupportInbox({contacts,owner}:{contacts:{id:string;display_name:string}[];owner:boolean}){
+ useEffect(()=>{const ping=()=>{if(document.visibilityState==="visible")void fetch("/api/admin/live-support-presence",{method:"POST"}).catch(()=>undefined)};ping();const timer=setInterval(ping,15000);document.addEventListener("visibilitychange",ping);return()=>{clearInterval(timer);document.removeEventListener("visibilitychange",ping)}},[]);
  type Thread={id:string;assigned_to:string|null;last_message:string|null};type Msg={id:string;sender:string;body:string;file_id?:string;filename?:string};
  const [threads,setThreads]=useState<Thread[]>([]),[id,setId]=useState(""),[messages,setMessages]=useState<Msg[]>([]),[body,setBody]=useState(""),[error,setError]=useState(""),[assignment,setAssignment]=useState(""),[busy,setBusy]=useState(false);
  useEffect(()=>{let active=true;async function load(){try{const r=await fetch("/api/admin/live-support",{cache:"no-store"});if(!r.ok)throw Error();const d=await r.json();if(active)setThreads(d.threads)}catch{if(active)setError("تعذر تحميل المحادثات")}}void load();const timer=setInterval(load,3000);return()=>{active=false;clearInterval(timer)}},[]);
