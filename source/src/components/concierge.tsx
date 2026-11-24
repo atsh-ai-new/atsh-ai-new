@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
+import LiveSupport from "./live-support";
 import LanguageSwitch from "./language-switch";
 import { packages, addonOptions, formatEgp } from "@/lib/catalog";
 import { sectorTemplates } from "@/lib/sector-catalog";
@@ -45,6 +46,7 @@ export default function Concierge({locale="ar",embedded=false}:{locale?:"ar"|"en
  const initialMessage:Message=en?{who:"assistant",text:"Welcome to ATSH AI. Tell me about your business or the software you need, and I will guide you toward a solution, demo or quote."}:initial;
  const [open,setOpen]=useState(embedded);
  const [contactsOpen,setContactsOpen]=useState(false);
+ const [supportOpen,setSupportOpen]=useState(false);
  const [ready,setReady]=useState(false);
  const [signedIn,setSignedIn]=useState(false);
  const [messages,setMessages]=useState<Message[]>([initialMessage]);
@@ -129,11 +131,12 @@ export default function Concierge({locale="ar",embedded=false}:{locale?:"ar"|"en
        <button type="submit" disabled={!input.trim()||sending} style={{border:0,borderRadius:10,padding:"10px 14px",background:"#203958",color:"white",cursor:"pointer"}}>{sending?t("جارٍ الرد…","Replying…"):t("إرسال","Send")}</button>
      </form>
    </section>}
+   {!embedded&&<LiveSupport en={en} open={supportOpen} setOpen={setSupportOpen}/>}
    {!embedded&&<nav className="atsh-floating-actions" aria-label={t("التواصل والمساعد الذكي","Contact and assistant")}>
-     <button type="button" className="atsh-fab atsh-fab-assistant" aria-expanded={open} aria-label={open?t("إغلاق المساعد الذكي","Close assistant"):t("فتح المساعد الذكي","Open assistant")} title={t("المساعد الذكي","AI assistant")} onClick={()=>setOpen(v=>!v)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3 13.9 9.1 20 11l-6.1 1.9L12 19l-1.9-6.1L4 11l6.1-1.9L12 3Z"/><path d="m19 17 .7 1.3L21 19l-1.3.7L19 21l-.7-1.3L17 19l1.3-.7L19 17Z"/></svg></button>
+     <button type="button" className="atsh-fab atsh-fab-assistant" aria-expanded={open} aria-label={open?t("إغلاق المساعد الذكي","Close assistant"):t("فتح المساعد الذكي","Open assistant")} title={t("المساعد الذكي","AI assistant")} onClick={()=>{setSupportOpen(false);setContactsOpen(false);setOpen(v=>!v)}}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3 13.9 9.1 20 11l-6.1 1.9L12 19l-1.9-6.1L4 11l6.1-1.9L12 3Z"/><path d="m19 17 .7 1.3L21 19l-1.3.7L19 21l-.7-1.3L17 19l1.3-.7L19 17Z"/></svg></button>
      <div className="atsh-contact-group">
        <button type="button" className="atsh-fab atsh-fab-contact-menu" aria-expanded={contactsOpen} aria-controls="atsh-contact-submenu" aria-label={t("قنوات التواصل واللغة","Contact channels and language")} title={t("التواصل","Contact")} onClick={()=>setContactsOpen(v=>!v)}><span className="atsh-contact-symbols" aria-hidden="true"><span>☎</span><span>◉</span><span>ϟ</span><span>➤</span></span></button>
-       {contactsOpen&&<div id="atsh-contact-submenu" className="atsh-contact-submenu"><LanguageSwitch />
+       {contactsOpen&&<div id="atsh-contact-submenu" className="atsh-contact-submenu"><LanguageSwitch /><button type="button" className="atsh-fab atsh-fab-call" aria-label={t("خدمة العملاء","Live support")} title={t("الدعم المباشر","Live support")} onClick={()=>{setOpen(false);setContactsOpen(false);setSupportOpen(true)}}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M3 14v-3a9 9 0 0 1 18 0v3M3 13h3v6H3zM18 13h3v6h-3zM18 19c0 2-2 3-6 3"/></svg></button>
      <a className="atsh-fab atsh-fab-call" href="tel:+201007735321" aria-label={t("اتصل بنا","Call us")} title={t("اتصال","Call")}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 3.09 5.18 2 2 0 0 1 5.08 3h3a2 2 0 0 1 2 1.72l.45 2.81a2 2 0 0 1-.57 1.72L8.1 11.1a16 16 0 0 0 4.8 4.8l1.85-1.86a2 2 0 0 1 1.72-.57l2.81.45A2 2 0 0 1 22 16.92Z"/></svg></a>
      <a className="atsh-fab atsh-fab-whatsapp" href="https://wa.me/201007735321?text=%D9%85%D8%B1%D8%AD%D8%A8%D8%A7%D8%8C%20%D8%A3%D8%B1%D9%8A%D8%AF%20%D8%A7%D9%84%D8%A7%D8%B3%D8%AA%D9%81%D8%B3%D8%A7%D8%B1%20%D8%B9%D9%86%20%D8%AE%D8%AF%D9%85%D8%A7%D8%AA%20ATSH%20AI" target="_blank" rel="noopener noreferrer" aria-label={t("واتساب","WhatsApp")} title={t("واتساب","WhatsApp")}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 11.7a8.5 8.5 0 0 1-12.6 7.5L3 20.5l1.3-4.8A8.5 8.5 0 1 1 20.5 11.7Z"/><path d="M8.5 8.4c-.5.5-.6 1.1-.3 1.9.7 2.2 2.6 4.1 4.8 4.8.8.3 1.4.2 1.9-.3l.7-.9-2.1-1-1 1a6.7 6.7 0 0 1-3.8-3.8l1-1-1-2.1-.9.7Z"/></svg></a>
      <a className="atsh-fab atsh-fab-messenger" href="https://m.me/61587637301618" target="_blank" rel="noopener noreferrer" aria-label="Messenger" title="Messenger"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.5 2 2 6.1 2 11.2c0 2.9 1.4 5.4 3.7 7.1V22l3.5-1.9c.9.3 1.8.4 2.8.4 5.5 0 10-4.1 10-9.3S17.5 2 12 2Zm1 12.3-2.5-2.7-4.8 2.7 5.3-5.7 2.5 2.7 4.8-2.7-5.3 5.7Z"/></svg></a>
