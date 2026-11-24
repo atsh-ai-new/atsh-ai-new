@@ -19,6 +19,7 @@ test("real customer login, concurrent submission and admin parity", {timeout:120
   assert.ok(ready,"API failed to start: "+output.slice(-3000));
   // The server bootstraps the base schema; apply additive acceptance columns before HTTP assertions.
   await pool.query(await readFile(new URL("../db/project_acceptance_gate_20261123.sql",import.meta.url),"utf8"));
+  await pool.query(await readFile(new URL("../db/notification_foundation_20261123.sql",import.meta.url),"utf8"));
   const email="journey-"+randomUUID()+"@example.test";
   await pool.query("INSERT INTO customer_accounts(name,email,password_hash,email_verified_at,is_active) VALUES($1,$2,$3,now(),true)",["Journey Test",email,await bcrypt.hash(password,4)]);
   const login=await api("/api/customer/auth/login","POST",{email,password});assert.equal(login.status,200,JSON.stringify(login.data));assert.ok(login.cookie);
@@ -65,7 +66,7 @@ test("real customer login, concurrent submission and admin parity", {timeout:120
   sr=await support("messages");assert.ok((await sr.json()).messages.some(m=>m.body==="Assigned staff reply"));
   const deniedAssign=await fetch(base+"/api/admin/live-support-assignment",{method:"PUT",headers:{Cookie:staff.cookie,Origin:origin,"Content-Type":"application/json"},body:JSON.stringify({assigned_to:null})});assert.equal(deniedAssign.status,403);
   sr=await support("messages","POST",JSON.stringify({body:"Assigned notification"}),token,{"Content-Type":"application/json"});assert.equal(sr.status,201);
-  const staffNotices=await api("/api/admin/notifications","GET",undefined,staff.cookie);assert.ok(staffNotices.data.notifications.some(n=>n.event_type==="support.message"));
+  const staffNotices=await api("/api/admin/notifications","GET",undefined,staff.cookie);assert.ok(staffNotices.data.notifications.some(n=>n.event_type==="support.message"&&n.target_path==="/admin?view=messages&chat=support&thread="+thread));
   const detail=await api("/api/admin/journey/projects/"+projectId,"GET",undefined,admin.cookie);
   assert.equal(detail.status,200,JSON.stringify(detail.data));assert.equal(detail.data.project.id,projectId);assert.equal(detail.data.submittedDraft.id,draftId);assert.deepEqual(detail.data.submittedDraft.draft,draft);
   const retry=await api("/api/customer/auth/project-drafts/"+draftId+"/submit","POST",undefined,login.cookie);
