@@ -271,7 +271,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    const table=await client.query("SELECT to_regclass('public.platform_notifications') AS name");
    if(table.rows[0].name){
     await client.query("INSERT INTO platform_notifications(recipient_type,recipient_id,project_id,event_type,title,body,target_path) VALUES('team',$1,$2,'journey.customer_message',$3,$4,$5)",["00000000-0000-4000-8000-000000000001",result.rows[0].project_id,"رسالة جديدة من العميل",parsed.data.body.slice(0,300),"/admin"]);
-    await client.query("INSERT INTO platform_notifications(recipient_type,recipient_id,project_id,event_type,title,body,target_path) SELECT DISTINCT 'team',t.assigned_to,$1,'journey.customer_message',$2,$3,'/admin' FROM customer_journey_tasks t JOIN team_members m ON m.id=t.assigned_to WHERE t.project_id=$1 AND m.is_active AND t.assigned_to <> '00000000-0000-4000-8000-000000000001'::uuid",[result.rows[0].project_id,"رسالة جديدة من العميل",parsed.data.body.slice(0,300)]);
+    await client.query("INSERT INTO platform_notifications(recipient_type,recipient_id,project_id,event_type,title,body,target_path) SELECT DISTINCT 'team'::text,t.assigned_to,$1::uuid,'journey.customer_message'::text,$2::text,$3::text,'/admin'::text FROM customer_journey_tasks t JOIN team_members m ON m.id=t.assigned_to WHERE t.project_id=$1 AND m.is_active AND t.assigned_to <> '00000000-0000-4000-8000-000000000001'::uuid",[result.rows[0].project_id,"رسالة جديدة من العميل",parsed.data.body.slice(0,300)]);
    }
    await client.query('COMMIT');
    res.status(201).json({message:result.rows[0]});
