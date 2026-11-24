@@ -1146,11 +1146,11 @@ app.get("/api/admin/team",requireAdmin,requirePermission("team"),requireRole("ow
   res.json({members:result.rows});
 }));
 app.post("/api/admin/team",requireAdmin,requirePermission("team"),requireRole("owner"),route(async(req,res)=>{
-  const parsed=z.object({email:z.string().email().max(254),displayName:z.string().trim().min(2).max(120),role:z.enum(["admin","editor","sales","viewer"]),password:z.string().min(12).max(200)}).strict().safeParse(req.body);
+  const parsed=z.object({email:z.string().email().max(254),displayName:z.string().trim().min(2).max(120),role:z.enum(["admin","editor","sales","viewer"]),password:z.string().min(12).max(200),permissions:z.record(z.enum(["assistant","customers","content","products","settings","team","audit"]),z.boolean()).optional()}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"Invalid team member",details:parsed.error.issues});
   const x=parsed.data,client=await pool.connect();try{await client.query("BEGIN");
     const passwordHash=await bcrypt.hash(x.password,12);
-    const saved=await client.query("INSERT INTO team_members(email,display_name,role,password_hash) VALUES($1,$2,$3,$4) RETURNING id,email,display_name,role,is_active,permission_overrides,created_at,updated_at",[x.email.trim().toLowerCase(),x.displayName,x.role,passwordHash]);
+    const saved=await client.query("INSERT INTO team_members(email,display_name,role,password_hash,permission_overrides) VALUES($1,$2,$3,$4,$5) RETURNING id,email,display_name,role,is_active,permission_overrides,created_at,updated_at",[x.email.trim().toLowerCase(),x.displayName,x.role,passwordHash,JSON.stringify(x.permissions??{})]);
     await auditChange(client,req.admin.email,"team_member.created","team_member",saved.rows[0].id,null,saved.rows[0]);await client.query("COMMIT");res.status(201).json({member:saved.rows[0]});
   }catch(e){await client.query("ROLLBACK");if(e.code==="23505")return res.status(409).json({error:"A team member with this email already exists"});throw e;}finally{client.release();}
 }));
