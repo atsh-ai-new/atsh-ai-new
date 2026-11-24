@@ -18,6 +18,7 @@ test("content studio dispatch, restart, callback, failure and replay",{timeout:1
  const stop=async()=>{if(child&&child.exitCode===null){const done=once(child,"exit");child.kill();await done;}};
  const api=(path,method="GET",body,headers={})=>fetch(base+path,{method,headers:{Origin:origin,...(cookie?{Cookie:cookie}:{}),...headers},body});
  try{
+ await pool.query("DELETE FROM owner_password_overrides WHERE id=1");
  await start();
  const login=await api("/api/admin/login","POST",JSON.stringify({email:"ci-owner@example.test",password:"content-test-password"}),{"Content-Type":"application/json"});assert.equal(login.status,200);cookie=login.headers.get("set-cookie").split(";")[0];
  id=randomUUID();
