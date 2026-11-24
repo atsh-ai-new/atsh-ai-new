@@ -1121,27 +1121,31 @@ app.post("/api/admin/content-studio/:id/produce",requireAdmin,requirePermission(
     title=claimed.rows[0].title;plan={...claimed.rows[0].production_plan,approved:true};
     await client.query("COMMIT");
   }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
+  const draftId=req.params.id,actor=req.admin.email;
+  res.status(202).json({status:"generating",id:draftId});
+  void (async()=>{
   let workflowResponse;
   try{workflowResponse=await fetch(workflowUrl,{method:"POST",headers:{Authorization:`Bearer ${process.env.N8N_AD_APPROVED_PLAN_TOKEN}`,"Content-Type":"application/json",Accept:"video/mp4"},body:JSON.stringify({...plan,...(logoBase64?{logoBase64:logoBase64.toString("base64")}:{ }),...(audioBase64?{audioBase64:audioBase64.toString("base64")}:{ })}),redirect:"manual",signal:AbortSignal.timeout(240000)});}catch{
-    await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[req.params.id,req.admin.email]);return res.status(502).json({error:"انقطع الاتصال بورَك فلو الإنتاج أو انتهت مهلة الانتظار. جرّب مرة أخرى."});
+    await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;
   }
-  if(!workflowResponse.ok){await workflowResponse.body?.cancel().catch(()=>undefined);await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[req.params.id,req.admin.email]);return res.status(502).json({error:"ورَك فلو لم تُرجع فيديو. راجع حالة تشغيلها واعتماد الاتصال ثم أعد المحاولة."});}
+  if(!workflowResponse.ok){await workflowResponse.body?.cancel().catch(()=>undefined);await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;}
   const declaredType=(workflowResponse.headers.get("content-type")||"").split(";")[0].trim().toLowerCase();
-  if(declaredType!=="video/mp4"){await workflowResponse.body?.cancel().catch(()=>undefined);await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[req.params.id,req.admin.email]);return res.status(502).json({error:"الورك فلو لم تُرجع ملف MP4 صالحًا."});}
+  if(declaredType!=="video/mp4"){await workflowResponse.body?.cancel().catch(()=>undefined);await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;}
   const contentLength=Number(workflowResponse.headers.get("content-length")||0);
-  if(contentLength>25*1024*1024){await workflowResponse.body?.cancel().catch(()=>undefined);await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[req.params.id,req.admin.email]);return res.status(502).json({error:"الفيديو الذي أعادته الورك فلو يتجاوز 25 ميجابايت."});}
+  if(contentLength>25*1024*1024){await workflowResponse.body?.cancel().catch(()=>undefined);await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;}
   const reader=workflowResponse.body?.getReader();
-  if(!reader){await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[req.params.id,req.admin.email]);return res.status(502).json({error:"تعذر قراءة الفيديو من استجابة الورك فلو."});}
+  if(!reader){await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;}
   const videoChunks=[];let videoBytes=0;
   try{while(true){const {done,value}=await reader.read();if(done)break;videoBytes+=value.byteLength;if(videoBytes>25*1024*1024){await reader.cancel().catch(()=>undefined);throw new Error("video_too_large");}videoChunks.push(value);}}
-  catch(error){await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[req.params.id,req.admin.email]);return res.status(502).json({error:error?.message==="video_too_large"?"الفيديو الذي أعادته الورك فلو يتجاوز 25 ميجابايت.":"تعذر تنزيل الفيديو من الورك فلو."});}
+  catch(error){await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;}
   const video=new Uint8Array(videoBytes);let videoOffset=0;for(const chunk of videoChunks){video.set(chunk,videoOffset);videoOffset+=chunk.byteLength;}
   const mp4=video.length>=12&&String.fromCharCode(...video.subarray(4,8))==="ftyp";
-  if(!mp4||video.length>25*1024*1024){await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[req.params.id,req.admin.email]);return res.status(502).json({error:"الملف الذي أرجعته الورك فلو ليس فيديو MP4 صالحًا أو يتجاوز 25 ميجابايت."});}
+  if(!mp4||video.length>25*1024*1024){await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;}
   const savedVideo=Buffer.from(video);
-  await pool.query("UPDATE content_studio_drafts SET status='video_ready',video_data=$2,video_size=$3,video_generated_at=now(),updated_at=now(),updated_by=$4 WHERE id=$1 AND status='generating'",[req.params.id,savedVideo,savedVideo.length,req.admin.email]);
-  await pool.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'content_studio.video.generated','content_studio_draft',$2,$3::jsonb)",[req.admin.email,req.params.id,JSON.stringify({title,video_size:savedVideo.length})]);
-  res.set({"Content-Type":"video/mp4","Content-Length":String(savedVideo.length),"Content-Disposition":"attachment; filename=atsh-ad.mp4","Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}).send(savedVideo);
+  await pool.query("UPDATE content_studio_drafts SET status='video_ready',video_data=$2,video_size=$3,video_generated_at=now(),updated_at=now(),updated_by=$4 WHERE id=$1 AND status='generating'",[draftId,savedVideo,savedVideo.length,actor]);
+  await pool.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'content_studio.video.generated','content_studio_draft',$2,$3::jsonb)",[actor,draftId,JSON.stringify({title,video_size:savedVideo.length})]);
+
+  })().catch(async error=>{console.error("content studio production failed",error?.message);await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now() WHERE id=$1 AND status='generating'",[draftId]).catch(()=>{});});
 }));
 app.put("/api/admin/page-drafts/:slug",requireAdmin,requirePermission("content"),route(async(req,res)=>{
  if(!/^[a-z0-9-]{1,100}$/.test(req.params.slug))return res.status(400).json({error:"Invalid page"});
