@@ -42,7 +42,8 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
 
  const [accountStatus,setAccountStatus]=useState<"checking"|"authenticated"|"guest">("checking");
  const previewRequestRef=useRef(0);
- useEffect(()=>{if(action==="dashboard"&&search.get("tab")==="invoices")setHubTab("projects");},[action,search]);
+ useEffect(()=>{if(action!=="dashboard")return;const tab=search.get("view");if(tab&&["overview","projects","messages","preview","services","quotes","contracts","invoices","deliveries","assistant","settings"].includes(tab))setHubTab(tab as HubTab);else if(search.get("tab")==="invoices")setHubTab("projects");const project=search.get("project");if(project&&/^[0-9a-f-]{36}$/i.test(project))setSelectedProjectDraft(project);},[action,search]);
+ useEffect(()=>{if(action!=="dashboard")return;const sync=()=>{const url=new URL(window.location.href);url.searchParams.set("view",hubTab);if(selectedProjectDraft)url.searchParams.set("project",selectedProjectDraft);else url.searchParams.delete("project");window.history.replaceState(window.history.state,"",url);};window.addEventListener("atsh-language-switch",sync);return()=>window.removeEventListener("atsh-language-switch",sync);},[action,hubTab,selectedProjectDraft]);
  useEffect(()=>{if(action!=="dashboard"||accountStatus!=="authenticated"||!loadGuestWorkspace().draftInvoice)return;let active=true;void syncCustomerWorkspace().then(result=>{if(active){setWorkspace(result);setGuestPending(false);}}).catch(()=>{if(active)setMessage(t("تعذر حفظ الفاتورة المؤقتة في حسابك. حاول مجددًا.","Could not save your draft invoice. Please retry."));});return()=>{active=false};},[action,accountStatus]);
  useEffect(()=>{
    if(action!=="dashboard")return;
@@ -81,7 +82,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    const body=await response.json();
    if(sequence!==draftLoadSequence.current)return;
    setProjectDrafts(body.drafts||[]);
-   setSelectedProjectDraft(previous=>body.drafts?.some((d:ProjectDraft)=>d.id===previous)?previous:(body.drafts?.[0]?.id||""));
+   setSelectedProjectDraft(previous=>{const requested=previous||new URLSearchParams(window.location.search).get("project");return body.drafts?.some((d:ProjectDraft)=>d.id===requested)?requested||"":(body.drafts?.[0]?.id||"");});
 
   }catch{setMessage("تعذر تحميل مسودات مشروعاتك");}
  },[]);
