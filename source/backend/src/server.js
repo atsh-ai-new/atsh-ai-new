@@ -189,7 +189,6 @@ app.use("/api/customer/commercial",customerCommercialRouter({pool,allowedOrigins
 
 // Enforce central operations flags on actual write entry points (not just dashboard state).
 app.use('/api/orders', (req,res,next)=>req.method==='POST'?operationGuard(pool,'new_orders')(req,res,next):next());
-app.use('/api/customer/journey', (req,res,next)=>req.method==='POST'&&req.path.endsWith('/chat')?operationGuard(pool,'customer_assistant')(req,res,next):next());
 app.use('/api/admin/builder', (req,res,next)=>req.method==='POST'?operationGuard(pool,'project_builder')(req,res,next):next());
 app.use('/api/admin/content-studio', (req,res,next)=>req.method==='POST'?operationGuard(pool,'content_studio')(req,res,next):next());
 
@@ -290,7 +289,7 @@ app.post("/api/admin/journey/projects/:id/messages",requireAdmin,(req,res,next)=
    if(notificationSchema.rows[0].table_name){
     await client.query(
      "INSERT INTO platform_notifications(recipient_type,recipient_id,project_id,event_type,title,body,target_path) VALUES('customer',$1,$2,'journey.admin_message',$3,$4,$5)",
-     [project.rows[0].customer_account_id,req.params.id,"رسالة جديدة من الإدارة",parsed.data.body.slice(0,300),"/customer-portal"]
+     [project.rows[0].customer_account_id,req.params.id,"رسالة جديدة من الإدارة",parsed.data.body.slice(0,300),"/account/dashboard"]
     );
    }
   }
@@ -476,65 +475,6 @@ app.post("/api/admin/journey/projects/:id/guide",requireAdmin,requirePermission(
 
 // Stage 6: opt-in customer portal. A project-specific bearer secret is created by an admin,
 // stored only as a SHA-256 digest, and never placed in a URL or server log.
-const customerIdSchema=z.string().uuid();
-const customerTokenSchema=z.string().regex(/^[a-f0-9]{64}$/);
-const customerChatSchema=z.object({message:z.string().trim().min(1).max(2000)}).strict();
-// Customer project reads and edits are authenticated by a project access token.
-// Do not impose a shared-IP request ceiling on normal portal navigation.
-const portalRate=(_req,_res,next)=>next();
-const portalHash=token=>createHash("sha256").update(token).digest("hex");
-async function requireCustomerProject(req,res,next){
- const token=(req.get("authorization")||"").match(/^Bearer ([a-f0-9]{64})$/i)?.[1];
- if(!customerIdSchema.safeParse(req.params.id).success||!token||!customerTokenSchema.safeParse(token).success)return res.status(401).json({error:"Invalid customer credentials"});
- try{
-  const result=await pool.query("SELECT p.id,p.customer_name,p.template_id,p.status FROM customer_journey_projects p JOIN customer_journey_access a ON a.project_id=p.id WHERE p.id=$1 AND a.token_hash=$2 AND a.revoked_at IS NULL AND a.expires_at>now()",[req.params.id,portalHash(token.toLowerCase())]);
-  if(!result.rowCount)return res.status(401).json({error:"Customer access expired or revoked"});
-  req.customerProject=result.rows[0];next();
- }catch(error){next(error);}
-}
-app.post("/api/admin/journey/projects/:id/customer-access",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
- if(!customerIdSchema.safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
- const parsed=z.object({expiresInDays:z.number().int().min(1).max(30).default(7)}).strict().safeParse(req.body||{});
- if(!parsed.success)return res.status(400).json({error:"Invalid expiry"});
- const secret=randomBytes(32).toString("hex");
- const client=await pool.connect();
- try{
-  await client.query("BEGIN");
-  const project=await client.query("SELECT id FROM customer_journey_projects WHERE id=$1 FOR UPDATE",[req.params.id]);
-  if(!project.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Project not found"});}
-  await client.query("INSERT INTO customer_journey_access(project_id,token_hash,expires_at,issued_by,revoked_at) VALUES($1,$2,now()+($3::int*interval '1 day'),$4,NULL) ON CONFLICT(project_id) DO UPDATE SET token_hash=EXCLUDED.token_hash,expires_at=EXCLUDED.expires_at,issued_by=EXCLUDED.issued_by,revoked_at=NULL",[req.params.id,portalHash(secret),parsed.data.expiresInDays,req.admin.email]);
-  await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'journey.customer_access.issued','customer_journey_project',$2,$3::jsonb)",[req.admin.email,req.params.id,JSON.stringify({expiresInDays:parsed.data.expiresInDays})]);
-  await client.query("COMMIT");
-  res.set("Cache-Control","no-store").json({projectId:req.params.id,accessCode:secret,expiresInDays:parsed.data.expiresInDays,warning:"Copy this code now; it cannot be retrieved later. Previous code is revoked."});
- }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
-}));
-app.delete("/api/admin/journey/projects/:id/customer-access",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
- if(!customerIdSchema.safeParse(req.params.id).success)return res.status(400).json({error:"Invalid project id"});
- await pool.query("UPDATE customer_journey_access SET revoked_at=now() WHERE project_id=$1",[req.params.id]);
- await pool.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id) VALUES($1,'journey.customer_access.revoked','customer_journey_project',$2)",[req.admin.email,req.params.id]);
- res.json({revoked:true});
-}));
-app.get("/api/customer/journey/:id",portalRate,requireCustomerProject,route(async(req,res)=>{
- const messages=await pool.query("SELECT actor,body,created_at FROM customer_journey_messages WHERE project_id=$1 ORDER BY id DESC LIMIT 50",[req.customerProject.id]);
- res.set("Cache-Control","no-store").json({project:req.customerProject,messages:messages.rows.reverse()});
-}));
-app.post("/api/customer/journey/:id/chat",portalRate,requireCustomerProject,route(async(req,res)=>{
- const parsed=customerChatSchema.safeParse(req.body);
- if(!parsed.success)return res.status(400).json({error:"Invalid message"});
- if(!process.env.OPENAI_API_KEY||!process.env.OPENAI_MODEL)return res.status(503).json({error:"AI guidance is not configured"});
- const packages=await pool.query("SELECT name,description,price,currency,is_custom_quote FROM packages WHERE is_published=true ORDER BY sort_order LIMIT 20");
- const instructions=buildJourneyInstructions({audience:"customer",project:req.customerProject,packages:packages.rows});
- let response;
- try{response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:process.env.OPENAI_MODEL,store:false,max_output_tokens:500,instructions,input:parsed.data.message}),signal:AbortSignal.timeout(25000)});}catch{return res.status(502).json({error:"AI provider unavailable"});}
- if(!response.ok)return res.status(502).json({error:"AI provider rejected request"});
- const data=await response.json();
- const answer=extractAssistantText(data).slice(0,4000);
- if(!answer)return res.status(502).json({error:"AI returned no response"});
- const client=await pool.connect();
- try{await client.query("BEGIN");await client.query("INSERT INTO customer_journey_messages(project_id,actor,body) VALUES($1,'customer',$2)",[req.customerProject.id,parsed.data.message]);await client.query("INSERT INTO customer_journey_messages(project_id,actor,body) VALUES($1,'assistant',$2)",[req.customerProject.id,answer]);await client.query("COMMIT");}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
- res.set("Cache-Control","no-store").json({answer,automatedActions:false});
-}));
-
 app.get("/api/health", route(async (_req,res) => {
   await pool.query("SELECT 1");
   res.json({status:"ok",database:"connected"});
