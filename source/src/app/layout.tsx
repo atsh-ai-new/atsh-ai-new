@@ -1,5 +1,6 @@
 import type {Metadata} from "next";
 import {headers} from "next/headers";
+import LiveSupport from "@/components/live-support";
 import Concierge from "@/components/concierge";
 import SocialHeader from "@/components/social-header";
 import "./globals.css";
@@ -13,5 +14,5 @@ export async function generateMetadata():Promise<Metadata>{
 }
 export default async function RootLayout({children}:Readonly<{children:React.ReactNode}>){
  const locale=await currentLocale();
- return <html lang={locale} dir={locale==="en"?"ltr":"rtl"}><body><SocialHeader /><Concierge locale={locale} />{children}</body></html>;
+ return <html lang={locale} dir={locale==="en"?"ltr":"rtl"}><body><SocialHeader /><Concierge locale={locale} /><LiveSupport en={locale==="en"}/>{children}</body></html>;
 }
