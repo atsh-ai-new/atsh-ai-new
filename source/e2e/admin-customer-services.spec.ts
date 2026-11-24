@@ -34,6 +34,7 @@ test("admin creates and activates a service and sees persisted server responses"
  await section.getByLabel("اختر مشروع العميل").selectOption(projectId);
  await section.getByRole("button",{name:"عرض الخدمات"}).click();
  await expect(section.getByText("لا توجد خدمات مسجلة لهذا المشروع.")).toBeVisible();
+ await section.getByText("إضافة خدمة جديدة للمشروع",{exact:true}).click();
  await section.getByLabel("اسم الخدمة").fill("استضافة العميل");
  await section.getByLabel("كود الخدمة").fill("hosting");
  await section.getByRole("button",{name:"حفظ الخدمة"}).click();
