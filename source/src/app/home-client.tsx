@@ -5,7 +5,7 @@ import { addonOptions, calculateQuote, formatEgp, identityOptions, packages, typ
 import { siteCopyDefaults } from "@/lib/site-copy";
 import { readPagePreview } from "@/lib/page-preview";
 import { siteCopyEn, englishPackages, englishOptions, englishPrice } from "@/lib/site-copy-en";
-import { findSector } from "@/lib/sector-catalog";
+import { findSector, interactiveDemoPaths, interactiveDemoSlug } from "@/lib/sector-catalog";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 import {normalizeCatalogSectors,resolvePlacement} from "@/lib/catalog-sectors";
 import DomainLookup from "@/components/domain-lookup";
@@ -28,6 +28,16 @@ const backendPackageIds: Record<string, string> = {
 const obsoleteIdentityOptionCodes = new Set(["logo_design", "visual_identity"]);
 const builtInOptionCodes = new Set(["language", "logo", "brand", "writing", "seo", "booking", "contact", "analytics", "hosting", "domain_com", "domain_eg", "maintenance"]);
 
+function FeaturedLiveDemo({item,base}:{item:HomeCatalogItem;base:string}){
+ const host=useRef<HTMLDivElement>(null),frame=useRef<HTMLIFrameElement>(null);
+ const [width,setWidth]=useState(0),[height,setHeight]=useState(800);
+ const slug=interactiveDemoSlug(item.slug,item.demoSlug);
+ const src=slug?interactiveDemoPaths[slug]:null;
+ useEffect(()=>{const el=host.current;if(!el)return;const resize=()=>setWidth(el.clientWidth);resize();const observer=new ResizeObserver(resize);observer.observe(el);return()=>observer.disconnect();},[]);
+ useEffect(()=>{const el=frame.current;if(!el||!src)return;const receive=(event:MessageEvent)=>{if(event.source!==el.contentWindow||event.origin!=="null"||event.data?.type!=="atsh-featured-demo-height")return;const n=Number(event.data.height);if(Number.isFinite(n)&&n>0)setHeight(Math.min(20000,Math.max(650,n)));};window.addEventListener("message",receive);return()=>window.removeEventListener("message",receive);},[src]);
+ const scale=width/1200;
+ return <div ref={host} style={{width:"100%",position:"relative",overflow:"hidden",borderRadius:10,background:"#f4f7fa",height:src?height*scale:undefined}}>{src?<iframe ref={frame} title={item.name} src={src+"?featured=1"} loading="lazy" sandbox="allow-scripts allow-forms allow-modals" scrolling="no" style={{position:"absolute",top:0,left:0,width:1200,height,transform:"scale("+scale+")",transformOrigin:"top left",border:0,display:"block"}}/>:<a className="button button-outline" href={base+"/catalog/"+encodeURIComponent(item.slug)+"?fullscreen=1"}>{item.name} ↗</a>}</div>;
+}
 export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly=false}:{locale?:"ar"|"en";configuratorOnly?:boolean;pricingOnly?:boolean}) {
   const isEnglish=locale==="en";
   const money=(value:number)=>isEnglish?englishPrice(value):formatEgp(value);
@@ -649,7 +659,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         </div>
       </section>}
 
-      {!configuratorOnly&&!pricingOnly&&(()=>{const config=isEnglish?arabicReference:contentData;const ids=Array.isArray(config?.featuredSystemSlugs)?config.featuredSystemSlugs as string[]:null;const chosen=ids?ids.map(id=>featuredSystems.find(x=>x.slug===id)).filter((x):x is HomeCatalogItem=>!!x):featuredSystems.slice(0,4);const items=chosen.slice(0,4);const base=isEnglish?"/en":"";return <section className="packages-section" id="featured-systems"><div className="section-heading"><div><h2>{t("أنظمة جاهزة للمعاينة","Explore interactive systems")}</h2></div><a className="button button-outline" href={base+"/catalog"}>{t("عرض جميع الأنظمة","View all systems")} ←</a></div><div className="package-grid">{items.map(item=><article className="package-card" key={item.slug}><iframe title={item.name} src={base+"/catalog/"+encodeURIComponent(item.slug)+"?embedded=1"} loading="lazy" style={{width:"100%",height:160,border:"1px solid #dce4ef",borderRadius:10}}/><h3>{item.name}</h3><p>{item.description}</p><a className="button button-outline package-cta" href={base+"/catalog/"+encodeURIComponent(item.slug)+"?fullscreen=1"}>{t("معاينة تفاعلية","Interactive demo")} ←</a></article>)}</div></section>;})()}
+      {!configuratorOnly&&!pricingOnly&&(()=>{const config=isEnglish?arabicReference:contentData;const ids=Array.isArray(config?.featuredSystemSlugs)?config.featuredSystemSlugs as string[]:null;const chosen=ids?ids.map(id=>featuredSystems.find(x=>x.slug===id)).filter((x):x is HomeCatalogItem=>!!x):featuredSystems.slice(0,4);const items=chosen.slice(0,4);const base=isEnglish?"/en":"";return <section className="packages-section" id="featured-systems"><div className="section-heading"><div><h2>{t("أنظمة جاهزة للمعاينة","Explore interactive systems")}</h2></div><a className="button button-outline" href={base+"/catalog"}>{t("عرض جميع الأنظمة","View all systems")} ←</a></div><div className="package-grid">{items.map(item=><article className="package-card" key={item.slug}><FeaturedLiveDemo item={item} base={base}/><h3>{item.name}</h3><p>{item.description}</p><a className="button button-outline package-cta" href={base+"/catalog/"+encodeURIComponent(item.slug)+"?fullscreen=1"}>{t("معاينة تفاعلية","Interactive demo")} ←</a></article>)}</div></section>;})()}
       {!configuratorOnly&&<><section className="faq-section" id="faq"><div className="section-heading"><div><span className="section-kicker">{copy("faqKicker")}</span><h2>{copy("faqTitle")}</h2></div><p>{copy("faqDescription")}</p></div><div className="faq-list">{faqItems.map((item, index) => <article key={item.id ?? index} className={openFaq === index ? "faq-item open" : "faq-item"}><button type="button" onClick={() => setOpenFaq(openFaq === index ? null : index)} aria-expanded={openFaq === index}><span className="faq-num">0{index + 1}</span><strong>{item.title}</strong><span className="faq-toggle">{openFaq === index ? "−" : "+"}</span></button>{openFaq === index && <p>{item.description}</p>}</article>)}</div></section>
 
       <section className="final-cta"><div><span className="section-kicker">{copy("finalKicker")}</span><h2>{copy("finalTitle")}</h2><p>{copy("finalDescription")}</p></div><button className="button" onClick={() => begin()}>{copy("finalCta")} <span>←</span></button></section>
