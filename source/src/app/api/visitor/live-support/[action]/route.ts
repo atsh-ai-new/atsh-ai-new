@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 const MAX_BYTES=12*1024;
 async function proxy(request:Request,context:{params:Promise<{action:string}>}) {
- const {action}=await context.params; if(!["start","messages","files"].includes(action)||(action==="start"&&request.method!=="POST"))return new Response(null,{status:404});
+ const {action}=await context.params; if(!["start","messages","files","status"].includes(action)||(action==="start"&&request.method!=="POST"))return new Response(null,{status:404});
   const originHeader=request.headers.get("origin");
   // Traefik may forward the request to Next.js over internal HTTP; request.url
   // is therefore not a reliable public-site origin in production.
