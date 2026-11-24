@@ -120,26 +120,6 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  }));
 
  // Project ownership is explicit: a matching email address alone never grants access.
- router.post('/projects/claim',requireCustomer,safe(async(req,res)=>{
-  const p=z.object({projectId:z.string().uuid(),accessToken:z.string().regex(/^[a-f0-9]{64}$/)}).safeParse(req.body);
-  if(!p.success)return res.status(400).json({error:'Invalid claim request'});
-  const client=await pool.connect();
-  try{
-   await client.query('BEGIN');
-   const q=await client.query(`SELECT p.id,p.customer_email,p.customer_account_id,a.token_hash,a.expires_at,a.revoked_at
-     FROM customer_journey_projects p JOIN customer_journey_access a ON a.project_id=p.id
-     WHERE p.id=$1 FOR UPDATE OF p,a`,[p.data.projectId]);
-   const row=q.rows[0];
-   if(!row||row.customer_account_id&&String(row.customer_account_id)!==String(req.customer.id)||
-      !row.customer_email||row.customer_email.toLowerCase()!==req.customer.email.toLowerCase()||
-      row.revoked_at||new Date(row.expires_at)<=new Date()||row.token_hash!==hash(p.data.accessToken)){
-    await client.query('ROLLBACK');return res.status(403).json({error:'Unable to claim project'});
-   }
-   await client.query('UPDATE customer_journey_projects SET customer_account_id=$1 WHERE id=$2',[req.customer.id,row.id]);
-   await client.query('UPDATE customer_journey_access SET revoked_at=now() WHERE project_id=$1',[row.id]);
-   await client.query('COMMIT');res.json({claimed:true,projectId:row.id});
-  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
- }));
  // A draft invoice is an indicative client-side estimate, not an authoritative quote.
  const draftInvoiceSchema=z.object({
   title:z.string().max(120),
