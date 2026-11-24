@@ -1,6 +1,5 @@
 import type {Metadata} from "next";
 import {headers} from "next/headers";
-import LanguageSwitch from "@/components/language-switch";
 import Concierge from "@/components/concierge";
 import SocialHeader from "@/components/social-header";
 import "./globals.css";
@@ -14,5 +13,5 @@ export async function generateMetadata():Promise<Metadata>{
 }
 export default async function RootLayout({children}:Readonly<{children:React.ReactNode}>){
  const locale=await currentLocale();
- return <html lang={locale} dir={locale==="en"?"ltr":"rtl"}><body><SocialHeader /><Concierge locale={locale} /><div className="atsh-global-language"><LanguageSwitch /></div>{children}</body></html>;
+ return <html lang={locale} dir={locale==="en"?"ltr":"rtl"}><body><SocialHeader /><Concierge locale={locale} />{children}</body></html>;
 }
