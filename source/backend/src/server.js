@@ -846,7 +846,7 @@ app.get("/api/admin/notifications",requireAdmin,route(async(req,res)=>{
  // Owner has a shared operations inbox. Staff notifications remain identity-scoped.
  const recipient=req.admin.role==="owner"?"00000000-0000-4000-8000-000000000001":req.admin.userId;
  if(!recipient)return res.status(403).json({error:"Team account required"});
- const q=await pool.query("SELECT id,project_id,event_type,title,body,target_path,read_at,created_at FROM platform_notifications WHERE recipient_type='team' AND recipient_id=$1 ORDER BY created_at DESC LIMIT 50",[recipient]);
+ const q=await pool.query("SELECT n.id,n.project_id,n.event_type,n.title,n.body,n.target_path,n.read_at,n.created_at FROM platform_notifications n WHERE n.recipient_type='team' AND n.recipient_id=$1 AND (n.project_id IS NULL OR EXISTS (SELECT 1 FROM customer_journey_projects p WHERE p.id=n.project_id AND p.status<>'archived')) ORDER BY n.created_at DESC LIMIT 50",[recipient]);
  res.set("Cache-Control","private, no-store").json({notifications:q.rows,unread:q.rows.filter(n=>!n.read_at).length});
 }));
 app.post("/api/admin/notifications/:id/read",requireAdmin,route(async(req,res)=>{
