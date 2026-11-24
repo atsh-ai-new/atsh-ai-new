@@ -8,7 +8,7 @@ export default function SocialHeader(){
  const [ticker,setTicker]=useState<{enabled:boolean;text:string;url:string;speed:number;background:string;color:string}|null>(null);
  const [tickerHost,setTickerHost]=useState<HTMLElement|null>(null);
  const pathname=usePathname();
- useEffect(()=>{const locale=pathname.startsWith("/en")?"en":"ar";let live=true;setTicker(null);const apply=(t:any)=>{if(live)setTicker(t?.enabled&&typeof t.text==="string"&&t.text.trim()?t:null);};const preview=readPagePreview("home",locale);if(preview){apply(preview.content.newsTicker);return()=>{live=false;};}void fetch("/api/site-content/home?locale="+locale,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(d=>apply(d?.page?.content?.newsTicker)).catch(()=>{});return()=>{live=false;};},[pathname]);
+ useEffect(()=>{const locale=pathname.startsWith("/en")?"en":"ar";let live=true;setTicker(null);const valid=(t:any)=>t?.enabled&&typeof t.text==="string"&&t.text.trim();const apply=(t:any)=>{if(live)setTicker(valid(t)?t:null);};const preview=readPagePreview("home",locale);if(preview){apply(preview.content.newsTicker);return()=>{live=false;};}const load=async(lang:string)=>{try{const r=await fetch("/api/site-content/home?locale="+lang,{cache:"no-store"});return r.ok?(await r.json())?.page?.content?.newsTicker:null;}catch{return null;}};void (async()=>{const local=await load(locale);if(valid(local)){apply(local);return;}apply(await load(locale==="en"?"ar":"en"));})();return()=>{live=false;};},[pathname]);
  const [host,setHost]=useState<HTMLElement|null>(null);
  useEffect(()=>{
   const holder=document.createElement("div");holder.className="atsh-social-inline-slot";const bar=document.createElement("div");bar.className="atsh-news-slot";
