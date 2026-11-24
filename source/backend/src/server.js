@@ -1086,6 +1086,7 @@ app.get("/api/admin/content-studio/:id/video",requireAdmin,requirePermission("as
 }));
 app.get("/api/admin/content-studio/:id",requireAdmin,requirePermission("assistant"),requireRole(...contentStudioRoles),route(async(req,res)=>{
   if(!contentStudioId(req))return res.status(404).json({error:"المسودة غير موجودة."});
+  await pool.query("UPDATE content_studio_drafts SET status='reviewed',production_plan=production_plan-'_jobToken',updated_at=now() WHERE id=$1 AND status='generating' AND updated_at<now()-interval '2 hours'",[req.params.id]);
   const result=await pool.query("SELECT id,title,source_filename,brief_markdown,production_plan-'_jobToken' AS production_plan,status,video_size,video_generated_at,video_size AS has_video,updated_at FROM content_studio_drafts WHERE id=$1",[req.params.id]);
   if(!result.rowCount)return res.status(404).json({error:"المسودة غير موجودة."});
   const row=result.rows[0];res.json({draft:{...row,has_video:Boolean(row.video_size)}});
