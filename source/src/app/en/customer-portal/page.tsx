@@ -1,2 +1,2 @@
-import CustomerPortal from "../../customer-portal-client";
-export default function EnglishPortal(){return <CustomerPortal locale="en"/>;}
+import { redirect } from "next/navigation";
+export default function RetiredPortal(){redirect("/en/account/dashboard");}
