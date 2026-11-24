@@ -1,4 +1,13 @@
 export const siteCopyDefaults: Record<string, string> = {
+  marketingHeroTitle: "برمجة مخصصة بأسعار تنافس المواقع التقليدية.",
+  marketingHeroSubtitle: "بدون قيود القوالب الجاهزة، نصمم مشروعك وفق احتياجاتك وميزانيتك.",
+  marketingCatalogTitle: "لا تكيّف أعمالك مع نظام جاهز، بل امتلك نظامًا يتكيف مع أعمالك.",
+  marketingCatalogBenefit1: "برمجة مخصصة",
+  marketingCatalogBenefit2: "تحكم متكامل",
+  marketingCatalogBenefit3: "قابلية التوسع",
+  marketingCatalogBenefit4: "هوية مستقلة",
+  marketingCatalogBenefit5: "تكامل ذكي",
+  marketingCatalogBenefit6: "أسعار تنافسية",
   navWhy: "لماذا نحن", navPackages: "الباقات", navHow: "طريقة العمل", navFaq: "الأسئلة الشائعة", navAction: "ابدأ الآن",
   brandTagline: "حلول رقمية تصنع فرقًا", heroEyebrow: "3 أفكار تصميم و5 اتجاهات لونية ضمن باقات الموقع",
   heroTitle: "ابنِ موقعك بالطريقة التي تناسب مشروعك",
