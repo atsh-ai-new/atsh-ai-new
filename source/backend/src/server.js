@@ -1086,7 +1086,7 @@ app.get("/api/admin/content-studio/:id/video",requireAdmin,requirePermission("as
 }));
 app.get("/api/admin/content-studio/:id",requireAdmin,requirePermission("assistant"),requireRole(...contentStudioRoles),route(async(req,res)=>{
   if(!contentStudioId(req))return res.status(404).json({error:"المسودة غير موجودة."});
-  const result=await pool.query("SELECT id,title,source_filename,brief_markdown,production_plan,status,video_size,video_generated_at,video_size AS has_video,updated_at FROM content_studio_drafts WHERE id=$1",[req.params.id]);
+  const result=await pool.query("SELECT id,title,source_filename,brief_markdown,production_plan-'_jobToken' AS production_plan,status,video_size,video_generated_at,video_size AS has_video,updated_at FROM content_studio_drafts WHERE id=$1",[req.params.id]);
   if(!result.rowCount)return res.status(404).json({error:"المسودة غير موجودة."});
   const row=result.rows[0];res.json({draft:{...row,has_video:Boolean(row.video_size)}});
 }));
@@ -1114,38 +1114,31 @@ app.post("/api/admin/content-studio/:id/produce",requireAdmin,requirePermission(
     if(x.audioBase64){audioBase64=Buffer.from(x.audioBase64,"base64");const mp3=audioBase64.subarray(0,3).toString("ascii")==="ID3"||(audioBase64.length>=2&&audioBase64[0]===0xff&&(audioBase64[1]&0xe0)===0xe0);if(audioBase64.length>2*1024*1024||audioBase64.toString("base64")!==x.audioBase64||!mp3)throw new Error();}
   }catch{return res.status(400).json({error:"تحقق من أن الشعار PNG وأن الملف الصوتي MP3 ضمن الحجم المسموح."});}
   let workflowUrl;try{workflowUrl=new URL(process.env.N8N_AD_APPROVED_PLAN_URL);if(!["http:","https:"].includes(workflowUrl.protocol)||workflowUrl.username||workflowUrl.password||workflowUrl.hash)throw new Error();if(process.env.NODE_ENV==="production"&&workflowUrl.protocol!=="https:"&&!(process.env.N8N_ALLOW_INTERNAL_HTTP==="true"&&["localhost","127.0.0.1","n8n"].includes(workflowUrl.hostname)))throw new Error();}catch{return res.status(503).json({error:"رابط ورَك فلو الفيديو غير صالح أو غير آمن في إعدادات السيرفر."});}
-  const client=await pool.connect();let plan,title;
-  try{await client.query("BEGIN");
-    const claimed=await client.query("UPDATE content_studio_drafts SET status='generating',updated_by=$2,updated_at=now() WHERE id=$1 AND status='reviewed' RETURNING title,production_plan",[req.params.id,req.admin.email]);
-    if(!claimed.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"احفظ الخطة واعتمدها أولًا قبل طلب الفيديو."});}
-    title=claimed.rows[0].title;plan={...claimed.rows[0].production_plan,approved:true};
-    await client.query("COMMIT");
-  }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
   const draftId=req.params.id,actor=req.admin.email;
-  res.status(202).json({status:"generating",id:draftId});
-  void (async()=>{
-  let workflowResponse;
-  try{workflowResponse=await fetch(workflowUrl,{method:"POST",headers:{Authorization:`Bearer ${process.env.N8N_AD_APPROVED_PLAN_TOKEN}`,"Content-Type":"application/json",Accept:"video/mp4"},body:JSON.stringify({...plan,...(logoBase64?{logoBase64:logoBase64.toString("base64")}:{ }),...(audioBase64?{audioBase64:audioBase64.toString("base64")}:{ })}),redirect:"manual",signal:AbortSignal.timeout(240000)});}catch{
-    await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;
-  }
-  if(!workflowResponse.ok){await workflowResponse.body?.cancel().catch(()=>undefined);await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;}
-  const declaredType=(workflowResponse.headers.get("content-type")||"").split(";")[0].trim().toLowerCase();
-  if(declaredType!=="video/mp4"){await workflowResponse.body?.cancel().catch(()=>undefined);await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;}
-  const contentLength=Number(workflowResponse.headers.get("content-length")||0);
-  if(contentLength>25*1024*1024){await workflowResponse.body?.cancel().catch(()=>undefined);await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;}
-  const reader=workflowResponse.body?.getReader();
-  if(!reader){await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;}
-  const videoChunks=[];let videoBytes=0;
-  try{while(true){const {done,value}=await reader.read();if(done)break;videoBytes+=value.byteLength;if(videoBytes>25*1024*1024){await reader.cancel().catch(()=>undefined);throw new Error("video_too_large");}videoChunks.push(value);}}
-  catch(error){await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;}
-  const video=new Uint8Array(videoBytes);let videoOffset=0;for(const chunk of videoChunks){video.set(chunk,videoOffset);videoOffset+=chunk.byteLength;}
-  const mp4=video.length>=12&&String.fromCharCode(...video.subarray(4,8))==="ftyp";
-  if(!mp4||video.length>25*1024*1024){await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),updated_by=$2 WHERE id=$1 AND status='generating'",[draftId,actor]);return;}
-  const savedVideo=Buffer.from(video);
-  await pool.query("UPDATE content_studio_drafts SET status='video_ready',video_data=$2,video_size=$3,video_generated_at=now(),updated_at=now(),updated_by=$4 WHERE id=$1 AND status='generating'",[draftId,savedVideo,savedVideo.length,actor]);
-  await pool.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'content_studio.video.generated','content_studio_draft',$2,$3::jsonb)",[actor,draftId,JSON.stringify({title,video_size:savedVideo.length})]);
+  const jobToken=randomBytes(32).toString("hex");
+  const claimed=await pool.query("UPDATE content_studio_drafts SET status='generating',updated_by=$2,updated_at=now(),production_plan=production_plan||jsonb_build_object('_jobToken',$3::text) WHERE id=$1 AND status='reviewed' RETURNING production_plan",[draftId,actor,createHash("sha256").update(jobToken).digest("hex")]);
+  if(!claimed.rowCount)return res.status(409).json({error:"احفظ الخطة واعتمدها أولًا قبل طلب الفيديو."});
+  const {_jobToken,...plan}=claimed.rows[0].production_plan;
+  const reset=()=>pool.query("UPDATE content_studio_drafts SET status='reviewed',production_plan=production_plan-'_jobToken',updated_at=now() WHERE id=$1 AND status='generating' AND production_plan->>'_jobToken'=$2",[draftId,_jobToken]);
+  try{
+   const response=await fetch(workflowUrl,{method:"POST",headers:{Authorization:"Bearer "+process.env.N8N_AD_APPROVED_PLAN_TOKEN,"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({...plan,approved:true,jobId:draftId,callbackToken:jobToken,callbackPath:"/api/integrations/content-studio/"+draftId+"/result",...(logoBase64?{logoBase64:logoBase64.toString("base64")}:{ }),...(audioBase64?{audioBase64:audioBase64.toString("base64")}:{ })}),redirect:"manual",signal:AbortSignal.timeout(15000)});
+   if(!response.ok){await reset();return res.status(502).json({error:"لم تقبل n8n مهمة الإنتاج."});}
+   await response.body?.cancel().catch(()=>{});
+   res.status(202).json({status:"generating",id:draftId});
+  }catch{await reset();res.status(502).json({error:"تعذر تأكيد استلام مهمة الإنتاج من n8n."});}
 
-  })().catch(async error=>{console.error("content studio production failed",error?.message);await pool.query("UPDATE content_studio_drafts SET status='reviewed',updated_at=now() WHERE id=$1 AND status='generating'",[draftId]).catch(()=>{});});
+}));
+app.post("/api/integrations/content-studio/:id/result",express.raw({type:["video/mp4","application/octet-stream"],limit:"25mb"}),route(async(req,res)=>{
+ if(!contentStudioId(req))return res.status(404).end();
+ const token=String(req.get("authorization")||"").replace(/^Bearer /,"");
+ if(!/^[a-f0-9]{64}$/.test(token))return res.status(401).end();
+ const digest=createHash("sha256").update(token).digest("hex");
+ const failed=req.is("application/json")&&req.body?.status==="failed";
+ const video=Buffer.isBuffer(req.body)?req.body:null;
+ if(!failed&&(!video||video.length<12||video.length>25*1024*1024||video.subarray(4,8).toString()!=="ftyp"))return res.status(400).json({error:"Invalid MP4"});
+ const q=await pool.query("UPDATE content_studio_drafts SET status=$3,video_data=$4,video_size=$5,video_generated_at=CASE WHEN $3='video_ready' THEN now() ELSE NULL END,updated_at=now(),production_plan=production_plan-'_jobToken' WHERE id=$1 AND status='generating' AND production_plan->>'_jobToken'=$2 RETURNING id",[req.params.id,digest,failed?"reviewed":"video_ready",failed?null:video,failed?null:video.length]);
+ if(!q.rowCount)return res.status(409).json({error:"Job expired or already completed"});
+ res.json({accepted:true});
 }));
 app.put("/api/admin/page-drafts/:slug",requireAdmin,requirePermission("content"),route(async(req,res)=>{
  if(!/^[a-z0-9-]{1,100}$/.test(req.params.slug))return res.status(400).json({error:"Invalid page"});
