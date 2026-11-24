@@ -7,6 +7,7 @@ import { readPagePreview } from "@/lib/page-preview";
 import { siteCopyEn, englishPackages, englishOptions, englishPrice } from "@/lib/site-copy-en";
 import { findSector } from "@/lib/sector-catalog";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
+import {normalizeCatalogSectors,resolvePlacement} from "@/lib/catalog-sectors";
 import DomainLookup from "@/components/domain-lookup";
 import HomeCatalogShowcase, {type HomeCatalogItem} from "@/components/home-catalog-showcase";
 import { combinedQuoteSummary } from "@/lib/quote-breakdown";
@@ -69,6 +70,8 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   const [siteConfig, setSiteConfig] = useState<SiteConfig>({});
   // Arabic published content is the visibility reference for the English homepage.
   const [arabicReference, setArabicReference] = useState<Record<string, unknown> | null>(null);
+  const [featuredSystems,setFeaturedSystems]=useState<HomeCatalogItem[]>([]);
+  useEffect(()=>{let live=true;void Promise.all([fetch("/api/site-content/catalog?locale=ar",{cache:"no-store"}).then(r=>r.ok?r.json():null),isEnglish?fetch("/api/site-content/catalog?locale=en",{cache:"no-store"}).then(r=>r.ok?r.json():null).catch(()=>null):Promise.resolve(null)]).then(([ar,en])=>{if(!live)return;const content=ar?.page?.content;const sectors=normalizeCatalogSectors(content?.sectors);const translated=new Map<string,HomeCatalogItem>((en?.page?.content?.items??[]).map((x:HomeCatalogItem)=>[x.slug,x]));setFeaturedSystems((Array.isArray(content?.items)?content.items:[]).filter((x:HomeCatalogItem)=>{if(!x||!x.slug||x.published===false||x.archived)return false;const p=resolvePlacement(x,sectors);return p.sector?.isPublished&&p.subcategory?.isPublished!==false;}).map((x:HomeCatalogItem)=>({...x,name:translated.get(x.slug)?.name||x.name,description:translated.get(x.slug)?.description||x.description})));}).catch(()=>{});return()=>{live=false;};},[isEnglish]);
   const [pageLinks, setPageLinks] = useState<PageLink[]>([]);
   const [selectedSector, setSelectedSector] = useState<{ slug: string; name: string } | null>(null);
   const [sectorPricedAddons,setSectorPricedAddons]=useState<Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>>([]);
@@ -646,6 +649,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         </div>
       </section>}
 
+      {!configuratorOnly&&!pricingOnly&&(()=>{const config=isEnglish?arabicReference:contentData;const ids=Array.isArray(config?.featuredSystemSlugs)?config.featuredSystemSlugs as string[]:null;const chosen=ids?ids.map(id=>featuredSystems.find(x=>x.slug===id)).filter((x):x is HomeCatalogItem=>!!x):featuredSystems.slice(0,4);const items=chosen.slice(0,4);const base=isEnglish?"/en":"";return <section className="packages-section" id="featured-systems"><div className="section-heading"><div><h2>{t("أنظمة جاهزة للمعاينة","Explore interactive systems")}</h2></div><a className="button button-outline" href={base+"/catalog"}>{t("عرض جميع الأنظمة","View all systems")} ←</a></div><div className="package-grid">{items.map(item=><article className="package-card" key={item.slug}><iframe title={item.name} src={base+"/catalog/"+encodeURIComponent(item.slug)+"?embedded=1"} loading="lazy" style={{width:"100%",height:160,border:"1px solid #dce4ef",borderRadius:10}}/><h3>{item.name}</h3><p>{item.description}</p><a className="button button-outline package-cta" href={base+"/catalog/"+encodeURIComponent(item.slug)+"?fullscreen=1"}>{t("معاينة تفاعلية","Interactive demo")} ←</a></article>)}</div></section>;})()}
       {!configuratorOnly&&<><section className="faq-section" id="faq"><div className="section-heading"><div><span className="section-kicker">{copy("faqKicker")}</span><h2>{copy("faqTitle")}</h2></div><p>{copy("faqDescription")}</p></div><div className="faq-list">{faqItems.map((item, index) => <article key={item.id ?? index} className={openFaq === index ? "faq-item open" : "faq-item"}><button type="button" onClick={() => setOpenFaq(openFaq === index ? null : index)} aria-expanded={openFaq === index}><span className="faq-num">0{index + 1}</span><strong>{item.title}</strong><span className="faq-toggle">{openFaq === index ? "−" : "+"}</span></button>{openFaq === index && <p>{item.description}</p>}</article>)}</div></section>
 
       <section className="final-cta"><div><span className="section-kicker">{copy("finalKicker")}</span><h2>{copy("finalTitle")}</h2><p>{copy("finalDescription")}</p></div><button className="button" onClick={() => begin()}>{copy("finalCta")} <span>←</span></button></section>
