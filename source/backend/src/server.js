@@ -460,6 +460,7 @@ app.get("/api/health", route(async (_req,res) => {
 
 // Visitor GPT guide. Only public catalog fields enter model context; no customer records or secret configuration.
 const visitorSchema=z.object({
+  locale:z.enum(["ar","en"]).optional(),
   messages:z.array(z.object({role:z.enum(["user","assistant"]),content:z.string().trim().min(1).max(1200)}).strict()).min(1).max(8)
 }).strict();
 app.post("/api/visitor/assistant",
@@ -490,7 +491,7 @@ app.post("/api/visitor/assistant",
     const quota=await pool.query(`UPDATE visitor_ai_daily_usage SET requests=requests+1,updated_at=now()
       WHERE day=CURRENT_DATE AND requests<$1 AND output_tokens<$2 RETURNING requests`,[maxRequests,maxOutputTokens]);
     if(!quota.rowCount)return res.status(429).json({error:"تم بلوغ ميزانية استخدام المساعد اليوم. جرّب لاحقًا أو تابع عبر المعرض."});
-    const instructions=buildVisitorInstructions({packages:p.rows,options:o.rows,sectors,site,knowledge});
+    const instructions=buildVisitorInstructions({packages:p.rows,options:o.rows,sectors,site,knowledge})+(parsed.data.locale ? "\nMandatory response language: "+(parsed.data.locale==="en"?"English":"Arabic")+". Reply in this language regardless of the language of catalog data or previous messages." : "");
     const input=parsed.data.messages.map(m=>({role:m.role,content:m.content}));
     let upstream;
     try{upstream=await fetch("https://api.openai.com/v1/responses",{
