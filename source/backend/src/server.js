@@ -1,3 +1,4 @@
+import { registerInternalChat } from "./internal-chat.js";
 import { effectivePermissions, hasPermission } from "./team-permissions.js";
 import {validCalendarDate} from './invoice-ledger-rules.js';
 import { deliveryAdminRouter, deliveryCustomerRouter } from "./delivery-control.js";
@@ -56,6 +57,7 @@ const pool = new Pool({
   ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: true } : undefined
 });
 await pool.query(await readFile(new URL("../db/schema.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/communications_foundation_20261124.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_stage12.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_stage13.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/customer_auth_stage15.sql", import.meta.url), "utf8"));
@@ -1850,6 +1852,7 @@ if(notificationCleanupTable.rows[0]?.name)await pool.query("DELETE FROM platform
 const legacyAccessTable=await pool.query("SELECT to_regclass('customer_journey_access') AS name");
 if(legacyAccessTable.rows[0]?.name)await pool.query("DELETE FROM customer_journey_access");
 const port=Number(process.env.PORT||3000);
+registerInternalChat(app,{pool,requireAdmin,route});
 const server=app.listen(port,"0.0.0.0",()=>console.log(`ATSH AI API listening on ${port}`));
 let eventsBusy=false;
 const eventTimer=eventDestination()?setInterval(async()=>{
