@@ -1854,7 +1854,7 @@ async function internalPeer(req,res,next){
  if(peer!=="00000000-0000-4000-8000-000000000001"){const q=await pool.query("SELECT 1 FROM team_members WHERE id=$1 AND is_active",[peer]);if(!q.rowCount)return res.sendStatus(404);}next();}catch(e){next(e);}
 }
 app.get("/api/admin/internal-chat/:peer",requireAdmin,internalPeer,route(async(req,res)=>{
- const q=await pool.query("SELECT id,sender_id,body,created_at FROM internal_team_messages WHERE (sender_id=$1 AND recipient_id=$2) OR (sender_id=$2 AND recipient_id=$1) ORDER BY id DESC LIMIT 200",[internalActor(req),req.params.peer]);
+ const q=await pool.query("SELECT m.id,m.sender_id,m.body,m.created_at,f.id AS file_id,f.filename FROM internal_team_messages m LEFT JOIN internal_chat_files f ON f.direct_message_id=m.id WHERE (m.sender_id=$1 AND m.recipient_id=$2) OR (m.sender_id=$2 AND m.recipient_id=$1) ORDER BY m.id DESC LIMIT 200",[internalActor(req),req.params.peer]);
  res.set("Cache-Control","private, no-store").json({messages:q.rows.reverse()});
 }));
 app.post("/api/admin/internal-chat/:peer",requireAdmin,internalPeer,route(async(req,res)=>{
@@ -1876,12 +1876,37 @@ async function internalGroupAccess(req,res,next){try{
  const q=await pool.query("SELECT p.id FROM customer_journey_projects p WHERE "+internalProjectScope+" AND p.id=$3",[req.admin.role==="owner",internalActor(req),req.params.id]);if(!q.rowCount)return res.sendStatus(404);next();
 }catch(e){next(e);}}
 app.get("/api/admin/internal-groups/:id",requireAdmin,internalGroupAccess,route(async(req,res)=>{
- const q=await pool.query("SELECT m.id,m.sender_id,m.body,m.created_at,COALESCE(t.display_name,'الإدارة') AS sender_name FROM internal_project_messages m LEFT JOIN team_members t ON t.id=m.sender_id WHERE m.project_id=$1 ORDER BY m.id DESC LIMIT 200",[req.params.id]);res.set("Cache-Control","private, no-store").json({messages:q.rows.reverse()});
+ const q=await pool.query("SELECT m.id,m.sender_id,m.body,m.created_at,COALESCE(t.display_name,'الإدارة') AS sender_name,f.id AS file_id,f.filename FROM internal_project_messages m LEFT JOIN team_members t ON t.id=m.sender_id LEFT JOIN internal_chat_files f ON f.group_message_id=m.id WHERE m.project_id=$1 ORDER BY m.id DESC LIMIT 200",[req.params.id]);res.set("Cache-Control","private, no-store").json({messages:q.rows.reverse()});
 }));
 app.post("/api/admin/internal-groups/:id",requireAdmin,internalGroupAccess,route(async(req,res)=>{
  const p=z.object({body:z.string().trim().min(2).max(2000)}).strict().safeParse(req.body);if(!p.success)return res.sendStatus(400);
  const q=await pool.query("WITH m AS (INSERT INTO internal_project_messages(project_id,sender_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at), recipients AS (SELECT DISTINCT t.assigned_to AS id FROM customer_journey_tasks t JOIN team_members u ON u.id=t.assigned_to AND u.is_active WHERE t.project_id=$1 UNION SELECT '00000000-0000-4000-8000-000000000001'::uuid), n AS (INSERT INTO platform_notifications(recipient_type,recipient_id,project_id,event_type,title,body,target_path) SELECT 'team',r.id,$1::uuid,'internal.group','رسالة مجموعة جديدة','لديك رسالة داخلية في مجموعة مشروع','/admin' FROM recipients r CROSS JOIN m WHERE r.id<>$2::uuid) SELECT * FROM m",[req.params.id,internalActor(req),p.data.body]);res.status(201).json({message:q.rows[0]});
 }));
+
+await pool.query(`CREATE TABLE IF NOT EXISTS internal_chat_files (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), direct_message_id bigint REFERENCES internal_team_messages(id) ON DELETE CASCADE,
+ group_message_id bigint REFERENCES internal_project_messages(id) ON DELETE CASCADE,
+ filename text NOT NULL, data bytea NOT NULL, CHECK ((direct_message_id IS NULL) <> (group_message_id IS NULL))
+); CREATE UNIQUE INDEX IF NOT EXISTS internal_chat_files_direct ON internal_chat_files(direct_message_id); CREATE UNIQUE INDEX IF NOT EXISTS internal_chat_files_group ON internal_chat_files(group_message_id);`);
+const internalUpload=express.raw({type:"application/octet-stream",limit:"20mb"});
+function internalFilename(req){try{return decodeURIComponent(req.get("x-file-name")||"").replace(/[\\/\x00-\x1f\x7f]/g,"_").slice(0,180);}catch{return "";}}
+for(const group of [false,true]){
+ const prefix=group?"/api/admin/internal-groups/:id":"/api/admin/internal-chat/:peer";
+ app.post(prefix+"/files",requireAdmin,group?internalGroupAccess:internalPeer,internalUpload,route(async(req,res)=>{
+ const filename=internalFilename(req);if(!filename||!Buffer.isBuffer(req.body)||!req.body.length)return res.sendStatus(400);
+ const client=await pool.connect();try{await client.query("BEGIN");
+ const me=internalActor(req),target=group?req.params.id:req.params.peer;
+ const q=await client.query(group?"INSERT INTO internal_project_messages(project_id,sender_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at":"INSERT INTO internal_team_messages(recipient_id,sender_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at",[target,me,"مرفق: "+filename]);
+ const f=await client.query(group?"INSERT INTO internal_chat_files(group_message_id,filename,data) VALUES($1,$2,$3) RETURNING id":"INSERT INTO internal_chat_files(direct_message_id,filename,data) VALUES($1,$2,$3) RETURNING id",[q.rows[0].id,filename,req.body]);
+ await client.query("COMMIT");res.status(201).json({message:{...q.rows[0],file_id:f.rows[0].id,filename}});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+ }));
+ app.get(prefix+"/files/:file",requireAdmin,group?internalGroupAccess:internalPeer,route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.file).success)return res.sendStatus(404);
+ const q=await pool.query(group?"SELECT f.filename,f.data FROM internal_chat_files f JOIN internal_project_messages m ON m.id=f.group_message_id WHERE f.id=$1 AND m.project_id=$2 AND $3::uuid IS NOT NULL":"SELECT f.filename,f.data FROM internal_chat_files f JOIN internal_team_messages m ON m.id=f.direct_message_id WHERE f.id=$1 AND ((m.sender_id=$2 AND m.recipient_id=$3) OR (m.sender_id=$3 AND m.recipient_id=$2))",[req.params.file,group?req.params.id:req.params.peer,internalActor(req)]);
+ if(!q.rowCount)return res.sendStatus(404);res.set({"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","Content-Disposition":"attachment; filename*=UTF-8''"+encodeURIComponent(q.rows[0].filename),"Content-Type":"application/octet-stream"}).send(q.rows[0].data);
+ }));
+}
 app.use((err,_req,res,_next)=>{
   if(err?.type==="entity.too.large")return res.status(413).json({error:"حجم الملف أكبر من الحد المسموح."});
   console.error(err);
