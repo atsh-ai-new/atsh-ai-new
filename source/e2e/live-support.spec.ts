@@ -9,6 +9,7 @@ test("live support opens, sends and displays a reply without leaving the page",a
  return route.fulfill({json:{messages}});
  });
  await page.goto("/");
+ await page.getByRole("button",{name:"قنوات التواصل واللغة"}).click();
  await page.getByRole("button",{name:"خدمة العملاء",exact:true}).click();
  const dialog=page.getByRole("dialog",{name:"خدمة العملاء"});
  await expect(dialog).toBeVisible();
