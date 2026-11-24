@@ -843,3 +843,19 @@ body:has(.admin-page) .atsh-floating-actions,body:has(.admin-page) .atsh-global-
  .platform-header .platform-brand{flex-shrink:0}
  .platform-header .platform-header-actions{min-width:0}
 }
+
+/* Compact managed-page header; keep homepage header unchanged. */
+@media(max-width:767px){
+ .managed-header{height:auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:5px 8px;padding:8px 0}
+ .managed-header>.managed-brand{min-width:0;gap:5px;white-space:nowrap}
+ .managed-header>.managed-brand img{width:32px;height:32px;flex:none}
+ .managed-header>.managed-brand strong{font-size:13px}
+ .managed-header>.atsh-social-inline-slot{min-width:0;width:auto;margin:0}
+ .managed-header>.atsh-social-inline-slot>.atsh-social-header{flex-direction:row;gap:2px;width:auto;order:0;overflow:visible;padding:0;flex-wrap:nowrap}
+ .managed-header>.atsh-social-inline-slot .atsh-social-header a,.managed-header>.atsh-social-inline-slot .atsh-social-header span{width:22px;height:26px}
+ .managed-header>.language-pill{padding:5px 8px;min-width:0;font-size:11px;white-space:nowrap}
+ .managed-header>nav{grid-column:1/-1;order:3;width:100%;justify-content:center;gap:12px;padding:5px 0 3px;flex-wrap:wrap;overflow:visible;font-size:11px}
+ .managed-page .managed-hero{padding:22px 5px 14px}
+ .managed-page .managed-hero h1{font-size:clamp(25px,7vw,34px);margin:5px 0}
+}
+@media(max-width:340px){.managed-header>.managed-brand strong{font-size:11px}.managed-header>.managed-brand img{width:26px;height:26px}.managed-header{column-gap:4px}.managed-header>.atsh-social-inline-slot .atsh-social-header a,.managed-header>.atsh-social-inline-slot .atsh-social-header span{width:19px}}
