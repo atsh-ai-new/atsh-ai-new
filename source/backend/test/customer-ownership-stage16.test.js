@@ -7,11 +7,11 @@ test('project listing uses verified account identity, never email',()=>{
  assert.match(src,/WHERE customer_account_id=\$1 ORDER BY/);
  assert.doesNotMatch(src,/WHERE lower\(customer_email\)=\$1/);
 });
-test('claim requires valid access token and email match, and revokes token',()=>{
- assert.match(src,/router.post\('\/projects\/claim'/);
- assert.match(src,/row\.token_hash!==hash\(p\.data\.accessToken\)/);
- assert.match(src,/row\.customer_email\.toLowerCase\(\)!==req\.customer\.email\.toLowerCase\(\)/);
- assert.match(src,/UPDATE customer_journey_access SET revoked_at=now\(\)/);
+test('retired access-code routes cannot claim or expose projects',()=>{
+ const server=readFileSync(new URL('../src/server.js',import.meta.url),'utf8');
+ assert.doesNotMatch(src,/router\.post\('\/projects\/claim'/);
+ assert.doesNotMatch(server,/app\.(get|post|delete)\("\/api\/(customer\/journey|admin\/journey\/projects\/:id\/customer-access)/);
+ assert.match(server,/DELETE FROM customer_journey_access/);
 });
 test('migration never auto-assigns projects by email',()=>{
  assert.match(migration,/ADD COLUMN IF NOT EXISTS customer_account_id/);
