@@ -1,6 +1,7 @@
 import type {Metadata} from "next";
 import {headers} from "next/headers";
 import Concierge from "@/components/concierge";
+import VideoCampaigns from "@/components/video-campaigns";
 import SocialHeader from "@/components/social-header";
 import "./globals.css";
 async function currentLocale() {return (await headers()).get("x-atsh-locale")==="en"?"en":"ar";}
@@ -13,5 +14,5 @@ export async function generateMetadata():Promise<Metadata>{
 }
 export default async function RootLayout({children}:Readonly<{children:React.ReactNode}>){
  const locale=await currentLocale();
- return <html lang={locale} dir={locale==="en"?"ltr":"rtl"}><body><SocialHeader /><Concierge locale={locale} />{children}</body></html>;
+ return <html lang={locale} dir={locale==="en"?"ltr":"rtl"}><body><SocialHeader /><Concierge locale={locale} />{children}<VideoCampaigns /></body></html>;
 }
