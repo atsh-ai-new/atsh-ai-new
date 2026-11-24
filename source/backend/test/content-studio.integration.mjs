@@ -1,0 +1,43 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {spawn} from "node:child_process";
+import {createServer} from "node:http";
+import {randomUUID} from "node:crypto";
+import bcrypt from "bcryptjs";
+import pg from "pg";
+import {once} from "node:events";
+test("content studio dispatch, restart, callback, failure and replay",{timeout:120000},async()=>{
+ const db=process.env.DATABASE_URL;assert.ok(db);
+ const pool=new pg.Pool({connectionString:db});
+ const origin="http://127.0.0.1:3017",port=35187,base="http://127.0.0.1:"+port;
+ let job,child,cookie,id;
+ const mock=createServer(async(req,res)=>{let data="";for await(const chunk of req)data+=chunk;job=JSON.parse(data);assert.equal(req.headers.authorization,"Bearer test-n8n-token");res.writeHead(202,{"Content-Type":"application/json"});res.end('{"accepted":true}');});
+ mock.listen(0,"127.0.0.1");await once(mock,"listening");
+ const hash=await bcrypt.hash("content-test-password",4);
+ const start=async()=>{child=spawn(process.execPath,["src/server.js"],{env:{...process.env,PORT:String(port),ADMIN_EMAIL:"ci-owner@example.test",ADMIN_PASSWORD_HASH:hash,N8N_AD_APPROVED_PLAN_URL:"http://127.0.0.1:"+mock.address().port,N8N_AD_APPROVED_PLAN_TOKEN:"test-n8n-token",N8N_ALLOW_INTERNAL_HTTP:"true"},stdio:"ignore"});for(let i=0;i<80;i++){try{if((await fetch(base+"/api/health")).ok)return;}catch{}await new Promise(r=>setTimeout(r,500));}throw Error("API startup failed");};
+ const stop=async()=>{if(child&&child.exitCode===null){const done=once(child,"exit");child.kill();await done;}};
+ const api=(path,method="GET",body,headers={})=>fetch(base+path,{method,headers:{Origin:origin,...(cookie?{Cookie:cookie}:{}),...headers},body});
+ try{
+ await start();
+ const login=await api("/api/admin/login","POST",JSON.stringify({email:"ci-owner@example.test",password:"content-test-password"}),{"Content-Type":"application/json"});assert.equal(login.status,200);cookie=login.headers.get("set-cookie").split(";")[0];
+ id=randomUUID();
+ await pool.query("INSERT INTO content_studio_drafts(id,title,source_filename,brief_markdown,production_plan,status,created_by,updated_by) VALUES($1,'CI video','test.txt','test brief for production',$2::jsonb,'reviewed','ci','ci')",[id,JSON.stringify({version:1,approved:false,title:"CI video",scenes:[]})]);
+ const produce=()=>api("/api/admin/content-studio/"+id+"/produce","POST","{}",{"Content-Type":"application/vnd.atsh-ad-production+json"});
+ assert.equal((await produce()).status,202);assert.equal(job.jobId,id);assert.equal(job.approved,true);assert.equal((await produce()).status,409);
+ const detail=async()=> (await (await api("/api/admin/content-studio/"+id)).json()).draft;
+ assert.equal((await detail()).status,"generating");assert.equal((await detail()).production_plan._jobToken,undefined);
+ await stop();await start();
+ const callback=(token,body,type)=>fetch(base+job.callbackPath,{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":type},body});
+ const video=Buffer.from("0000ftyp0000");
+ assert.equal((await callback("0".repeat(64),video,"video/mp4")).status,409);
+ assert.equal((await callback(job.callbackToken,Buffer.from("invalid"),"video/mp4")).status,400);
+ assert.equal((await callback(job.callbackToken,video,"video/mp4")).status,200);
+ assert.equal((await callback(job.callbackToken,video,"video/mp4")).status,409);
+ assert.equal((await detail()).status,"video_ready");
+ const download=await api("/api/admin/content-studio/"+id+"/video");assert.equal(download.status,200);assert.deepEqual(Buffer.from(await download.arrayBuffer()),video);
+ await pool.query("UPDATE content_studio_drafts SET status='reviewed',video_data=NULL,video_size=NULL WHERE id=$1",[id]);
+ assert.equal((await produce()).status,202);
+ assert.equal((await callback(job.callbackToken,JSON.stringify({status:"failed"}),"application/json")).status,200);
+ assert.equal((await detail()).status,"reviewed");
+ }finally{await stop();if(id)await pool.query("DELETE FROM content_studio_drafts WHERE id=$1",[id]);await pool.end();mock.close();}
+});
