@@ -833,3 +833,13 @@ body:has(.admin-page) .atsh-floating-actions,body:has(.admin-page) .atsh-global-
 .journey-acceptance-actions button{min-height:40px;border-radius:10px}
 .journey-acceptance-card>small{font-size:11px;color:#64748b;line-height:1.5}
 @media(max-width:600px){.journey-acceptance-card{padding:12px}.journey-acceptance-actions button{width:100%}}
+
+/* Narrow screens: stack social icons without overlapping the brand. */
+@media(max-width:767px){
+ .atsh-social-inline-slot{flex:0 0 24px;min-width:24px;margin-inline:4px;align-self:center}
+ .atsh-social-inline-slot .atsh-social-header{flex-direction:column;gap:2px;white-space:normal}
+ .atsh-social-inline-slot .atsh-social-header a,.atsh-social-inline-slot .atsh-social-header span{width:22px;height:22px;flex:none}
+ .atsh-social-inline-slot .atsh-social-header svg{width:17px;height:17px}
+ .platform-header .platform-brand{flex-shrink:0}
+ .platform-header .platform-header-actions{min-width:0}
+}
