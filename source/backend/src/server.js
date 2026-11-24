@@ -1859,7 +1859,7 @@ app.get("/api/admin/internal-chat/:peer",requireAdmin,internalPeer,route(async(r
 }));
 app.post("/api/admin/internal-chat/:peer",requireAdmin,internalPeer,route(async(req,res)=>{
  const p=z.object({body:z.string().trim().min(2).max(2000)}).strict().safeParse(req.body);if(!p.success)return res.status(400).json({error:"Invalid message"});
- const q=await pool.query("INSERT INTO internal_team_messages(sender_id,recipient_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at",[internalActor(req),req.params.peer,p.data.body]);res.status(201).json({message:q.rows[0]});
+ const q=await pool.query("WITH m AS (INSERT INTO internal_team_messages(sender_id,recipient_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at), n AS (INSERT INTO platform_notifications(recipient_type,recipient_id,event_type,title,body,target_path) SELECT 'team',$2::uuid,'internal.message','رسالة داخلية جديدة','لديك رسالة جديدة من الفريق','/admin' FROM m) SELECT * FROM m",[internalActor(req),req.params.peer,p.data.body]);res.status(201).json({message:q.rows[0]});
 }));
 
 await pool.query(`CREATE TABLE IF NOT EXISTS internal_project_messages (
@@ -1868,7 +1868,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS internal_project_messages (
 ); CREATE INDEX IF NOT EXISTS internal_project_messages_idx ON internal_project_messages(project_id,id);`);
 const internalProjectScope="p.status<>'archived' AND ($1::boolean OR EXISTS(SELECT 1 FROM customer_journey_tasks t WHERE t.project_id=p.id AND t.assigned_to=$2::uuid))";
 app.get("/api/admin/internal-groups",requireAdmin,route(async(req,res)=>{
- const q=await pool.query("SELECT p.id FROM customer_journey_projects p WHERE "+internalProjectScope+" ORDER BY p.id",[req.admin.role==="owner",internalActor(req)]);
+ const q=await pool.query("SELECT p.id,COALESCE(to_jsonb(p)->>'title',to_jsonb(p)->>'name',to_jsonb(p)->>'project_name',p.id::text) AS title FROM customer_journey_projects p WHERE "+internalProjectScope+" ORDER BY p.id",[req.admin.role==="owner",internalActor(req)]);
  res.set("Cache-Control","private, no-store").json({groups:q.rows});
 }));
 async function internalGroupAccess(req,res,next){try{
@@ -1880,7 +1880,7 @@ app.get("/api/admin/internal-groups/:id",requireAdmin,internalGroupAccess,route(
 }));
 app.post("/api/admin/internal-groups/:id",requireAdmin,internalGroupAccess,route(async(req,res)=>{
  const p=z.object({body:z.string().trim().min(2).max(2000)}).strict().safeParse(req.body);if(!p.success)return res.sendStatus(400);
- const q=await pool.query("INSERT INTO internal_project_messages(project_id,sender_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at",[req.params.id,internalActor(req),p.data.body]);res.status(201).json({message:q.rows[0]});
+ const q=await pool.query("WITH m AS (INSERT INTO internal_project_messages(project_id,sender_id,body) VALUES($1,$2,$3) RETURNING id,sender_id,body,created_at), recipients AS (SELECT DISTINCT t.assigned_to AS id FROM customer_journey_tasks t JOIN team_members u ON u.id=t.assigned_to AND u.is_active WHERE t.project_id=$1 UNION SELECT '00000000-0000-4000-8000-000000000001'::uuid), n AS (INSERT INTO platform_notifications(recipient_type,recipient_id,project_id,event_type,title,body,target_path) SELECT 'team',r.id,$1::uuid,'internal.group','رسالة مجموعة جديدة','لديك رسالة داخلية في مجموعة مشروع','/admin' FROM recipients r CROSS JOIN m WHERE r.id<>$2::uuid) SELECT * FROM m",[req.params.id,internalActor(req),p.data.body]);res.status(201).json({message:q.rows[0]});
 }));
 app.use((err,_req,res,_next)=>{
   if(err?.type==="entity.too.large")return res.status(413).json({error:"حجم الملف أكبر من الحد المسموح."});
