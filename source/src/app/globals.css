@@ -836,8 +836,8 @@ body:has(.admin-page) .atsh-floating-actions,body:has(.admin-page) .atsh-global-
 
 /* Narrow screens: stack social icons without overlapping the brand. */
 @media(max-width:767px){
- .atsh-social-inline-slot{flex:0 0 24px;min-width:24px;margin-inline:4px;align-self:center}
- .atsh-social-inline-slot .atsh-social-header{flex-direction:column;gap:2px;white-space:normal}
+ .atsh-social-inline-slot{flex:0 0 auto;min-width:0;margin-inline:4px;align-self:center}
+ .atsh-social-inline-slot .atsh-social-header{flex-direction:row;flex-wrap:nowrap;gap:2px;white-space:nowrap}
  .atsh-social-inline-slot .atsh-social-header a,.atsh-social-inline-slot .atsh-social-header span{width:22px;height:22px;flex:none}
  .atsh-social-inline-slot .atsh-social-header svg{width:17px;height:17px}
  .platform-header .platform-brand{flex-shrink:0}
@@ -866,3 +866,7 @@ body:has(.admin-page) .atsh-floating-actions,body:has(.admin-page) .atsh-global-
  header>.atsh-social-inline-slot[data-internal-public="true"] .atsh-social-header{display:flex;flex-direction:row;flex-wrap:nowrap;gap:2px;width:auto;white-space:nowrap;padding:0;overflow:visible}
  header>.atsh-social-inline-slot[data-internal-public="true"] .atsh-social-header a,header>.atsh-social-inline-slot[data-internal-public="true"] .atsh-social-header span{width:20px;height:24px;flex:none}
 }
+
+/* Keep the shared social links horizontal in every header. */
+.atsh-social-inline-slot > .atsh-social-header{flex-direction:row;flex-wrap:nowrap;white-space:nowrap;width:max-content}
+.atsh-social-inline-slot > .atsh-social-header > :is(a,span){flex-shrink:0}
