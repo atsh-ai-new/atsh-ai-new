@@ -1,3 +1,4 @@
+import {extractDemoAssets,migrateDemoAssets,readDemoAsset,expandDemoAssets} from "./site-demo-assets.js";
 import { effectivePermissions, hasPermission } from "./team-permissions.js";
 import {validCalendarDate} from './invoice-ledger-rules.js';
 import { deliveryAdminRouter, deliveryCustomerRouter } from "./delivery-control.js";
@@ -80,6 +81,8 @@ await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sq
 await pool.query(await readFile(new URL("../db/commercial_checkout_stage52.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/unified_pricing_stage53.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/order_submission_idempotency_stage54.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/site_demo_assets.sql",import.meta.url),"utf8"));
+await migrateDemoAssets(pool);
 await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim().replace(/\/$/, "")).filter(Boolean);
 // The public website is also an explicitly configured, trusted origin.
@@ -126,7 +129,7 @@ app.use("/api/internal/verified-payments",express.raw({type:"application/json",l
 // Allow a wider structured sector catalog while keeping other JSON endpoints tightly bounded.
 app.use("/api/admin/pages/catalog",express.json({limit:"68mb"}));
 app.use(["/api/admin/pages/home","/api/admin/page-drafts/home","/api/admin/home-featured"],express.json({limit:"68mb"}));
-const validFeaturedHtml=content=>{const files=content?.featuredSystemHtml;if(files===undefined)return true;if(!files||typeof files!=="object"||Array.isArray(files)||Object.keys(files).length>4)return false;return Object.entries(files).every(([slug,entry])=>/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)&&entry&&typeof entry.html==="string"&&Buffer.byteLength(entry.html,"utf8")<=10*1024*1024&&typeof entry.name==="string"&&entry.name.length<=255);};
+const validFeaturedHtml=content=>{const files=content?.featuredSystemHtml;if(files===undefined)return true;if(!files||typeof files!=="object"||Array.isArray(files)||Object.keys(files).length>4)return false;return Object.entries(files).every(([slug,entry])=>/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)&&entry&&((typeof entry.html==="string"&&Buffer.byteLength(entry.html,"utf8")<=10*1024*1024)||(typeof entry.assetId==="string"&&/^[a-f0-9]{64}$/.test(entry.assetId)))&&typeof entry.name==="string"&&entry.name.length<=255);};
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 const isolatedCiRate=process.env.ATSH_CI_TEST_RATE_LIMIT==="true"&&process.env.NODE_ENV!=="production";
@@ -558,10 +561,10 @@ app.get("/api/site-content/:slug/demo/:system",route(async(req,res)=>{
  const {slug,system}=req.params;
  if(!["home","catalog"].includes(slug)||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(system))return res.status(400).json({error:"Invalid demo"});
  const found=await pool.query(`SELECT CASE WHEN $1='home' THEN
- CASE WHEN NOT (content ? 'featuredSystemSlugs') OR content->'featuredSystemSlugs' ? $2 THEN content->'featuredSystemHtml'->$2->>'html' END
- ELSE (SELECT item->>'previewHtml' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(content->'items')='array' THEN content->'items' ELSE '[]'::jsonb END) item WHERE item->>'slug'=$2 AND COALESCE(item->>'published','true')!='false' AND COALESCE(item->>'archived','false')!='true' LIMIT 1) END AS html
+ CASE WHEN NOT (content ? 'featuredSystemSlugs') OR content->'featuredSystemSlugs' ? $2 THEN content->'featuredSystemHtml'->$2->>'assetId' END
+ ELSE (SELECT item->>'previewAssetId' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(content->'items')='array' THEN content->'items' ELSE '[]'::jsonb END) item WHERE item->>'slug'=$2 AND COALESCE(item->>'published','true')!='false' AND COALESCE(item->>'archived','false')!='true' LIMIT 1) END AS html
  FROM site_pages WHERE slug=$1 AND locale='ar' AND is_published=true`,[slug,system]);
- const html=found.rows[0]?.html;
+ const html=await readDemoAsset(pool,found.rows[0]?.html);
  if(typeof html!=="string"||!html)return res.status(404).json({error:"Demo not found"});
  // JSON transport prevents uploaded HTML from being served as a same-origin page.
  res.set("Cache-Control","no-store").json({html});
@@ -571,24 +574,24 @@ app.get("/api/site-content/:slug", route(async(req,res)=>{
   const locale=typeof req.query.locale==="string"&&/^[a-z]{2}(-[A-Z]{2})?$/.test(req.query.locale)?req.query.locale:"ar";
   const metadata=req.query.metadata==="1";
   // Strip file bodies inside PostgreSQL before serialization or network transfer.
-  const contentSql=metadata?`CASE WHEN slug='home' THEN (content-'featuredSystemHtml') || jsonb_build_object('featuredSystemHtml',COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('name',value->>'name','available',true)) FROM jsonb_each(CASE WHEN jsonb_typeof(content->'featuredSystemHtml')='object' THEN content->'featuredSystemHtml' ELSE '{}'::jsonb END) WHERE COALESCE(value->>'html','')<>''),'{}'::jsonb))
-  WHEN slug='catalog' THEN (content-'items') || jsonb_build_object('items',COALESCE((SELECT jsonb_agg((item-'previewHtml') || jsonb_build_object('hasPreviewHtml',COALESCE(item->>'previewHtml','')<>'') ORDER BY ord) FROM jsonb_array_elements(CASE WHEN jsonb_typeof(content->'items')='array' THEN content->'items' ELSE '[]'::jsonb END) WITH ORDINALITY AS entries(item,ord)),'[]'::jsonb)) ELSE content END`:"content";
+  const contentSql="content";
   const [page,settings]=await Promise.all([
     pool.query("SELECT slug,locale,"+contentSql+" AS content,updated_at FROM site_pages WHERE slug=$1 AND locale=$2 AND is_published=true",[req.params.slug,locale]),
     pool.query("SELECT theme,vat_rate FROM site_settings WHERE id=1")
   ]);
   const publishedPage=page.rows[0]||null;
+  if(publishedPage&&!metadata)publishedPage.content=await expandDemoAssets(pool,req.params.slug,publishedPage.content);
   if(req.params.slug==="catalog"&&Array.isArray(publishedPage?.content?.items)){
     publishedPage.content={...publishedPage.content,items:publishedPage.content.items.map(item=>{
       if(!item||typeof item!=="object"||item.published!==false&&!item.archived)return item;
-      const {previewHtml,previewHtmlName,hasPreviewHtml,...rest}=item;return rest;
+      const {previewHtml,previewHtmlName,hasPreviewHtml,previewAssetId,...rest}=item;return rest;
     })};
   }
   res.set("Cache-Control","no-store").json({page:publishedPage,theme:settings.rows[0]?.theme||null,vatRate:Number(settings.rows[0]?.vat_rate??14)});
 }));
 app.get("/api/site-pages",route(async(req,res)=>{
   const locale=req.query.locale==="en"?"en":"ar";
-  const result=await pool.query("SELECT slug,content,updated_at FROM site_pages WHERE locale=$1 AND is_published=true ORDER BY slug",[locale]);
+  const result=await pool.query("SELECT slug,jsonb_build_object('title',content->'title') AS content,updated_at FROM site_pages WHERE locale=$1 AND is_published=true ORDER BY slug",[locale]);
   res.json({pages:result.rows.map(page=>({slug:page.slug,title:typeof page.content?.title==='string'?page.content.title:page.slug,updatedAt:page.updated_at}))});
 }));
 await pool.query("CREATE TABLE IF NOT EXISTS site_videos (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), data bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now())");
@@ -1165,7 +1168,8 @@ app.put("/api/admin/page-drafts/:slug",requireAdmin,requirePermission("content")
  const parsed=z.object({locale:z.enum(["ar","en"]),content:z.record(z.string(),z.unknown())}).strict().safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid draft"});
  if(req.params.slug==="home"&&!validFeaturedHtml(parsed.data.content))return res.status(400).json({error:"Invalid featured HTML files"});
- const saved=await pool.query("INSERT INTO site_page_drafts(slug,locale,content,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING slug,locale,updated_at",[req.params.slug,parsed.data.locale,JSON.stringify(parsed.data.content),req.admin.email]);
+ const stored=await extractDemoAssets(pool,req.params.slug,parsed.data.content);
+ const saved=await pool.query("INSERT INTO site_page_drafts(slug,locale,content,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING slug,locale,updated_at",[req.params.slug,parsed.data.locale,JSON.stringify(stored),req.admin.email]);
  res.json({draft:saved.rows[0]});
 }));
 app.get("/api/admin/pages",requireAdmin,requirePermission("content"),route(async(_req,res)=>{
@@ -1190,11 +1194,11 @@ app.post("/api/admin/media",requireAdmin,requirePermission("content"),express.ra
 }));
 // Publish the homepage's shared featured-system settings independently of marketing translation.
 app.patch("/api/admin/home-featured",requireAdmin,requirePermission("content"),route(async(req,res)=>{
- const parsed=z.object({slugs:z.array(z.string().regex(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*)?$/)).max(4),files:z.record(z.string(),z.object({html:z.string(),name:z.string().max(255)}).strict())}).strict().safeParse(req.body);
+ const parsed=z.object({slugs:z.array(z.string().regex(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*)?$/)).max(4),files:z.record(z.string(),z.object({html:z.string().optional(),assetId:z.string().regex(/^[a-f0-9]{64}$/).optional(),available:z.boolean().optional(),name:z.string().max(255)}).strict())}).strict().safeParse(req.body);
  if(!parsed.success||!validFeaturedHtml({featuredSystemHtml:parsed.data.files}))return res.status(400).json({error:"Invalid featured systems or HTML files"});
  const slugs=parsed.data.slugs,selected=slugs.filter(Boolean);
  if(new Set(selected).size!==selected.length||Object.keys(parsed.data.files).some(key=>!selected.includes(key)))return res.status(400).json({error:"Invalid featured system selection"});
- const patch={featuredSystemSlugs:slugs,featuredSystemHtml:parsed.data.files};
+ let patch={featuredSystemSlugs:slugs,featuredSystemHtml:parsed.data.files};
  const client=await pool.connect();
  try{
   await client.query("BEGIN");
@@ -1204,6 +1208,7 @@ app.patch("/api/admin/home-featured",requireAdmin,requirePermission("content"),r
   if(selected.some(slug=>!Array.isArray(items)||!items.some(item=>item?.slug===slug&&item.published!==false&&!item.archived))){await client.query("ROLLBACK");return res.status(400).json({error:"Selected system is not published in the catalog"});}
   const before=await client.query("SELECT * FROM site_pages WHERE slug='home' AND locale='ar' FOR UPDATE");
   if(!before.rows[0]?.is_published){await client.query("ROLLBACK");return res.status(409).json({error:"Publish the homepage first"});}
+  patch=await extractDemoAssets(client,"home",patch);
   const updated=await client.query("UPDATE site_pages SET content=content || $1::jsonb,updated_at=now(),updated_by=$2 WHERE slug='home' AND locale='ar' RETURNING *",[JSON.stringify(patch),req.admin.email]);
   // Preserve other unpublished edits, but keep their featured fields in sync.
   await client.query("UPDATE site_page_drafts SET content=content || $1::jsonb,updated_at=now() WHERE slug='home' AND locale='ar'",[JSON.stringify(patch)]);
@@ -1245,7 +1250,8 @@ app.patch("/api/admin/pages/:slug",requireAdmin,requirePermission("content"),rou
       const actual=before.rows[0]?.updated_at?new Date(before.rows[0].updated_at).toISOString():null;
       if(actual!==parsed.data.expectedUpdatedAt){await client.query("ROLLBACK");return res.status(409).json({error:"تم تعديل هذه الصفحة بواسطة مستخدم آخر. أعد تحميل البيانات قبل الحفظ.",currentUpdatedAt:actual});}
     }
-    const saved=await client.query("INSERT INTO site_pages(slug,locale,content,is_published,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,is_published=EXCLUDED.is_published,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING *",[req.params.slug,parsed.data.locale,JSON.stringify(parsed.data.content),parsed.data.isPublished,req.admin.email]);
+    const stored=await extractDemoAssets(client,req.params.slug,parsed.data.content);
+    const saved=await client.query("INSERT INTO site_pages(slug,locale,content,is_published,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,is_published=EXCLUDED.is_published,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING *",[req.params.slug,parsed.data.locale,JSON.stringify(stored),parsed.data.isPublished,req.admin.email]);
     if(req.params.slug==="video-campaigns"&&parsed.data.locale==="ar"){
       const urls=content=>Array.isArray(content?.campaigns)?content.campaigns.map(c=>c?.url).filter(u=>typeof u==="string"&&/^\/api\/site-video\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(u)):[];
       const retained=new Set(urls(parsed.data.content));
