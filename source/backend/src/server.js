@@ -1785,7 +1785,7 @@ app.get("/api/admin/commercial/quotes/:id/refunds",requireAdmin,requireRole("own
  const b=q.rows[0],net=Number(b.gross)-Number(b.refunded);
  res.set("Cache-Control","no-store").json({refunds:refunds.rows,grossPaidPiasters:Number(b.gross),refundedPiasters:Number(b.refunded),netPaidPiasters:net,creditPiasters:Math.max(0,net-Number(b.total_piasters))});
 }));
-app.get('/api/admin/commercial/finance/summary',requireAdmin,requireRole('owner','admin','sales','viewer'),route(async(req,res)=>{
+app.get('/api/admin/commercial/finance/summary',requireAdmin,requireRole('owner','admin'),requirePermission('customers'),route(async(req,res)=>{
  const totals=await pool.query(`WITH balances AS (
  SELECT q.id,q.total_piasters,COALESCE(p.gross,0) AS gross,COALESCE(r.refunded,0) AS refunded FROM commercial_quotes q
  LEFT JOIN LATERAL (SELECT sum(p.amount_piasters) AS gross FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=q.id) p ON true
@@ -2062,10 +2062,21 @@ app.patch("/api/admin/commercial/tickets/:id/status",requireAdmin,requirePermiss
  if(!validateTicketTransition(q.rows[0].status,req.body?.status))return res.status(409).json({error:"Invalid ticket transition"});
  const changed=await pool.query("UPDATE support_tickets SET status=$1 WHERE id=$2 AND status=$3 RETURNING *",[req.body.status,id,q.rows[0].status]);if(!changed.rowCount)return res.status(409).json({error:"Concurrent update"});res.json({ticket:changed.rows[0]});
 }));
-app.post("/api/admin/commercial/deliveries",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+app.post("/api/admin/commercial/deliveries",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
  const {quoteId,method}=req.body||{};if(!Number.isSafeInteger(quoteId)||quoteId<1)return res.status(400).json({error:"Invalid quote"});
  try{validateDeliveryMethod(method)}catch(e){return res.status(400).json({error:e.message})}
- const q=await pool.query("INSERT INTO delivery_requests(quote_id,method) VALUES($1,$2) RETURNING *",[quoteId,method]);res.status(201).json({delivery:q.rows[0]});
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const locked=await c.query("SELECT id FROM commercial_quotes WHERE id=$1 FOR UPDATE",[quoteId]);
+ if(!locked.rowCount){await c.query("ROLLBACK");return res.status(404).json({error:"Quote not found"});}
+ const gate=await c.query(`SELECT q.id FROM commercial_quotes q WHERE q.id=$1 AND q.status='accepted'
+ AND EXISTS(SELECT 1 FROM customer_contracts WHERE quote_id=q.id AND status='signed')
+ AND NOT EXISTS(SELECT 1 FROM commercial_invoice_revision_requests WHERE quote_id=q.id AND status='issued')
+ AND (SELECT COALESCE(sum(p.amount_piasters),0) FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=q.id)
+ -(SELECT COALESCE(sum(amount_piasters),0) FROM commercial_refund_payments WHERE quote_id=q.id)>=q.total_piasters`,[quoteId]);
+ if(!gate.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Full verified payment and signed contract required"});}
+ const q=await c.query("INSERT INTO delivery_requests(quote_id,method) VALUES($1,$2) RETURNING *",[quoteId,method]);
+ await c.query("COMMIT");res.status(201).json({delivery:q.rows[0]});
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
 }));
 // Human-approved project generation: all endpoints use existing admin session and origin protection.
 const reviewId=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
