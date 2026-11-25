@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { siteCopyDefaults } from "@/lib/site-copy";
 import { siteCopyEn } from "@/lib/site-copy-en";
+import { isolatedDemoHtml, MAX_DEMO_HTML_BYTES, MAX_DEMO_PAGE_BYTES } from "@/lib/sector-catalog";
 import { createPagePreviewUrl } from "@/lib/page-preview";
 
 type PageRecord = { slug: string; locale: string; content: Record<string, unknown>; is_published: boolean; updated_at?: string };
@@ -35,7 +36,7 @@ async function adminApi(path: string, init?: RequestInit) {
 
 export default function ContentManager({ initialSlug = "home", onSaved, logoEditor, heroImageEditor }: { initialSlug?: string; onSaved?: () => Promise<unknown> | void; logoEditor?: React.ReactNode; heroImageEditor?: React.ReactNode }) {
   const [featuredOptions,setFeaturedOptions]=useState<Array<{slug:string;name:string}>>([]);
-  useEffect(()=>{void fetch("/api/site-content/catalog?locale=ar",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(data=>{const items=data?.page?.content?.items;if(Array.isArray(items))setFeaturedOptions(items.filter(x=>x&&typeof x.slug==="string"&&typeof x.name==="string"&&x.published!==false&&!x.archived));}).catch(()=>{});},[]);
+  useEffect(()=>{void fetch("/api/site-content/catalog?locale=ar&metadata=1",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(data=>{const items=data?.page?.content?.items;if(Array.isArray(items))setFeaturedOptions(items.filter(x=>x&&typeof x.slug==="string"&&typeof x.name==="string"&&x.published!==false&&!x.archived));}).catch(()=>{});},[]);
   const [pages, setPages] = useState<PageRecord[]>([]);
   const [activeSlug, setActiveSlug] = useState("home");
   const [activeLocale,setActiveLocale]=useState<"ar"|"en">("ar");
@@ -83,10 +84,48 @@ export default function ContentManager({ initialSlug = "home", onSaved, logoEdit
     finally { setBusy(false); event.target.value = ""; }
   };
 
+  const [featuredPreview,setFeaturedPreview]=useState("");
+  const [loadedFeatured,setLoadedFeatured]=useState<{slug:string;html:string}|null>(null);
+  const previewFeatured=async(slug:string,entry:Record<string,unknown>)=>{if(featuredPreview===slug){setFeaturedPreview("");return;}try{let html=asString(entry.html);if(!html&&entry.assetId){const data=await adminApi("demo-assets/"+entry.assetId);html=asString(data.html);}setLoadedFeatured({slug,html});setFeaturedPreview(slug);}catch(e){setError(e instanceof Error?e.message:"تعذر تحميل الملف");}};
+  const uploadFeaturedHtml=async(event:ChangeEvent<HTMLInputElement>,slug:string)=>{
+    const input=event.currentTarget,file=input.files?.[0];input.value="";
+    if(!file)return;
+    setError("");setNotice("");
+    if(!/\.html?$/i.test(file.name)||!file.size||file.size>MAX_DEMO_HTML_BYTES){setError("اختر ملف HTML مستقلًا حتى 10 ميجابايت.");return;}
+    setBusy(true);
+    try{const result=await adminApi("demo-assets",{method:"POST",body:file,headers:{"Content-Type":"application/octet-stream"}});
+      if(!/^[a-f0-9]{64}$/.test(result.assetId??""))throw Error("تعذر رفع الملف");
+      setLoadedFeatured(null);setFeaturedPreview("");
+      setDraft(current=>{if(!current)return current;const ids=Array.isArray(current.content.featuredSystemSlugs)?current.content.featuredSystemSlugs:featuredOptions.slice(0,4).map(x=>x.slug);const files=Object.fromEntries(Object.entries(asRecord(current.content.featuredSystemHtml)).filter(([key])=>ids.includes(key)));return {...current,content:{...current.content,featuredSystemHtml:{...files,[slug]:{assetId:result.assetId,available:true,name:file.name.slice(0,255)}}}};});
+      setNotice("تم تجهيز ملف الرئيسية فقط. اضغط حفظ ونشر بطاقات الرئيسية لتفعيله.");
+    }catch(e){setError(e instanceof Error?e.message:"تعذر قراءة الملف");}finally{setBusy(false);}
+  };
   const previewPage = () => { if(!draft)return;setPreviewUrl(createPagePreviewUrl({slug:draft.slug,locale:draft.locale==="en"?"en":"ar",content:draft.content}));setWorkspaceTab("preview"); };
+  const digestHtml=async(html:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(html)))).map(b=>b.toString(16).padStart(2,"0")).join("");
+  const featuredRefs=async(content:Record<string,unknown>)=>Object.fromEntries(await Promise.all(Object.entries(asRecord(content.featuredSystemHtml)).map(async ([key,value])=>{const e=asRecord(value);return [key,{name:e.name,assetId:typeof e.html==="string"?await digestHtml(e.html):e.assetId,available:true}]})));
   const canonicalContent = (value:unknown):string => JSON.stringify(value,(_key,item)=>item&&typeof item==="object"&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);
+  const publishFeatured=async()=>{
+    if(!draft||draft.slug!=="home"||draft.locale!=="ar")return;
+    const slugs=(Array.isArray(draft.content.featuredSystemSlugs)?draft.content.featuredSystemSlugs:featuredOptions.slice(0,4).map(x=>x.slug)) as string[];
+    const files=Object.fromEntries(Object.entries(asRecord(draft.content.featuredSystemHtml)).filter(([key])=>slugs.includes(key)));
+    setBusy(true);setError("");setNotice("");
+    try{
+      await adminApi("home-featured",{method:"PATCH",body:JSON.stringify({slugs,files})});
+      const response=await fetch("/api/site-content/home?locale=ar&metadata=1",{cache:"no-store"});
+      const data=response.ok?await response.json():null;
+      const content=data?.page?.content;
+      if(!content||canonicalContent(content.featuredSystemSlugs)!==canonicalContent(slugs)||canonicalContent(Object.keys(asRecord(content.featuredSystemHtml)).sort())!==canonicalContent(Object.keys(files).sort()))throw Error("لم تتطابق البطاقات مع النسخة العامة بعد النشر.");
+      const expected=await featuredRefs({featuredSystemHtml:files});
+      if(canonicalContent(content.featuredSystemHtml)!==canonicalContent(expected))throw Error("لم تتطابق معرفات الملفات المنشورة");
+      for(const [slug,entry] of Object.entries(files)){if(typeof asRecord(entry).html!=="string")continue;const check=await fetch("/api/site-content/home?demo="+encodeURIComponent(slug),{cache:"no-store"});const result=check.ok?await check.json():null;if(result?.html!==asRecord(entry).html)throw Error("لم يتطابق الملف المنشور: "+slug);}
+      setDraft(current=>current?{...current,content:{...current.content,featuredSystemSlugs:slugs,featuredSystemHtml:expected}}:current);
+      setArabicHomeReference(content);
+      setNotice("تم نشر بطاقات الرئيسية والتحقق من الملفات عبر الموقع العام باللغتين.");
+    }catch(e){setError(e instanceof Error?e.message:"تعذر نشر ملفات الرئيسية.");}finally{setBusy(false);}
+  };
   const savePage = async (publish=false) => {
     if (!draft)return;
+    if(draft.slug==="home"&&new Blob([JSON.stringify(draft.content)]).size>MAX_DEMO_PAGE_BYTES){setError("حجم محتوى الرئيسية تجاوز الحد المسموح؛ استخدم ملفات أصغر.");return;}
     setBusy(true);setError("");setNotice("");
     try {
       if(publish){
@@ -94,7 +133,7 @@ export default function ContentManager({ initialSlug = "home", onSaved, logoEdit
         // Re-read the persisted page instead of assuming the write reached the intended locale.
         const verified = await adminApi("pages");
         const published = (verified.pages ?? [] as PageRecord[]).find((item:PageRecord)=>item.slug===draft.slug&&item.locale===(draft.locale||"ar")) as PageRecord|undefined;
-        if(!published?.is_published||canonicalContent(published.content)!==canonicalContent(draft.content)){
+        if(!published?.is_published||canonicalContent(published.content)!==canonicalContent(draft.content.featuredSystemHtml?{...draft.content,featuredSystemHtml:await featuredRefs(draft.content)}:draft.content)){
           throw new Error("تم إرسال التعديل، لكن بيانات الصفحة المحفوظة لا تطابق التعديل. تحقق من قاعدة البيانات قبل إعادة النشر.");
         }
         setDraft(current=>current?{...current,is_published:true}:current);
@@ -191,7 +230,7 @@ export default function ContentManager({ initialSlug = "home", onSaved, logoEdit
 <section className="admin-content-card"><h2>٥ — شريط المزايا الأربع</h2>        <div className="cms-list-editor"><h3>شريط المزايا السريع</h3>{visibleHomeCollection("trustItems", [1,2,3,4].map((n) => ({ id: `trust-${n}`, title: siteCopyDefaults[`trust${n}`], description: "", imageUrl: "", href: "", linkLabel: "" }))).map((item, index, list) => <div className="cms-inline-card" key={item.id}><input aria-label="نص الميزة" value={item.title} onChange={(event) => updateHomeCollection("trustItems", list.map((row, rowIndex) => rowIndex === index ? { ...row, title: event.target.value } : row))} /><button type="button" className="inline-add" onClick={() => updateHomeCollection("trustItems", list.filter((_, rowIndex) => rowIndex !== index))}>حذف</button></div>)}<button type="button" className="inline-add" onClick={() => updateHomeCollection("trustItems", [...visibleHomeCollection("trustItems", [1,2,3,4].map((n) => ({ id: `trust-${n}`, title: siteCopyDefaults[`trust${n}`], description: "", imageUrl: "", href: "", linkLabel: "" }))), { id: newId(), title: "ميزة جديدة", description: "", imageUrl: "", href: "", linkLabel: "" }])}>+ إضافة ميزة</button></div></section>
       <section className="admin-content-card"><div className="admin-content-title"><div><h2>أقسام إضافية للرئيسية</h2><p>أضف أقسام نصية أو شبكات بطاقات قابلة للتنسيق، ورتبها أو أخفها دون حذف بياناتها.</p></div><button type="button" className="inline-add" onClick={addSection}>+ قسم جديد</button></div>{sections.length ? sections.map((section, index) => <SectionEditor key={section.id} section={section} index={index} count={sections.length} onChange={(patch) => updateSection(section.id, patch)} onMove={(direction) => moveSection(section.id, direction)} onDelete={() => updateContent("sections", sections.filter((item) => item.id !== section.id))} onAddCard={() => addBlockCard(section)} onCardChange={(id, patch) => updateBlockCard(section, id, patch)} onCardDelete={(id) => updateSection(section.id, { cards: section.cards.filter((card) => card.id !== id) })} onUpload={(event, callback) => void uploadImage(event, callback)} busy={busy} />) : <p className="field-hint">لم تتم إضافة أقسام إضافية بعد. الأقسام الحالية تظل كما هي.</p>}</section>
 <section className="admin-content-card"><h2>٦ — باقات مواقع ATSH AI</h2>{[["packagesKicker","العنوان الصغير"],["packagesTitle","عنوان الباقات"],["packagesDescription","وصف الباقات"],["featuredBadge","الأكثر اختياراً"],["packagePricePrefix","بادئة السعر"],["packagePriceFootnote","ملاحظة السعر"],["customQuoteLabel","عرض مخصص"],["customQuoteDescription","وصف العرض المخصص"]].map(([key,label])=><label key={key} className="admin-field">{label}<textarea rows={2} value={asString(draft.content[key],(activeLocale==="en"?siteCopyEn:siteCopyDefaults)[key]??"")} onChange={e=>updateContent(key,e.target.value)}/></label>)}<p>بطاقات الباقات وأسعارها ومزاياها تُعدّل من تبويب المنتجات.</p></section>
-      {activeLocale==="ar"&&<section className="admin-content-card"><h2>الأنظمة المميزة في الرئيسية</h2><p>اختر حتى أربعة أنظمة منشورة من المعرض، بالترتيب. الاختيارات مشتركة بين اللغتين. احفظ وانشر الصفحة لتفعيلها.</p>{Array.from({length:4},(_,i)=>{const ids=Array.isArray(draft.content.featuredSystemSlugs)?draft.content.featuredSystemSlugs as string[]:featuredOptions.slice(0,4).map(x=>x.slug);return <label key={i} className="admin-field">البطاقة {i+1}<select value={ids[i]||""} onChange={e=>{const next=Array.from({length:4},(_,j)=>ids[j]||"");next[i]=e.target.value;updateContent("featuredSystemSlugs",next);}}><option value="">إخفاء البطاقة</option>{featuredOptions.map(x=><option key={x.slug} value={x.slug} disabled={ids.some((id,j)=>j!==i&&id===x.slug)}>{x.name}</option>)}</select></label>;})}</section>}
+      {activeLocale==="ar"&&<section className="admin-content-card"><h2>الأنظمة المميزة في الرئيسية</h2><p>اختر حتى أربعة أنظمة، وارفع لكل نظام ملف HTML مستقلًا للرئيسية فقط. المعرض لا يتغير. الاختيارات مشتركة بين اللغتين.</p><button type="button" className="button" disabled={busy} onClick={()=>void publishFeatured()}>حفظ ونشر بطاقات الرئيسية</button>{Array.from({length:4},(_,i)=>{const ids=Array.isArray(draft.content.featuredSystemSlugs)?draft.content.featuredSystemSlugs as string[]:featuredOptions.slice(0,4).map(x=>x.slug);const slug=ids[i]||"";const files=asRecord(draft.content.featuredSystemHtml);const entry=asRecord(files[slug]);const html=asString(entry.html)||(loadedFeatured?.slug===slug?loadedFeatured.html:"");return <div key={i} style={{padding:12,borderBottom:"1px solid #ddd"}}><label className="admin-field">البطاقة {i+1}<select value={slug} onChange={e=>{const next=Array.from({length:4},(_,j)=>ids[j]||"");next[i]=e.target.value;updateContent("featuredSystemSlugs",next);}}><option value="">إخفاء البطاقة</option>{featuredOptions.map(x=><option key={x.slug} value={x.slug} disabled={ids.some((id,j)=>j!==i&&id===x.slug)}>{x.name}</option>)}</select></label>{slug&&<><label className="admin-field">ملف HTML الخاص بالرئيسية<input type="file" accept=".html,.htm,text/html" disabled={busy} onChange={e=>void uploadFeaturedHtml(e,slug)}/><small>{asString(entry.name)||"المعاينة المدمجة الافتراضية"}</small></label>{(html||entry.assetId)&&<div className="admin-actions"><button type="button" className="button button-outline" onClick={()=>void previewFeatured(slug,entry)}>معاينة الملف</button><button type="button" className="button" disabled={busy} onClick={()=>void publishFeatured()}>حفظ ونشر الملف والبطاقات</button><button type="button" className="button button-outline" onClick={()=>{const next={...files};delete next[slug];updateContent("featuredSystemHtml",next);setFeaturedPreview("");}}>إزالة الملف</button></div>}{html&&featuredPreview===slug&&<iframe title="معاينة ملف الرئيسية" srcDoc={isolatedDemoHtml(html)} sandbox="allow-scripts allow-modals" referrerPolicy="no-referrer" style={{width:"100%",height:420,border:0}}/>}</>}</div>;})}</section>}
 <section className="admin-content-card"><h2>٨ — الأسئلة الشائعة</h2>{[["faqKicker","العنوان الصغير"],["faqTitle","العنوان"],["faqDescription","الوصف"]].map(([key,label])=><label key={key} className="admin-field">{label}<textarea rows={2} value={asString(draft.content[key],(activeLocale==="en"?siteCopyEn:siteCopyDefaults)[key]??"")} onChange={e=>updateContent(key,e.target.value)}/></label>)}        <HomeCardCollection title="الأسئلة الشائعة" value={visibleHomeCollection("faqEntries", defaultFaq)} onChange={(value) => updateHomeCollection("faqEntries", value)} secondLabel="الإجابة" /></section>
 <section className="admin-content-card"><h2>٩ — البطاقة الختامية</h2>{[["finalKicker","العنوان الصغير"],["finalTitle","العنوان"],["finalDescription","الوصف"],["finalCta","نص الزر"]].map(([key,label])=><label key={key} className="admin-field">{label}<textarea rows={2} value={asString(draft.content[key],(activeLocale==="en"?siteCopyEn:siteCopyDefaults)[key]??"")} onChange={e=>updateContent(key,e.target.value)}/></label>)}</section>
 <details className="admin-content-card"><summary>محتويات أخرى وغير معروضة في الرئيسية الحالية</summary>        <HomeCardCollection title="بطاقات المزايا" value={visibleHomeCollection("benefitCards", defaultBenefits)} onChange={(value) => updateHomeCollection("benefitCards", value)} />        <HomeCardCollection title="بطاقات مراحل العمل" value={visibleHomeCollection("processCards", defaultSteps)} onChange={(value) => updateHomeCollection("processCards", value)} />      <section className="admin-content-card"><h2>الرسائل التسويقية للرئيسية والأنظمة المخصصة</h2><p>عند الحفظ والنشر، تُترجم هذه النصوص تلقائيًا إلى اللغة الأخرى.</p>{[["marketingCatalogTitle","عنوان تسويقي للأنظمة المخصصة"],["marketingCatalogBenefit1","ميزة الأنظمة 1"],["marketingCatalogBenefit2","ميزة الأنظمة 2"],["marketingCatalogBenefit3","ميزة الأنظمة 3"],["marketingCatalogBenefit4","ميزة الأنظمة 4"],["marketingCatalogBenefit5","ميزة الأنظمة 5"],["marketingCatalogBenefit6","ميزة الأنظمة 6"]].map(([key,label])=><label key={key} className="admin-field">{label}<textarea rows={2} value={asString(draft.content[key],(activeLocale==="en"?siteCopyEn:siteCopyDefaults)[key]??"")} onChange={e=>updateContent(key,e.target.value)}/></label>)}</section>{[["configuratorKicker","عنوان التخصيص الصغير"],["configuratorTitle","عنوان التخصيص"],["configuratorDescription","وصف التخصيص"]].map(([key,label])=><label key={key} className="admin-field">{label}<textarea rows={2} value={asString(draft.content[key],(activeLocale==="en"?siteCopyEn:siteCopyDefaults)[key]??"")} onChange={e=>updateContent(key,e.target.value)}/></label>)}</details>

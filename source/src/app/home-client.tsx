@@ -5,9 +5,10 @@ import { addonOptions, calculateQuote, formatEgp, identityOptions, packages, typ
 import { siteCopyDefaults } from "@/lib/site-copy";
 import { readPagePreview } from "@/lib/page-preview";
 import { siteCopyEn, englishPackages, englishOptions, englishPrice } from "@/lib/site-copy-en";
-import { findSector, interactiveDemoPaths, interactiveDemoSlug } from "@/lib/sector-catalog";
+import { findSector } from "@/lib/sector-catalog";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 import {normalizeCatalogSectors,resolvePlacement} from "@/lib/catalog-sectors";
+import SystemThumbnail from "@/components/system-thumbnail";
 import DomainLookup from "@/components/domain-lookup";
 import HomeCatalogShowcase, {type HomeCatalogItem} from "@/components/home-catalog-showcase";
 import { combinedQuoteSummary } from "@/lib/quote-breakdown";
@@ -28,15 +29,10 @@ const backendPackageIds: Record<string, string> = {
 const obsoleteIdentityOptionCodes = new Set(["logo_design", "visual_identity"]);
 const builtInOptionCodes = new Set(["language", "logo", "brand", "writing", "seo", "booking", "contact", "analytics", "hosting", "domain_com", "domain_eg", "maintenance"]);
 
-function FeaturedLiveDemo({item,base}:{item:HomeCatalogItem;base:string}){
- const host=useRef<HTMLDivElement>(null),frame=useRef<HTMLIFrameElement>(null);
- const [width,setWidth]=useState(0),[height,setHeight]=useState(800);
- const slug=interactiveDemoSlug(item.slug,item.demoSlug);
- const src=slug?interactiveDemoPaths[slug]:null;
- useEffect(()=>{const el=host.current;if(!el)return;const resize=()=>setWidth(el.clientWidth);resize();const observer=new ResizeObserver(resize);observer.observe(el);return()=>observer.disconnect();},[]);
- useEffect(()=>{const el=frame.current;if(!el||!src)return;const receive=(event:MessageEvent)=>{if(event.source!==el.contentWindow||event.origin!=="null"||event.data?.type!=="atsh-featured-demo-height")return;const n=Number(event.data.height);if(Number.isFinite(n)&&n>0)setHeight(Math.min(20000,Math.max(650,n)));};window.addEventListener("message",receive);return()=>window.removeEventListener("message",receive);},[src]);
- const scale=width/1200;
- return <div ref={host} style={{width:"100%",position:"relative",overflow:"hidden",borderRadius:10,background:"#f4f7fa",height:src?height*scale:undefined}}>{src?<iframe ref={frame} title={item.name} src={src+"?featured=1"} loading="lazy" sandbox="allow-scripts allow-forms allow-modals" scrolling="no" style={{position:"absolute",top:0,left:0,width:1200,height,transform:"scale("+scale+")",transformOrigin:"top left",border:0,display:"block"}}/>:<a className="button button-outline" href={base+"/catalog/"+encodeURIComponent(item.slug)+"?fullscreen=1"}>{item.name} ↗</a>}</div>;
+function FeaturedLiveDemo({item,base,assetId}:{item:HomeCatalogItem;base:string;assetId?:string}){
+ return <a href={base+"/catalog/"+encodeURIComponent(item.slug)+"?fullscreen=1&featuredHome=1"} style={{display:"block",overflow:"hidden",borderRadius:10}}>
+ <SystemThumbnail slug={item.slug} name={item.name} assetId={assetId||item.previewAssetId} imageUrl={item.imageUrl}/>
+ </a>;
 }
 export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly=false}:{locale?:"ar"|"en";configuratorOnly?:boolean;pricingOnly?:boolean}) {
   const isEnglish=locale==="en";
@@ -81,7 +77,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   // Arabic published content is the visibility reference for the English homepage.
   const [arabicReference, setArabicReference] = useState<Record<string, unknown> | null>(null);
   const [featuredSystems,setFeaturedSystems]=useState<HomeCatalogItem[]>([]);
-  useEffect(()=>{let live=true;void Promise.all([fetch("/api/site-content/catalog?locale=ar",{cache:"no-store"}).then(r=>r.ok?r.json():null),isEnglish?fetch("/api/site-content/catalog?locale=en",{cache:"no-store"}).then(r=>r.ok?r.json():null).catch(()=>null):Promise.resolve(null)]).then(([ar,en])=>{if(!live)return;const content=ar?.page?.content;const sectors=normalizeCatalogSectors(content?.sectors);const translated=new Map<string,HomeCatalogItem>((en?.page?.content?.items??[]).map((x:HomeCatalogItem)=>[x.slug,x]));setFeaturedSystems((Array.isArray(content?.items)?content.items:[]).filter((x:HomeCatalogItem)=>{if(!x||!x.slug||x.published===false||x.archived)return false;const p=resolvePlacement(x,sectors);return p.sector?.isPublished&&p.subcategory?.isPublished!==false;}).map((x:HomeCatalogItem)=>({...x,name:translated.get(x.slug)?.name||x.name,description:translated.get(x.slug)?.description||x.description})));}).catch(()=>{});return()=>{live=false;};},[isEnglish]);
+  useEffect(()=>{let live=true;void Promise.all([fetch("/api/site-content/catalog?locale=ar&metadata=1",{cache:"no-store"}).then(r=>r.ok?r.json():null),isEnglish?fetch("/api/site-content/catalog?locale=en&metadata=1",{cache:"no-store"}).then(r=>r.ok?r.json():null).catch(()=>null):Promise.resolve(null)]).then(([ar,en])=>{if(!live)return;const content=ar?.page?.content;const sectors=normalizeCatalogSectors(content?.sectors);const translated=new Map<string,HomeCatalogItem>((en?.page?.content?.items??[]).map((x:HomeCatalogItem)=>[x.slug,x]));setFeaturedSystems((Array.isArray(content?.items)?content.items:[]).filter((x:HomeCatalogItem)=>{if(!x||!x.slug||x.published===false||x.archived)return false;const p=resolvePlacement(x,sectors);return p.sector?.isPublished&&p.subcategory?.isPublished!==false;}).map((x:HomeCatalogItem)=>({...x,name:translated.get(x.slug)?.name||x.name,description:translated.get(x.slug)?.description||x.description})));}).catch(()=>{});return()=>{live=false;};},[isEnglish]);
   const [pageLinks, setPageLinks] = useState<PageLink[]>([]);
   const [selectedSector, setSelectedSector] = useState<{ slug: string; name: string } | null>(null);
   const [sectorPricedAddons,setSectorPricedAddons]=useState<Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>>([]);
@@ -112,8 +108,8 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
       setApiCatalog(visible);
       setCatalogStatus(visible.packages.length ? "ready" : "unavailable");
     }).catch(() => { if (active) setCatalogStatus("unavailable"); });
-    if (isEnglish) fetch("/api/site-content/home?locale=ar", { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as SiteConfig : null).then((config)=>{if(active && config?.page?.content)setArabicReference(config.page.content);}).catch(()=>undefined);
-    fetch(`/api/site-content/home?locale=${locale}`, { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as SiteConfig : null)
+    if (isEnglish) fetch("/api/site-content/home?locale=ar&metadata=1", { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as SiteConfig : null).then((config)=>{if(active && config?.page?.content)setArabicReference(config.page.content);}).catch(()=>undefined);
+    fetch(`/api/site-content/home?locale=${locale}&metadata=1`, { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as SiteConfig : null)
       .then((config) => { if (!active)return; const preview=readPagePreview("home",locale);if(preview)setSiteConfig({...config,page:{content:preview.content}});else if(config)setSiteConfig(config); }).catch(() => { const preview=readPagePreview("home",locale);if(active&&preview)setSiteConfig({page:{content:preview.content}}); });
     fetch(`/api/site-pages?locale=${locale}`, { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { pages?: PageLink[] } : null)
       .then((result) => { if (active) setPageLinks((result?.pages ?? []).filter((item) => item.slug !== "home")); }).catch(() => undefined);
@@ -125,7 +121,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     if (!slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return;
     const builtin = findSector(slug);
     if (builtin) setSelectedSector({ slug, name: builtin.name });
-    fetch("/api/site-content/catalog", { cache: "no-store" })
+    fetch("/api/site-content/catalog?metadata=1", { cache: "no-store" })
       .then(async response => response.ok ? await response.json() : null)
       .then(data => {
         const items = data?.page?.content?.items;
@@ -167,7 +163,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   useEffect(() => {
     if (!selectedSector){setSectorPrice(null);setSectorPricedAddons([]);return;}
     // Restore options when the visitor enters from a saved workspace, not just a URL.
-    fetch("/api/site-content/catalog",{cache:"no-store"})
+    fetch("/api/site-content/catalog?metadata=1",{cache:"no-store"})
       .then(async r=>r.ok?r.json():null).then(data=>{
         const entry=(data?.page?.content?.items??[]).find((item:{slug?:string;published?:boolean;archived?:boolean})=>item.slug===selectedSector.slug&&item.published!==false&&!item.archived);
         setSectorPricedAddons(Array.isArray(entry?.pricedAddons)?entry.pricedAddons:[]);
@@ -662,7 +658,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         </div>
       </section>}
 
-      {!configuratorOnly&&!pricingOnly&&(()=>{const config=isEnglish?arabicReference:contentData;const ids=Array.isArray(config?.featuredSystemSlugs)?config.featuredSystemSlugs as string[]:null;const chosen=ids?ids.map(id=>featuredSystems.find(x=>x.slug===id)).filter((x):x is HomeCatalogItem=>!!x):featuredSystems.slice(0,4);const items=chosen.slice(0,4);const base=isEnglish?"/en":"";return <section className="packages-section" id="featured-systems"><div className="section-heading"><div><h2>{t("أنظمة جاهزة للمعاينة","Explore interactive systems")}</h2></div><a className="button button-outline" href={base+"/catalog"}>{t("عرض جميع الأنظمة","View all systems")} ←</a></div><div className="package-grid">{items.map(item=><article className="package-card" key={item.slug}><FeaturedLiveDemo item={item} base={base}/><h3>{item.name}</h3><p>{item.description}</p><div style={{marginTop:"auto",paddingTop:12,borderTop:"1px solid #dce4ef",display:"grid",gap:5}}><strong style={{color:"#203958",fontSize:18}}>{typeof item.basePrice==="number"&&Number.isFinite(item.basePrice)&&item.basePrice>=0?t("السعر الأساسي: ","Base price: ")+item.basePrice.toLocaleString(isEnglish?"en-EG":"ar-EG")+t(" ج.م"," EGP"):t("السعر حسب العرض","Price on request")}</strong><small>{t("قبل الضرائب والإضافات","Before taxes and add-ons")}</small></div><a className="button button-outline" href={base+"/catalog/"+encodeURIComponent(item.slug)+"?fullscreen=1"}>{t("معاينة تفاعلية","Interactive demo")} ←</a><a className="button button-primary package-cta" onClick={()=>{const prior=loadGuestWorkspace();saveGuestWorkspace({sectorSlug:item.slug,sectorName:item.name,sectorAddonCodes:prior.sectorSlug===item.slug?prior.sectorAddonCodes??[]:[],source:"catalog"});}} href={base+"/catalog/"+encodeURIComponent(item.slug)+"/pricing"}>{t("خصص نظامك واحسب السعر","Customize & calculate price")} ←</a></article>)}</div></section>;})()}
+      {!configuratorOnly&&!pricingOnly&&(()=>{const config=isEnglish?arabicReference:contentData;const ids=Array.isArray(config?.featuredSystemSlugs)?config.featuredSystemSlugs as string[]:null;const chosen=ids?ids.map(id=>featuredSystems.find(x=>x.slug===id)).filter((x):x is HomeCatalogItem=>!!x):featuredSystems.slice(0,4);const items=chosen.slice(0,4);const files=config?.featuredSystemHtml as Record<string,{assetId?:string;available?:boolean}>|undefined;const base=isEnglish?"/en":"";return <section className="packages-section" id="featured-systems"><div className="section-heading"><div><h2>{t("أنظمة جاهزة للمعاينة","Explore interactive systems")}</h2></div><a className="button button-outline" href={base+"/catalog"}>{t("عرض جميع الأنظمة","View all systems")} ←</a></div><div className="package-grid">{items.map(item=><article className="package-card" key={item.slug}><FeaturedLiveDemo item={item} base={base} assetId={files?.[item.slug]?.assetId}/><h3>{item.name}</h3><p>{item.description}</p><div style={{marginTop:"auto",paddingTop:12,borderTop:"1px solid #dce4ef",display:"grid",gap:5}}><strong style={{color:"#203958",fontSize:18}}>{typeof item.basePrice==="number"&&Number.isFinite(item.basePrice)&&item.basePrice>=0?t("السعر الأساسي: ","Base price: ")+item.basePrice.toLocaleString(isEnglish?"en-EG":"ar-EG")+t(" ج.م"," EGP"):t("السعر حسب العرض","Price on request")}</strong><small>{t("قبل الضرائب والإضافات","Before taxes and add-ons")}</small></div><a className="button button-outline" href={base+"/catalog/"+encodeURIComponent(item.slug)+"?fullscreen=1&featuredHome=1"}>{t("معاينة تفاعلية","Interactive demo")} ←</a><a className="button button-primary package-cta" onClick={()=>{const prior=loadGuestWorkspace();saveGuestWorkspace({sectorSlug:item.slug,sectorName:item.name,sectorAddonCodes:prior.sectorSlug===item.slug?prior.sectorAddonCodes??[]:[],source:"catalog"});}} href={base+"/catalog/"+encodeURIComponent(item.slug)+"/pricing"}>{t("خصص نظامك واحسب السعر","Customize & calculate price")} ←</a></article>)}</div></section>;})()}
       {!configuratorOnly&&<><section className="faq-section" id="faq"><div className="section-heading"><div><span className="section-kicker">{copy("faqKicker")}</span><h2>{copy("faqTitle")}</h2></div><p>{copy("faqDescription")}</p></div><div className="faq-list">{faqItems.map((item, index) => <article key={item.id ?? index} className={openFaq === index ? "faq-item open" : "faq-item"}><button type="button" onClick={() => setOpenFaq(openFaq === index ? null : index)} aria-expanded={openFaq === index}><span className="faq-num">0{index + 1}</span><strong>{item.title}</strong><span className="faq-toggle">{openFaq === index ? "−" : "+"}</span></button>{openFaq === index && <p>{item.description}</p>}</article>)}</div></section>
 
       <section className="final-cta"><div><span className="section-kicker">{copy("finalKicker")}</span><h2>{copy("finalTitle")}</h2><p>{copy("finalDescription")}</p></div><button className="button" onClick={() => begin()}>{copy("finalCta")} <span>←</span></button></section>

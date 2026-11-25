@@ -1,3 +1,5 @@
+import {publishedThumbnail,startThumbnailWorker} from "./demo-thumbnail.js";
+import {extractDemoAssets,migrateDemoAssets,readDemoAsset,expandDemoAssets,storeDemoAsset} from "./site-demo-assets.js";
 import { effectivePermissions, hasPermission } from "./team-permissions.js";
 import {validCalendarDate} from './invoice-ledger-rules.js';
 import { deliveryAdminRouter, deliveryCustomerRouter } from "./delivery-control.js";
@@ -85,6 +87,9 @@ await pool.query(await readFile(new URL("../db/commercial_refunds.sql", import.m
 await pool.query(await readFile(new URL("../db/commercial_xpay_test.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/unified_pricing_stage53.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/order_submission_idempotency_stage54.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/site_demo_assets.sql",import.meta.url),"utf8"));
+await migrateDemoAssets(pool);
+startThumbnailWorker(pool);
 await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim().replace(/\/$/, "")).filter(Boolean);
 // The public website is also an explicitly configured, trusted origin.
@@ -130,7 +135,9 @@ app.use("/api/customer/auth/project-drafts",express.raw({type:["image/png","imag
 app.use("/api/internal/verified-payments",express.raw({type:"application/json",limit:"16kb"}));
 app.use("/api/webhooks/xpay-test",express.raw({type:"application/json",limit:"256kb"}));
 // Allow a wider structured sector catalog while keeping other JSON endpoints tightly bounded.
-app.use("/api/admin/pages/catalog",express.json({limit:"1mb"}));
+app.use("/api/admin/pages/catalog",express.json({limit:"68mb"}));
+app.use(["/api/admin/pages/home","/api/admin/page-drafts/home","/api/admin/home-featured"],express.json({limit:"68mb"}));
+const validFeaturedHtml=content=>{const files=content?.featuredSystemHtml;if(files===undefined)return true;if(!files||typeof files!=="object"||Array.isArray(files)||Object.keys(files).length>4)return false;return Object.entries(files).every(([slug,entry])=>/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)&&entry&&((typeof entry.html==="string"&&Buffer.byteLength(entry.html,"utf8")<=10*1024*1024)||(typeof entry.assetId==="string"&&/^[a-f0-9]{64}$/.test(entry.assetId)))&&typeof entry.name==="string"&&entry.name.length<=255);};
 app.use("/api/admin/commercial/contracts/pdf",express.raw({type:"application/pdf",limit:"5mb"}));
 app.use("/api/admin/commercial/revision-pdf",express.raw({type:"application/pdf",limit:"5mb"}));
 app.use(express.json({ limit: "32kb" }));
@@ -579,18 +586,47 @@ app.post("/api/admin/templates",requireAdmin,requirePermission("content"),route(
  res.status(201).json({template:result.rows[0]});
 }));
 
+// Return one uploaded demo only, never an entire page of executable files.
+app.get("/api/site-content/demo-thumbnail/:id",route(async(req,res)=>{
+ const bytes=await publishedThumbnail(pool,req.params.id);
+ if(!bytes)return res.set("Cache-Control","no-store").status(404).end();
+ res.set("Cache-Control","public, max-age=300").type("image/jpeg").send(bytes);
+}));
+app.get("/api/site-content/:slug/demo/:system",route(async(req,res)=>{
+ const {slug,system}=req.params;
+ if(!["home","catalog"].includes(slug)||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(system))return res.status(400).json({error:"Invalid demo"});
+ const found=await pool.query(`SELECT CASE WHEN $1='home' THEN
+ CASE WHEN NOT (content ? 'featuredSystemSlugs') OR content->'featuredSystemSlugs' ? $2 THEN content->'featuredSystemHtml'->$2->>'assetId' END
+ ELSE (SELECT item->>'previewAssetId' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(content->'items')='array' THEN content->'items' ELSE '[]'::jsonb END) item WHERE item->>'slug'=$2 AND COALESCE(item->>'published','true')!='false' AND COALESCE(item->>'archived','false')!='true' LIMIT 1) END AS html
+ FROM site_pages WHERE slug=$1 AND locale='ar' AND is_published=true`,[slug,system]);
+ const html=await readDemoAsset(pool,found.rows[0]?.html);
+ if(typeof html!=="string"||!html)return res.status(404).json({error:"Demo not found"});
+ // JSON transport prevents uploaded HTML from being served as a same-origin page.
+ res.set("Cache-Control","no-store").json({html});
+}));
 app.get("/api/site-content/:slug", route(async(req,res)=>{
   if(!/^[a-z0-9-]{1,100}$/.test(req.params.slug))return res.status(400).json({error:"Invalid page"});
   const locale=typeof req.query.locale==="string"&&/^[a-z]{2}(-[A-Z]{2})?$/.test(req.query.locale)?req.query.locale:"ar";
+  const metadata=req.query.metadata==="1";
+  // Strip file bodies inside PostgreSQL before serialization or network transfer.
+  const contentSql="content";
   const [page,settings]=await Promise.all([
-    pool.query("SELECT slug,locale,content,updated_at FROM site_pages WHERE slug=$1 AND locale=$2 AND is_published=true",[req.params.slug,locale]),
+    pool.query("SELECT slug,locale,"+contentSql+" AS content,updated_at FROM site_pages WHERE slug=$1 AND locale=$2 AND is_published=true",[req.params.slug,locale]),
     pool.query("SELECT theme,vat_rate FROM site_settings WHERE id=1")
   ]);
-  res.json({page:page.rows[0]||null,theme:settings.rows[0]?.theme||null,vatRate:Number(settings.rows[0]?.vat_rate??14)});
+  const publishedPage=page.rows[0]||null;
+  if(publishedPage&&!metadata)publishedPage.content=await expandDemoAssets(pool,req.params.slug,publishedPage.content);
+  if(req.params.slug==="catalog"&&Array.isArray(publishedPage?.content?.items)){
+    publishedPage.content={...publishedPage.content,items:publishedPage.content.items.map(item=>{
+      if(!item||typeof item!=="object"||item.published!==false&&!item.archived)return item;
+      const {previewHtml,previewHtmlName,hasPreviewHtml,previewAssetId,...rest}=item;return rest;
+    })};
+  }
+  res.set("Cache-Control","no-store").json({page:publishedPage,theme:settings.rows[0]?.theme||null,vatRate:Number(settings.rows[0]?.vat_rate??14)});
 }));
 app.get("/api/site-pages",route(async(req,res)=>{
   const locale=req.query.locale==="en"?"en":"ar";
-  const result=await pool.query("SELECT slug,content,updated_at FROM site_pages WHERE locale=$1 AND is_published=true ORDER BY slug",[locale]);
+  const result=await pool.query("SELECT slug,jsonb_build_object('title',content->'title') AS content,updated_at FROM site_pages WHERE locale=$1 AND is_published=true ORDER BY slug",[locale]);
   res.json({pages:result.rows.map(page=>({slug:page.slug,title:typeof page.content?.title==='string'?page.content.title:page.slug,updatedAt:page.updated_at}))});
 }));
 await pool.query("CREATE TABLE IF NOT EXISTS site_videos (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), data bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now())");
@@ -1166,8 +1202,22 @@ app.put("/api/admin/page-drafts/:slug",requireAdmin,requirePermission("content")
  if(!/^[a-z0-9-]{1,100}$/.test(req.params.slug))return res.status(400).json({error:"Invalid page"});
  const parsed=z.object({locale:z.enum(["ar","en"]),content:z.record(z.string(),z.unknown())}).strict().safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid draft"});
- const saved=await pool.query("INSERT INTO site_page_drafts(slug,locale,content,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING slug,locale,updated_at",[req.params.slug,parsed.data.locale,JSON.stringify(parsed.data.content),req.admin.email]);
+ if(req.params.slug==="home"&&!validFeaturedHtml(parsed.data.content))return res.status(400).json({error:"Invalid featured HTML files"});
+ const stored=await extractDemoAssets(pool,req.params.slug,parsed.data.content);
+ const saved=await pool.query("INSERT INTO site_page_drafts(slug,locale,content,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING slug,locale,updated_at",[req.params.slug,parsed.data.locale,JSON.stringify(stored),req.admin.email]);
  res.json({draft:saved.rows[0]});
+}));
+app.post("/api/admin/demo-assets",requireAdmin,requirePermission("content"),express.raw({type:"application/octet-stream",limit:"10mb"}),route(async(req,res)=>{
+ if(!Buffer.isBuffer(req.body)||!req.body.length||req.body.length>10*1024*1024)return res.status(400).json({error:"Invalid HTML file"});
+ const html=req.body.toString("utf8");
+ if(!html.trim()||!Buffer.from(html,"utf8").equals(req.body)||html.includes(String.fromCharCode(0)))return res.status(400).json({error:"Choose a non-empty UTF-8 HTML file"});
+ const assetId=await storeDemoAsset(pool,html);
+ res.status(201).json({assetId,byteSize:req.body.length});
+}));
+app.get("/api/admin/demo-assets/:id",requireAdmin,requirePermission("content"),route(async(req,res)=>{
+ const html=await readDemoAsset(pool,req.params.id);
+ if(html===null)return res.status(404).json({error:"Demo not found"});
+ res.set("Cache-Control","no-store").json({html});
 }));
 app.get("/api/admin/pages",requireAdmin,requirePermission("content"),route(async(_req,res)=>{
   const result=await pool.query("SELECT id,slug,locale,content,is_published,updated_by,updated_at FROM site_pages ORDER BY slug,locale");
@@ -1189,10 +1239,41 @@ app.post("/api/admin/media",requireAdmin,requirePermission("content"),express.ra
     await client.query("COMMIT");res.status(201).json({media:{...saved.rows[0],url:`/api/site-media/${saved.rows[0].id}`}});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
+// Publish the homepage's shared featured-system settings independently of marketing translation.
+app.patch("/api/admin/home-featured",requireAdmin,requirePermission("content"),route(async(req,res)=>{
+ const parsed=z.object({slugs:z.array(z.string().regex(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*)?$/)).max(4),files:z.record(z.string(),z.object({html:z.string().optional(),assetId:z.string().regex(/^[a-f0-9]{64}$/).optional(),available:z.boolean().optional(),name:z.string().max(255)}).strict())}).strict().safeParse(req.body);
+ if(!parsed.success||!validFeaturedHtml({featuredSystemHtml:parsed.data.files}))return res.status(400).json({error:"Invalid featured systems or HTML files"});
+ const slugs=parsed.data.slugs,selected=slugs.filter(Boolean);
+ if(new Set(selected).size!==selected.length||Object.keys(parsed.data.files).some(key=>!selected.includes(key)))return res.status(400).json({error:"Invalid featured system selection"});
+ let patch={featuredSystemSlugs:slugs,featuredSystemHtml:parsed.data.files};
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  await client.query("SELECT pg_advisory_xact_lock(hashtext('home-marketing-sync'))");
+  const catalog=await client.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true FOR SHARE");
+  const items=catalog.rows[0]?.content?.items;
+  if(selected.some(slug=>!Array.isArray(items)||!items.some(item=>item?.slug===slug&&item.published!==false&&!item.archived))){await client.query("ROLLBACK");return res.status(400).json({error:"Selected system is not published in the catalog"});}
+  const before=await client.query("SELECT * FROM site_pages WHERE slug='home' AND locale='ar' FOR UPDATE");
+  if(!before.rows[0]?.is_published){await client.query("ROLLBACK");return res.status(409).json({error:"Publish the homepage first"});}
+  patch=await extractDemoAssets(client,"home",patch);
+  const updated=await client.query("UPDATE site_pages SET content=content || $1::jsonb,updated_at=now(),updated_by=$2 WHERE slug='home' AND locale='ar' RETURNING *",[JSON.stringify(patch),req.admin.email]);
+  // Preserve other unpublished edits, but keep their featured fields in sync.
+  await client.query("UPDATE site_page_drafts SET content=content || $1::jsonb,updated_at=now() WHERE slug='home' AND locale='ar'",[JSON.stringify(patch)]);
+  await auditChange(client,req.admin.email,"page.updated","site_page",updated.rows[0].id,{featuredSystemSlugs:before.rows[0].content?.featuredSystemSlugs},{featuredSystemSlugs:slugs,featuredFiles:Object.keys(patch.featuredSystemHtml)});
+  await client.query("COMMIT");
+  res.json({published:true,slugs,files:Object.keys(parsed.data.files)});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
 app.patch("/api/admin/pages/:slug",requireAdmin,requirePermission("content"),route(async(req,res)=>{
   if(!/^[a-z0-9-]{1,100}$/.test(req.params.slug))return res.status(400).json({error:"Invalid page"});
   const parsed=z.object({locale:z.string().regex(/^[a-z]{2}(-[A-Z]{2})?$/).default("ar"),content:z.record(z.string(),z.unknown()),isPublished:z.boolean().default(true),syncMarketing:z.boolean().optional(),expectedUpdatedAt:z.string().datetime({offset:true}).nullable().optional()}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"Invalid page content",details:parsed.error.issues});
+  if(req.params.slug==="catalog"&&Array.isArray(parsed.data.content.items)){
+    for(const item of parsed.data.content.items){
+      if(item?.previewHtml!==undefined&&(typeof item.previewHtml!=="string"||Buffer.byteLength(item.previewHtml,"utf8")>10*1024*1024))return res.status(400).json({error:"Invalid HTML preview or file exceeds 10 MiB"});
+    }
+  }
+  if(req.params.slug==="home"&&!validFeaturedHtml(parsed.data.content))return res.status(400).json({error:"Invalid featured HTML files"});
   const marketingKeys=["marketingHeroTitle","marketingHeroSubtitle","marketingCatalogTitle",...Array.from({length:6},(_,i)=>"marketingCatalogBenefit"+(i+1))];
   const target=parsed.data.locale==="ar"?"en":"ar";
   let translated=null;
@@ -1216,7 +1297,8 @@ app.patch("/api/admin/pages/:slug",requireAdmin,requirePermission("content"),rou
       const actual=before.rows[0]?.updated_at?new Date(before.rows[0].updated_at).toISOString():null;
       if(actual!==parsed.data.expectedUpdatedAt){await client.query("ROLLBACK");return res.status(409).json({error:"تم تعديل هذه الصفحة بواسطة مستخدم آخر. أعد تحميل البيانات قبل الحفظ.",currentUpdatedAt:actual});}
     }
-    const saved=await client.query("INSERT INTO site_pages(slug,locale,content,is_published,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,is_published=EXCLUDED.is_published,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING *",[req.params.slug,parsed.data.locale,JSON.stringify(parsed.data.content),parsed.data.isPublished,req.admin.email]);
+    const stored=await extractDemoAssets(client,req.params.slug,parsed.data.content);
+    const saved=await client.query("INSERT INTO site_pages(slug,locale,content,is_published,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,is_published=EXCLUDED.is_published,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING *",[req.params.slug,parsed.data.locale,JSON.stringify(stored),parsed.data.isPublished,req.admin.email]);
     if(req.params.slug==="video-campaigns"&&parsed.data.locale==="ar"){
       const urls=content=>Array.isArray(content?.campaigns)?content.campaigns.map(c=>c?.url).filter(u=>typeof u==="string"&&/^\/api\/site-video\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(u)):[];
       const retained=new Set(urls(parsed.data.content));

@@ -6,15 +6,19 @@ import Link from "next/link";
 import {sectorTemplates,type SectorTemplate} from "@/lib/sector-catalog";
 import {normalizeCatalogSectors,resolvePlacement,type CatalogSector} from "@/lib/catalog-sectors";
 import {loadGuestWorkspace,saveGuestWorkspace} from "@/lib/customer-workspace";
-import CatalogCardPreview from "@/components/catalog-card-preview";
+import SystemThumbnail from "@/components/system-thumbnail";
 import {englishCatalogSectors,englishTemplateLabel,englishTemplateFeatures} from "@/lib/sector-en";
-import {isInteractiveSector} from "@/components/sector-interactive-demo";
-type Item=SectorTemplate&{published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;previewUrl?:string;sectorId?:string;subcategoryId?:string;basePrice?:number|null};
+type Item=SectorTemplate&{published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;previewUrl?:string;previewHtml?:string;hasPreviewHtml?:boolean;previewAssetId?:string;sectorId?:string;subcategoryId?:string;basePrice?:number|null};
+function GalleryDemo({item,base,title}:{item:Item;base:string;title:string}){
+ return <Link prefetch={false} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} aria-label={title} style={{display:"block",overflow:"hidden",borderRadius:12}}>
+ <SystemThumbnail slug={item.slug} name={item.name} assetId={item.previewAssetId} imageUrl={item.imageUrl}/>
+ </Link>;
+}
 const defaults:Item[]=sectorTemplates.map((s,i)=>({...s,published:true,sortOrder:i*10}));
 export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
  const [items,setItems]=useState<Item[]>(defaults);
  const [marketing,setMarketing]=useState<Record<string,unknown>>({});
- useEffect(()=>{let active=true;fetch("/api/site-content/home?locale="+locale,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(d=>{if(active)setMarketing(d?.page?.content??{})}).catch(()=>{});return()=>{active=false}},[locale]);
+ useEffect(()=>{let active=true;fetch("/api/site-content/home?metadata=1&locale="+locale,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(d=>{if(active)setMarketing(d?.page?.content??{})}).catch(()=>{});return()=>{active=false}},[locale]);
  const marketingCopy=(key:string)=>typeof marketing[key]==="string"?String(marketing[key]):(en?siteCopyEn:siteCopyDefaults)[key]??"";
  const [sectors,setSectors]=useState<CatalogSector[]>(locale==="en"?englishCatalogSectors(normalizeCatalogSectors(undefined)):normalizeCatalogSectors(undefined));
  const [query,setQuery]=useState("");
@@ -23,8 +27,8 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
  const [notice,setNotice]=useState("");
  useEffect(()=>{
   let active=true;
-  fetch("/api/site-content/catalog",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();const arabic=await r.json();if(!en)return {data:arabic,english:null};const english=await fetch("/api/site-content/catalog?locale=en",{cache:"no-store"}).then(async x=>x.ok?x.json():null).catch(()=>null);return {data:arabic,english};}).then(({data,english})=>{
-   if(!active||!data?.page||!Array.isArray(data.page.content?.items))return;
+  Promise.all([fetch("/api/site-content/catalog?metadata=1",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();return r.json()}),en?fetch("/api/site-content/catalog?locale=en&metadata=1",{cache:"no-store"}).then(async x=>x.ok?x.json():null).catch(()=>null):Promise.resolve(null)]).then(([data,english])=>({data,english})).then(({data,english})=>{
+   if(!active)return;if(!data?.page||!Array.isArray(data.page.content?.items)){setItems([]);return;}
    const englishBySlug=new Map<string,Partial<Item>>((Array.isArray(english?.page?.content?.items)?english.page.content.items:[]).filter((x:Item)=>x&&typeof x.slug==="string").map((x:Item)=>[x.slug,x]));
    setItems(data.page.content.items.filter((x:Item)=>x&&typeof x.slug==="string"&&typeof x.name==="string"&&x.published!==false&&!x.archived).map((x:Item)=>en?{...x,name:englishBySlug.get(x.slug)?.name||englishTemplateLabel(x.slug,x.slug),description:englishBySlug.get(x.slug)?.description||englishTemplateLabel(x.slug,"A configurable business system. Request a detailed scope review.","description"),features:englishBySlug.get(x.slug)?.features||englishTemplateFeatures(x.slug,[])}:x));
    setSectors(en?(english?.page?.content?.sectors?normalizeCatalogSectors(english.page.content.sectors):englishCatalogSectors(normalizeCatalogSectors(data.page.content.sectors))):normalizeCatalogSectors(data.page.content.sectors));
@@ -51,10 +55,9 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
    <Link href={en?"/en":"/"} style={{fontWeight:800,color:"#203958"}}>ATSH AI</Link><Link href={`${base}/start`} style={{color:"#203958",fontWeight:700}}>{t("ابدأ مشروعك","Start a project")}</Link>
    <Link href={`${base}/#configurator`} style={{border:"1px solid #ccd1d6",padding:"10px 15px",borderRadius:10}}>{t("الباقات ومحرك التسعير","Packages & pricing")}</Link>
   </header>
-  <section style={{padding:"24px 0 16px"}}>
-   <p style={{color:"#4c78ae",fontWeight:700}}>{t("معرض أنظمة ATSH AI","ATSH AI Systems Gallery")}</p>
-   <h1 style={{fontSize:"clamp(29px,4vw,49px)",color:"#203958",margin:"8px 0"}}>{marketingCopy("marketingCatalogTitle")}</h1>
-   <p style={{lineHeight:1.9,maxWidth:730,color:"#64748b"}}>{t("قطاعات رئيسية، وتخصصات فرعية، ونماذج تفاعلية. اختر النظام المناسب، ثم أضف مواصفاتك واحسب السعر.","Browse sectors, explore interactive demos and customize a solution before requesting a quote.")}</p>
+  <section style={{padding:"12px 0 8px"}}>
+   <h1 style={{color:"#4c78ae",fontWeight:700,fontSize:20,margin:"0"}}>{t("معرض أنظمة ATSH AI","ATSH AI Systems Gallery")}</h1>
+   <p style={{lineHeight:1.9,maxWidth:730,color:"#64748b"}}>{t("اختر النظام المناسب، ثم أضف مواصفاتك واحسب السعر.","Choose a solution, customize your requirements and calculate the price.")}</p>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,145px),1fr))",gap:8,margin:"14px 0"}}>{Array.from({length:6},(_,i)=>marketingCopy("marketingCatalogBenefit"+(i+1))).filter(Boolean).map(label=><span key={label} style={{fontSize:13,fontWeight:600,color:"#203958"}}>✓ {label}</span>)}</div>
    {notice&&<small role="status" style={{color:"#99660b"}}>{notice}</small>}
   </section>
@@ -79,11 +82,9 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
    </div>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,245px),1fr))",gap:15}}>
     {records.map(item=>{const place=resolvePlacement(item,sectors);return <article key={item.slug} style={{background:"white",padding:12,borderRadius:16,border:"1px solid #e2e8f0",display:"flex",flexDirection:"column",gap:10,minWidth:0}}>
-     <div style={{position:"relative",height:360,border:"1px solid #dce4ed",borderRadius:12,overflow:"hidden",background:"#f8fafc"}}>
-      <iframe title={t("معاينة تفاعلية: ","Interactive preview: ")+item.name} src={`${base}/catalog/${encodeURIComponent(item.slug)}?embedded=1`} loading="lazy" style={{width:"100%",height:"100%",border:0,background:"white"}} allowFullScreen />
-     </div>
+     <GalleryDemo item={item} base={base} title={t("معاينة تفاعلية: ","Interactive preview: ")+item.name}/>
      <h3 style={{margin:"2px 0",color:"#203958"}}>{en?englishTemplateLabel(item.slug,item.name):item.name}</h3>
-     <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("جرّب النظام بملء الشاشة ←","Try full-screen demo →")}</Link>
+     <Link prefetch={false} onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("جرّب النظام بملء الشاشة ←","Try full-screen demo →")}</Link>
      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",borderTop:"1px solid #e2e8f0",paddingTop:12}}>
       <span style={{fontWeight:800,color:"#203958"}}>{typeof item.basePrice==="number"&&Number.isFinite(item.basePrice)&&item.basePrice>=0? t("السعر الأساسي: ","Base price: ")+item.basePrice.toLocaleString(en?"en-EG":"ar-EG")+t(" ج.م"," EGP"):t("السعر يُحدد من لوحة الإدارة","Price pending admin setup")}</span>
       <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}/pricing`} style={{fontSize:13,color:"#203958",textDecoration:"underline",fontWeight:700}}>{t("أضف المواصفات واحسب الإجمالي ←","Add options & calculate total →")}</Link>

@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 
 type RouteContext = { params: Promise<{ path: string[] }> };
 const DEFAULT_ADMIN_BODY_BYTES = 5 * 1024 * 1024;
+const DEMO_CONTENT_BODY_BYTES = 68 * 1024 * 1024;
 const CONTENT_STUDIO_BODY_BYTES = 12 * 1024 * 1024;
 const PRIVATE_DELIVERY_BYTES = 512 * 1024 * 1024;
 
@@ -76,16 +77,18 @@ async function proxy(request: Request, context: RouteContext) {
       body = request.body ?? undefined;
     } else {
       const isChatFile = (path[0] === "internal-chat" || path[0] === "internal-groups" || path[0] === "live-support") && path[2] === "files";
-      const limited = await readLimitedBody(request, path[0] === "video-upload" ? 25 * 1024 * 1024 : isChatFile ? 20 * 1024 * 1024 : isContentStudioFile || isContentStudioRequest ? CONTENT_STUDIO_BODY_BYTES : DEFAULT_ADMIN_BODY_BYTES);
+      const isDemoContent = path[0] === "demo-assets" || path[0] === "home-featured" || (path[0] === "pages" && ["catalog","home"].includes(path[1])) || (path[0] === "page-drafts" && path[1] === "home");
+      const limited = await readLimitedBody(request, path[0] === "demo-assets" ? 10 * 1024 * 1024 : isDemoContent ? DEMO_CONTENT_BODY_BYTES : path[0] === "video-upload" ? 25 * 1024 * 1024 : isChatFile ? 20 * 1024 * 1024 : isContentStudioFile || isContentStudioRequest ? CONTENT_STUDIO_BODY_BYTES : DEFAULT_ADMIN_BODY_BYTES);
       if (limited.tooLarge) return NextResponse.json({ message: "حجم الطلب أكبر من الحد المسموح." }, { status: 413 });
       body = limited.body;
     }
   }
 
   try {
+    const isDemoContent = path[0] === "demo-assets" || path[0] === "home-featured" || (path[0] === "pages" && ["catalog","home"].includes(path[1])) || (path[0] === "page-drafts" && path[1] === "home");
     const isProductionRequest = path[0] === "content-studio" && path[2] === "produce";
     const isAnalysisRequest = path[0] === "content-studio" && path[1] === "analyze";
-    const upstream = await fetch(target, { method, headers, body, ...(isPrivateUpload ? {duplex:"half" as const} : {}), cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(isProductionRequest ? 250000 : isAnalysisRequest ? 125000 : isPrivateUpload ? 600000 : path[0] === "video-upload" ? 120000 : 12000) });
+    const upstream = await fetch(target, { method, headers, body, ...(isPrivateUpload ? {duplex:"half" as const} : {}), cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(isProductionRequest ? 250000 : isAnalysisRequest ? 125000 : isPrivateUpload ? 600000 : path[0] === "video-upload" ? 120000 : isDemoContent || (path[0] === "pages" && path.length === 1) ? 120000 : 12000) });
     const payload = await upstream.arrayBuffer();
     const responseHeaders = new Headers();
     const contentType = upstream.headers.get("content-type");

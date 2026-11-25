@@ -2,6 +2,10 @@ name: Branch validation (no deployment)
 on:
   push:
     branches:
+      - fix/automatic-device-language-20261125
+      - fix/demo-thumbnail-blank-20261125
+      - fix/real-demo-thumbnails-20261125
+      - fix/demo-assets-lightweight-20261125
       - fix/unified-data-flows-20261121
       - audit/admin-dashboard-modernization-20261122
       - fix/admin-mobile-project-team-controls-20261122
@@ -42,6 +46,19 @@ jobs:
       - run: npm run check
       - run: npm test
 
+  renderer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t demo-renderer source/backend/thumbnail-renderer
+      - run: docker run -d --name demo-renderer -p 127.0.0.1:3001:3001 demo-renderer
+      - run: |
+          sleep 5
+          curl --fail --max-time 25 -H "Content-Type: text/html" --data '<html><body><h1>Real preview</h1></body></html>' http://127.0.0.1:3001/render -o /tmp/demo.jpg
+          file /tmp/demo.jpg | grep JPEG
+          curl --fail --max-time 25 -H "Content-Type: text/html" --data-binary @source/backend/thumbnail-renderer/test-module.html http://127.0.0.1:3001/render -o /tmp/module.jpg
+          file /tmp/module.jpg | grep JPEG
+          test "$(curl -s --max-time 25 -o /dev/null -w '%{http_code}' -H "Content-Type: text/html" --data '<html><body><div id="root"></div></body></html>' http://127.0.0.1:3001/render)" = 422
   database:
     runs-on: ubuntu-latest
     services:

@@ -1,20 +1,23 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 type PreviewAddon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
 import Link from "next/link";
-import { interactiveDemoPaths, type SectorTemplate } from "@/lib/sector-catalog";
+import { isolatedDemoHtml, interactiveDemoPaths, type SectorTemplate } from "@/lib/sector-catalog";
 import SectorInteractiveDemo,{isInteractiveSector} from "@/components/sector-interactive-demo";
 import {englishDemoLabel,englishTemplateLabel,englishTemplateFeatures} from "@/lib/sector-en";
 
-export default function SectorPreview({template,demoSlug,pricedAddons=[],basePrice=null,locale="ar"}: {template: SectorTemplate;demoSlug?:string;pricedAddons?:PreviewAddon[];basePrice?:number|null;locale?:"ar"|"en"}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
+export default function SectorPreview({template,demoSlug,previewHtml,demoDocumentUrl,pricedAddons=[],basePrice=null,locale="ar"}: {template: SectorTemplate;demoSlug?:string;previewHtml?:string;demoDocumentUrl?:string;pricedAddons?:PreviewAddon[];basePrice?:number|null;locale?:"ar"|"en"}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
+  // Keep srcdoc stable across state updates and mobile viewport changes.
+  const demoDocument=useMemo(()=>previewHtml?isolatedDemoHtml(previewHtml):undefined,[previewHtml]);
   const [active,setActive]=useState(template.modules[0]);
   const [embedded,setEmbedded]=useState(false);
   const [fullScreen,setFullScreen]=useState(false);
   const [immersive,setImmersive]=useState(false);
+  useEffect(()=>{if(!immersive)return;const previous=document.body.style.overflow;document.body.style.overflow="hidden";return()=>{document.body.style.overflow=previous};},[immersive]);
   useEffect(()=>{const params=new URLSearchParams(window.location.search);setEmbedded(params.get("embedded")==="1");setImmersive(params.get("fullscreen")==="1");},[]);
   useEffect(()=>{const sync=()=>setFullScreen(Boolean(document.fullscreenElement));document.addEventListener("fullscreenchange",sync);return()=>document.removeEventListener("fullscreenchange",sync);},[]);
-  const [previewMode,setPreviewMode]=useState<"full"|"simple">(demoSlug?"full":"simple");
+  const [previewMode,setPreviewMode]=useState<"full"|"simple">(demoSlug||previewHtml||demoDocumentUrl?"full":"simple");
   const [rows,setRows]=useState(template.sampleRows);
   const [selectedAddons,setSelectedAddons]=useState<string[]>([]);
   const [extraPages,setExtraPages]=useState(0);
@@ -23,6 +26,7 @@ export default function SectorPreview({template,demoSlug,pricedAddons=[],basePri
   const [customTitle,setCustomTitle]=useState("");
   const [showForm,setShowForm]=useState(false);
   useEffect(()=>{
+    if(new URLSearchParams(window.location.search).get("fullscreen")==="1")return;
     const guest=loadGuestWorkspace();
     if(guest.sectorSlug===template.slug){
       setSelectedAddons(Array.isArray(guest.sectorAddonCodes)?guest.sectorAddonCodes.filter(code=>pricedAddons.some(item=>item.code===code)):[]);
@@ -52,6 +56,7 @@ export default function SectorPreview({template,demoSlug,pricedAddons=[],basePri
     }catch{setLogoError("تعذر حفظ الشعار في الحساب. المعاينة المحلية ما زالت تعمل.");}
   };
   useEffect(()=>{
+    if(new URLSearchParams(window.location.search).get("fullscreen")==="1")return;
     let active=true;
     let url:string|null=null;
     void loadAccountWorkspace().then(account=>{
@@ -72,10 +77,10 @@ export default function SectorPreview({template,demoSlug,pricedAddons=[],basePri
     }).catch(()=>undefined);
     return()=>{active=false;if(url)URL.revokeObjectURL(url);};
   },[template.slug]);
-  return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:"none",width:"100%",margin:0,padding:embedded||fullScreen||immersive?0:"12px",minHeight:embedded?"100%":"100dvh",boxSizing:"border-box"}}>
-    <style>{`@media(max-width:700px){.sector-preview-grid{grid-template-columns:1fr!important}.sector-preview-nav{display:flex;overflow-x:auto;gap:5px}.sector-preview-nav button{min-width:max-content}}`}</style>
-    {demoSlug && interactiveDemoPaths[demoSlug] && previewMode==="full" ? <section aria-label={t("المعاينة التفاعلية الكاملة","Full interactive demo")} style={{background:"white",border:fullScreen||immersive?0:"1px solid #e2e8f0",borderRadius:fullScreen||immersive?0:12,overflow:"hidden",width:"100%"}}>
-      <iframe title={en?`${englishTemplateLabel(template.slug,template.name)} interactive demo`:`معاينة ${template.name} التفاعلية الكاملة`} src={interactiveDemoPaths[demoSlug]} loading="eager" referrerPolicy="no-referrer" sandbox="allow-scripts allow-forms allow-modals" style={{width:"100%",height:fullScreen||immersive?"100dvh":"calc(100dvh - 110px)",minHeight:embedded?360:480,border:0,display:"block"}} />
+  return <main data-catalog-immersive={immersive?"true":undefined} lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:"none",width:"100%",margin:0,padding:embedded||fullScreen||immersive?0:"12px",minHeight:embedded?"100%":"100dvh",boxSizing:"border-box"}}>
+    <style>{`main[data-catalog-immersive=true]{position:relative;z-index:200;background:white} @media(max-width:760px){main[data-catalog-immersive=true]{position:fixed;inset:0;overflow:auto;overscroll-behavior:contain;z-index:2147483000}main[data-catalog-immersive=true] iframe{overscroll-behavior:contain}}main[data-catalog-immersive=true] iframe{min-height:0!important;height:100vh!important;height:100dvh!important} @media(max-width:700px){.sector-preview-grid{grid-template-columns:1fr!important}.sector-preview-nav{display:flex;overflow-x:auto;gap:5px}.sector-preview-nav button{min-width:max-content}}`}</style>
+    {(previewHtml || demoDocumentUrl || (demoSlug && interactiveDemoPaths[demoSlug])) && previewMode==="full" ? <section aria-label={t("المعاينة التفاعلية الكاملة","Full interactive demo")} style={{background:"white",border:fullScreen||immersive?0:"1px solid #e2e8f0",borderRadius:fullScreen||immersive?0:12,overflow:"hidden",width:"100%"}}>
+      <iframe title={en?`${englishTemplateLabel(template.slug,template.name)} interactive demo`:`معاينة ${template.name} التفاعلية الكاملة`} src={demoDocumentUrl||(previewHtml?undefined:demoSlug?interactiveDemoPaths[demoSlug]:undefined)} srcDoc={demoDocument} loading="eager" referrerPolicy="no-referrer" sandbox={previewHtml||demoDocumentUrl?"allow-scripts allow-modals":"allow-scripts allow-forms allow-modals"} style={{width:"100%",height:fullScreen||immersive?"100dvh":"calc(100dvh - 110px)",minHeight:embedded?360:480,border:0,display:"block"}} />
       <p style={{fontSize:12,padding:"8px 14px",color:"#64748b"}}>{t("المعاينة تفاعلية وبياناتها تجريبية داخل المتصفح؛ ليست متصلة ببيانات العملاء أو بالفوترة الحقيقية.","This demo uses sample browser data; it is not connected to live customers or billing.")}</p>
     </section> : <div className="sector-preview-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,230px) minmax(0,1fr)",gap:16}}> 
       <nav className="sector-preview-nav" aria-label={t("أقسام النموذج","Demo sections")} style={{background:brand,color:"white",borderRadius:16,padding:14,alignSelf:"start"}}>
@@ -102,7 +107,7 @@ export default function SectorPreview({template,demoSlug,pricedAddons=[],basePri
         </>}
       </section>
     </div>}
-    {!embedded && <details id="customize" style={{marginTop:24,background:"#f8fafc",border:"1px solid #dce5f0",borderRadius:14,padding:14}}>
+    {!embedded && !immersive && <details id="customize" style={{marginTop:24,background:"#f8fafc",border:"1px solid #dce5f0",borderRadius:14,padding:14}}>
       <summary style={{cursor:"pointer",fontWeight:800,color:"#203958",padding:10}}>{t("اختر هذا النظام وخصص طلبك: الشعار والاسم والألوان والإضافات","Select and customize: logo, name, colors and add-ons")}</summary>
       <div style={{marginTop:18}}>
     <section style={{background:"white",borderRadius:18,border:"1px solid #e2e8f0",padding:20,marginBottom:18}}>
@@ -140,11 +145,11 @@ export default function SectorPreview({template,demoSlug,pricedAddons=[],basePri
       </div>
     </section>
 
-    {demoSlug && interactiveDemoPaths[demoSlug] && <section aria-label={t("نوع المعاينة","Demo type")} style={{background:"#fff",border:"1px solid #dce5f0",borderRadius:14,padding:12,marginBottom:16,display:"flex",gap:9,flexWrap:"wrap",alignItems:"center"}}>
+    {(previewHtml || demoDocumentUrl || (demoSlug && interactiveDemoPaths[demoSlug])) && <section aria-label={t("نوع المعاينة","Demo type")} style={{background:"#fff",border:"1px solid #dce5f0",borderRadius:14,padding:12,marginBottom:16,display:"flex",gap:9,flexWrap:"wrap",alignItems:"center"}}>
       <strong style={{marginInlineEnd:8}}>{t("اختر طريقة تجربة النظام:","Choose a demo view:")}</strong>
       <button type="button" onClick={()=>setPreviewMode("full")} aria-pressed={previewMode==="full"} style={{background:previewMode==="full"?brand:"#edf3f8",color:previewMode==="full"?"white":"#203958",border:0,borderRadius:9,padding:"10px 13px",cursor:"pointer"}}>المعاينة التفاعلية الكاملة</button>
       <button type="button" onClick={()=>setPreviewMode("simple")} aria-pressed={previewMode==="simple"} style={{background:previewMode==="simple"?brand:"#edf3f8",color:previewMode==="simple"?"white":"#203958",border:0,borderRadius:9,padding:"10px 13px",cursor:"pointer"}}>المعاينة المبسطة</button>
-      <a href={interactiveDemoPaths[demoSlug]} target="_blank" rel="noopener noreferrer" style={{marginInlineStart:"auto",color:"#174e83",textDecoration:"underline"}}>{t("فتح النظام في نافذة كاملة ↗","Open full-screen demo ↗")}</a>
+      {!previewHtml&&!demoDocumentUrl&&demoSlug&&<a href={interactiveDemoPaths[demoSlug]} target="_blank" rel="noopener noreferrer" style={{marginInlineStart:"auto",color:"#174e83",textDecoration:"underline"}}>{t("فتح النظام في نافذة كاملة ↗","Open full-screen demo ↗")}</a>}
     </section>}
 
       </div>
