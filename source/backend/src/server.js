@@ -1585,6 +1585,38 @@ app.get("/api/admin/commercial/invoices",requireAdmin,requirePermission("custome
  WHERE ($1::bigint IS NULL OR i.quote_id=$1) ORDER BY i.due_at NULLS LAST,i.id LIMIT 500`,[quoteId]);
  res.json({invoices:result.rows});
 }));
+// Payment settings: privileged staff only, serialize changes with collection.
+app.put("/api/admin/commercial/payment-instructions/:method",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const method=req.params.method,{instructions,enabled}=req.body||{};
+ if(!["cash","bank_transfer","instapay","wallet_direct"].includes(method)||typeof instructions!=="string"||!instructions.trim()||instructions.length>2000||typeof enabled!=="boolean")return res.status(400).json({error:"Invalid payment instructions"});
+ const q=await pool.query("INSERT INTO commercial_payment_instructions(method,instructions,enabled,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(method) DO UPDATE SET instructions=EXCLUDED.instructions,enabled=EXCLUDED.enabled,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING *",[method,instructions.trim(),enabled,req.admin.email]);
+ res.json({instruction:q.rows[0]});
+}));
+app.get("/api/admin/commercial/payment-instructions",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const q=await pool.query("SELECT * FROM commercial_payment_instructions ORDER BY method");
+ res.set("Cache-Control","no-store").json({instructions:q.rows});
+}));
+app.put("/api/admin/commercial/quotes/:id/payment-methods",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id),methods=req.body?.methods;
+ if(!Number.isSafeInteger(id)||id<1||!Array.isArray(methods)||!methods.length||new Set(methods).size!==methods.length||methods.some(m=>!["cash","bank_transfer","instapay","wallet_direct","xpay"].includes(m)))return res.status(400).json({error:"Invalid payment methods"});
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const q=await c.query("SELECT id FROM commercial_quotes WHERE id=$1 AND status IN ('draft','issued','accepted') FOR UPDATE",[id]);
+ if(!q.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Quote unavailable"});}
+ await c.query("INSERT INTO commercial_payment_preferences(quote_id,methods,updated_by) VALUES($1,$2,$3) ON CONFLICT(quote_id) DO UPDATE SET methods=EXCLUDED.methods,updated_by=EXCLUDED.updated_by,updated_at=now()",[id,methods,req.admin.email]);
+ await c.query("COMMIT");res.json({methods});
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}));
+app.patch("/api/admin/commercial/invoices/:id/release",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id),{released,milestone}=req.body||{};
+ if(!Number.isSafeInteger(id)||id<1||typeof released!=="boolean"||typeof milestone!=="string"||!milestone.trim()||milestone.length>200)return res.status(400).json({error:"Invalid installment release"});
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const q=await c.query("SELECT q.id FROM commercial_quotes q JOIN commercial_invoices i ON i.quote_id=q.id WHERE i.id=$1 AND q.status IN ('issued','accepted') FOR UPDATE OF q",[id]);
+ if(!q.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Quote unavailable"});}
+ const r=await c.query("UPDATE commercial_invoices SET release_for_payment=$2,milestone=$3 WHERE id=$1 AND status IN ('unpaid','part_paid') RETURNING id,release_for_payment,milestone",[id,released,milestone.trim()]);
+ if(!r.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Invoice unavailable"});}
+ await c.query("COMMIT");res.json({invoice:r.rows[0]});
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}));
 app.post("/api/admin/commercial/invoices/schedule",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const {quoteId,parts}=req.body||{};
  if(!Number.isSafeInteger(quoteId)||quoteId<1||!Array.isArray(parts)||parts.length<1||parts.length>24)return res.status(400).json({error:"Invalid schedule"});
