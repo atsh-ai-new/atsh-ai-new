@@ -813,7 +813,7 @@ app.post("/api/visitor/analytics",rateLimit({windowMs:60000,limit:300,standardHe
  await pool.query(`WITH session AS (INSERT INTO visitor_analytics_sessions(id,source,device) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET last_seen=now() RETURNING id)
  INSERT INTO visitor_analytics_daily(day,visitor_id,path,views) SELECT (now() AT TIME ZONE 'Africa/Cairo')::date,id,$4,$5 FROM session ON CONFLICT(day,visitor_id,path) DO UPDATE SET views=visitor_analytics_daily.views+EXCLUDED.views`,[id,src,dev,path,view===true?1:0]);
  const uuid=v=>typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
- if(uuid(visitId)&&uuid(eventId)&&["page","click","activity","scroll","submit"].includes(kind)){
+ if(uuid(visitId)&&uuid(eventId)&&["page","click","activity","scroll","submit","result"].includes(kind)){
    const safeLabel=typeof label==="string"&&/^[a-z0-9_-]{1,80}$/i.test(label)?label:"";
    const seconds=kind==="activity"&&Number.isInteger(activeSeconds)?Math.max(0,Math.min(15,activeSeconds)):0;
    await pool.query("INSERT INTO visitor_journey_events(event_id,visitor_id,visit_id,path,kind,label,active_seconds) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(event_id) DO NOTHING",[eventId,id,visitId,path,kind,safeLabel,seconds]);
