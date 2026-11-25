@@ -34,9 +34,19 @@ export function interactiveDemoSlug(catalogSlug:string, configuredSlug?:string):
  * fetch/XHR, form submission, embedded pages, or same-origin privileges. */
 export function isolatedDemoHtml(html:string):string {
  const policy='<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src \'unsafe-inline\' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://unpkg.com; img-src data: blob:; font-src https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com data:; media-src data: blob:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'; frame-src \'none\'; object-src \'none\'">';
- // Use a separate document wrapper only for fragments; do not prepend a second doctype.
- // Insert immediately after the opening head (before scripts and styles).
- if(/<head(?:\s[^>]*)?>/i.test(html))return html.replace(/<head(?:\s[^>]*)?>/i,match=>match+policy);
- if(/<html(?:\s[^>]*)?>/i.test(html))return html.replace(/<html(?:\s[^>]*)?>/i,match=>match+"<head>"+policy+"</head>");
- return "<!doctype html><html><head>"+policy+"</head><body>"+html.replace(/^\s*<!doctype[^>]*>/i,"")+"</body></html>";
+ // React Router's URL constructor cannot resolve relative paths against an opaque
+ // origin or blob URL. Supply an inert base for resolution, not for network access.
+ const routerCompat="<script>(()=>{const U=window.URL;window.URL=class extends U{constructor(input,base){if(base==='about:srcdoc'||base==='null'||(typeof base==='string'&&base.startsWith('blob:')))base='https://demo.invalid/';super(input,base)}}})();</script>";
+ const injection=policy+routerCompat;
+ let documentHtml:string;
+ if(/<head(?:\s[^>]*)?>/i.test(html))documentHtml=html.replace(/<head(?:\s[^>]*)?>/i,match=>match+injection);
+ else if(/<html(?:\s[^>]*)?>/i.test(html))documentHtml=html.replace(/<html(?:\s[^>]*)?>/i,match=>match+"<head>"+injection+"</head>");
+ else documentHtml="<!doctype html><html><head>"+injection+"</head><body>"+html.replace(/^\s*<!doctype[^>]*>/i,"")+"</body></html>";
+ // Bootstrap inside the already opaque sandbox. The Blob MUST be created by
+ // this iframe, not the ATSH parent page; its origin is null, not the platform.
+ // A blob URL permits hash-based history changes unlike about:srcdoc.
+ const encoded=JSON.stringify(documentHtml).replace(/</g,"\\u003c").replace(/\u2028/g,"\\u2028").replace(/\u2029/g,"\\u2029");
+ return '<!doctype html><meta charset="utf-8"><script>location.replace(URL.createObjectURL(new Blob(['+encoded+'],{type:"text/html;charset=utf-8"})));</script>';
 }
+export const MAX_DEMO_HTML_BYTES=10*1024*1024;
+export const MAX_DEMO_PAGE_BYTES=64*1024*1024;
