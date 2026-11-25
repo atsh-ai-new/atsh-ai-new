@@ -799,14 +799,25 @@ await pool.query(`CREATE TABLE IF NOT EXISTS visitor_analytics_sessions (
  id uuid PRIMARY KEY, first_seen timestamptz NOT NULL DEFAULT now(), last_seen timestamptz NOT NULL DEFAULT now(), source text NOT NULL, device text NOT NULL);
  CREATE INDEX IF NOT EXISTS visitor_analytics_last_seen ON visitor_analytics_sessions(last_seen);
  CREATE TABLE IF NOT EXISTS visitor_analytics_daily (day date NOT NULL, visitor_id uuid NOT NULL, path text NOT NULL, views integer NOT NULL DEFAULT 0, PRIMARY KEY(day,visitor_id,path));`);
+await pool.query(`CREATE TABLE IF NOT EXISTS visitor_journey_events (
+ event_id uuid PRIMARY KEY, visitor_id uuid NOT NULL REFERENCES visitor_analytics_sessions(id) ON DELETE CASCADE, visit_id uuid NOT NULL, path text NOT NULL, kind text NOT NULL, label text NOT NULL DEFAULT '', active_seconds integer NOT NULL DEFAULT 0, created_at timestamptz NOT NULL DEFAULT now());
+ CREATE INDEX IF NOT EXISTS visitor_journey_time ON visitor_journey_events(created_at);
+ CREATE INDEX IF NOT EXISTS visitor_journey_visit ON visitor_journey_events(visit_id,created_at);`);
+const journeyCleanup=setInterval(()=>pool.query("DELETE FROM visitor_journey_events WHERE created_at<now()-interval '30 days'").catch(()=>{}),3600000);journeyCleanup.unref();
 app.post("/api/visitor/analytics",rateLimit({windowMs:60000,limit:300,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
  if(req.cookies[cookie]) return res.sendStatus(204);
- const {id,path,source,device,view}=req.body??{};
+ const {id,path,source,device,view,visitId,eventId,kind,label,activeSeconds}=req.body??{};
  if(typeof id!=="string"||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)||typeof path!=="string"||path.length>200||!/^\/(?!\/)/.test(path)||/[?#]/.test(path)||/^\/(?:en\/)?(?:admin|team|customer|account|api|login)(?:\/|$)/i.test(path))return res.status(400).json({error:"Invalid analytics event"});
  const src=["Google","Facebook","Instagram","YouTube","Other","Direct"].includes(source)?source:"Other";
  const dev=device==="mobile"?"mobile":"desktop";
  await pool.query(`WITH session AS (INSERT INTO visitor_analytics_sessions(id,source,device) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET last_seen=now() RETURNING id)
  INSERT INTO visitor_analytics_daily(day,visitor_id,path,views) SELECT (now() AT TIME ZONE 'Africa/Cairo')::date,id,$4,$5 FROM session ON CONFLICT(day,visitor_id,path) DO UPDATE SET views=visitor_analytics_daily.views+EXCLUDED.views`,[id,src,dev,path,view===true?1:0]);
+ const uuid=v=>typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+ if(uuid(visitId)&&uuid(eventId)&&["page","click","activity","scroll","submit","result"].includes(kind)){
+   const safeLabel=typeof label==="string"&&/^[a-z0-9_-]{1,80}$/i.test(label)?label:"";
+   const seconds=kind==="activity"&&Number.isInteger(activeSeconds)?Math.max(0,Math.min(15,activeSeconds)):0;
+   await pool.query("INSERT INTO visitor_journey_events(event_id,visitor_id,visit_id,path,kind,label,active_seconds) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(event_id) DO NOTHING",[eventId,id,visitId,path,kind,safeLabel,seconds]);
+ }
  res.sendStatus(204);
 }));
 app.get("/api/admin/visitor-analytics",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{
@@ -819,6 +830,13 @@ app.get("/api/admin/visitor-analytics",requireAdmin,requireRole("owner","admin")
  (SELECT coalesce(json_agg(x),'[]'::json) FROM (SELECT path,sum(views)::int AS views FROM visitor_analytics_daily,today WHERE day>=d-6 GROUP BY path ORDER BY views DESC LIMIT 10) x) AS pages,
  (SELECT coalesce(json_agg(x),'[]'::json) FROM (SELECT source AS label,count(*)::int AS visitors FROM visitor_analytics_sessions GROUP BY source ORDER BY visitors DESC) x) AS sources,
  (SELECT coalesce(json_agg(x),'[]'::json) FROM (SELECT device AS label,count(*)::int AS visitors FROM visitor_analytics_sessions GROUP BY device) x) AS devices`);
+ if(_req.admin.role==="owner"){
+ const journeys=await pool.query(`WITH recent AS (SELECT visit_id,visitor_id,min(created_at) AS started,max(created_at) AS last_seen,sum(active_seconds)::int AS active_seconds,count(*) FILTER(WHERE kind IN ('click','submit'))::int AS interactions,count(*) FILTER(WHERE kind='page')::int AS pages FROM visitor_journey_events WHERE created_at>=now()-interval '30 days' GROUP BY visit_id,visitor_id ORDER BY max(created_at) DESC LIMIT 50)
+ SELECT r.*,s.device,s.source,r.last_seen>now()-interval '90 seconds' AS online,
+ (SELECT coalesce(json_agg(e ORDER BY e.created_at),'[]'::json) FROM (SELECT path,kind,label,active_seconds,created_at FROM visitor_journey_events WHERE visit_id=r.visit_id AND visitor_id=r.visitor_id AND created_at>=now()-interval '30 days' ORDER BY created_at DESC LIMIT 200) e) AS events
+ FROM recent r JOIN visitor_analytics_sessions s ON s.id=r.visitor_id ORDER BY r.last_seen DESC`);
+ result.rows[0].journeys=journeys.rows;
+ }
  res.set("Cache-Control","no-store").json(result.rows[0]);
 }));
 app.get("/api/admin/me",requireAdmin,(req,res)=>res.json({authenticated:true,email:req.admin.email,role:req.admin.role,permissions:req.admin.permissions}));
