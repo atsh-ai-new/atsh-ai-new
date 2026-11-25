@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import QuoteRevisionEditor from "@/components/quote-revision-editor";
+import PaymentRevisionPanel from "./payment-revision-panel";
 type Quote={id:number;customer_email:string;status:string;revision:number;total_piasters:number;valid_until:string|null;items:Array<{label:string;quantity:number;unitPricePiasters:number;period?:string}>};
 type EligibleOrder={id:string;reference:string;total:number;currency:string;project_title:string;latest_preview_status:string|null};
 type EligibleDraft={id:string;title:string;email:string;draft:{solutionType?:string;requirements?:string;businessName?:string;deliveryMethod?:string};latest_preview_status:string|null};
@@ -118,6 +119,7 @@ export default function CommercialManager(){
   </div>
   {q.status==="issued"&&<div style={{padding:10}}><label>العقد PDF <input type="file" accept="application/pdf,.pdf" onChange={e=>{const f=e.target.files?.[0];if(f)setPdfs(old=>({...old,[q.id]:f}));}}/></label><button disabled={!pdfs[q.id]} onClick={()=>void run(()=>uploadPdf(q.id))}>رفع وإرسال العقد للعميل</button></div>}
   {["draft","issued","accepted"].includes(q.status)&&<details><summary>طرق السداد المسموحة</summary>{Object.entries(paymentLabels).map(([key,label])=><label key={key} style={{display:"block"}}><input type="checkbox" checked={(methods[q.id]||[]).includes(key)} onChange={e=>setMethods(old=>({...old,[q.id]:e.target.checked?[...(old[q.id]||[]),key]:(old[q.id]||[]).filter(x=>x!==key)}))}/>{label}</label>)}<button disabled={!methods[q.id]?.length} onClick={()=>void run(()=>request(`quotes/${q.id}/payment-methods`,"PUT",{methods:methods[q.id]}))}>حفظ طرق الدفع</button></details>}
+  {q.status==="accepted"&&<PaymentRevisionPanel key={`${q.id}-${q.revision}`} quote={q} onChange={refresh}/>}
   {(q.status==="draft"||q.status==="issued")&&<QuoteRevisionEditor quote={q} onSave={async(items,validUntil)=>{await request(`quotes/${q.id}/revise`,"POST",{items,validUntil});await refresh();setMessage("أُصدر عرض معدل جديد. اعتمده ثم أنشئ عقدًا جديدًا من أحدث قالب.")}}/>}
  </article>)}</div>
  {reviewLink&&<section role="status" style={{border:"1px solid #b7d8ca",background:"#ebf8f1",borderRadius:12,padding:13,overflowWrap:"anywhere"}}><b>رابط خاص للعرض والعقد (يظهر هنا فقط):</b><p>{reviewLink}</p><button type="button" onClick={()=>void navigator.clipboard.writeText(reviewLink)}>نسخ الرابط</button><button type="button" onClick={()=>setReviewLink("")}>إخفاؤه</button><p><small>يمكن للعميل المسجّل مراجعة عرضه أيضًا من داخل حسابه، دون تداول رمز خاص.</small></p></section>}
