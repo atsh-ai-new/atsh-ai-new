@@ -24,6 +24,7 @@ import { priceSectorSelection } from "./sector-pricing.js";
 import { calculateUnifiedPricing } from "./pricing-engine.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
+import {xpayConfig,verifyXpaySignature,retrieveXpaySession,verifiedTestPayment} from "./xpay-adapter.js";
 import {queueJourneyEvent,deliverJourneyEvents,eventDestination} from "./customer-event-outbox.js";
 import {checkDomainLive} from "./domain-registry-lookup.js";
 import {seedCatalogIfAbsent} from "./catalog-starter.js";
@@ -81,6 +82,7 @@ await pool.query(await readFile(new URL("../db/commercial_checkout_stage52.sql",
 await pool.query(await readFile(new URL("../db/commercial_payment_methods.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_invoice_revisions.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_refunds.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/commercial_xpay_test.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/unified_pricing_stage53.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/order_submission_idempotency_stage54.sql", import.meta.url), "utf8"));
 await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
@@ -126,6 +128,7 @@ app.use("/api/customer/auth/workspace/logo",express.raw({type:["image/png","imag
 app.use(/^\/api\/customer\/auth\/project-drafts\/[0-9a-f-]{36}\/logo\/?$/i,express.raw({type:["image/png","image/jpeg","image/webp"],limit:"2mb"}));
 app.use("/api/customer/auth/project-drafts",express.raw({type:["image/png","image/jpeg","image/webp"],limit:"2mb"}));
 app.use("/api/internal/verified-payments",express.raw({type:"application/json",limit:"16kb"}));
+app.use("/api/webhooks/xpay-test",express.raw({type:"application/json",limit:"256kb"}));
 // Allow a wider structured sector catalog while keeping other JSON endpoints tightly bounded.
 app.use("/api/admin/pages/catalog",express.json({limit:"1mb"}));
 app.use("/api/admin/commercial/contracts/pdf",express.raw({type:"application/pdf",limit:"5mb"}));
@@ -191,6 +194,26 @@ app.use("/api/customer/deliverables",deliveryCustomerRouter({pool,allowedOrigins
 app.use("/api/admin/deliverables",requireAdmin,requireRole("owner","admin","editor"),deliveryAdminRouter({pool}));
 app.use("/api/admin/operations",requireAdmin,requireRole("owner","admin"),deliveryAdminRouter({pool,operationsOnly:true}));
 app.use("/api/customer/commercial",customerCommercialRouter({pool,allowedOrigins:origins,queueJourneyEvent}));
+app.post("/api/webhooks/xpay-test",rateLimit({windowMs:60000,limit:120,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
+ let cfg;try{cfg=xpayConfig();}catch{return res.status(503).json({error:"Sandbox not configured"});}
+ if(!cfg)return res.status(503).json({error:"Sandbox disabled"});
+ if(!verifyXpaySignature(req.body,req.get("xpay-signature"),cfg.secret))return res.status(401).json({error:"Invalid signature"});
+ let event;try{event=JSON.parse(req.body.toString("utf8"));}catch{return res.status(400).json({error:"Invalid event"});}
+ if(!["checkout.session.completed","checkout.session.async_payment_succeeded","checkout.session.expired"].includes(event?.type))return res.json({received:true});
+ const id=event?.data?.object?.id;
+ if(typeof id!=="string"||!/^cs_test_[A-Za-z0-9]+$/.test(id))return res.status(400).json({error:"Test session required"});
+ const q=await pool.query("SELECT id,session_id,amount_piasters,status FROM commercial_xpay_test_attempts WHERE session_id=$1",[id]);
+ if(!q.rowCount)return res.status(404).json({error:"Session not registered"});
+ const a=q.rows[0];
+ if(a.status==="test_paid")return res.json({received:true,testMode:true,duplicate:true});
+ const session=await retrieveXpaySession({key:cfg.key,sessionId:id});
+ const paid=verifiedTestPayment(session,{sessionId:a.session_id,amountPiasters:Number(a.amount_piasters)});
+ if(paid)await pool.query("UPDATE commercial_xpay_test_attempts SET status='test_paid',verified_at=COALESCE(verified_at,now()) WHERE id=$1 AND status IN ('open','expired')",[a.id]);
+ else if(session.status==="expired"||session.isExpired)await pool.query("UPDATE commercial_xpay_test_attempts SET status='expired' WHERE id=$1 AND status='open'",[a.id]);
+ else return res.status(409).json({error:"Test settlement not verified"});
+ res.json({received:true,testMode:true});
+}));
+
 
 // Enforce central operations flags on actual write entry points (not just dashboard state).
 app.use('/api/orders', (req,res,next)=>req.method==='POST'?operationGuard(pool,'new_orders')(req,res,next):next());
