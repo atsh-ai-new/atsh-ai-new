@@ -27,7 +27,7 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
  const [notice,setNotice]=useState("");
  useEffect(()=>{
   let active=true;
-  fetch("/api/site-content/catalog?metadata=1",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();const arabic=await r.json();if(!en)return {data:arabic,english:null};const english=await fetch("/api/site-content/catalog?locale=en&metadata=1",{cache:"no-store"}).then(async x=>x.ok?x.json():null).catch(()=>null);return {data:arabic,english};}).then(({data,english})=>{
+  Promise.all([fetch("/api/site-content/catalog?metadata=1",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();return r.json()}),en?fetch("/api/site-content/catalog?locale=en&metadata=1",{cache:"no-store"}).then(async x=>x.ok?x.json():null).catch(()=>null):Promise.resolve(null)]).then(([data,english])=>({data,english})).then(({data,english})=>{
    if(!active)return;if(!data?.page||!Array.isArray(data.page.content?.items)){setItems([]);return;}
    const englishBySlug=new Map<string,Partial<Item>>((Array.isArray(english?.page?.content?.items)?english.page.content.items:[]).filter((x:Item)=>x&&typeof x.slug==="string").map((x:Item)=>[x.slug,x]));
    setItems(data.page.content.items.filter((x:Item)=>x&&typeof x.slug==="string"&&typeof x.name==="string"&&x.published!==false&&!x.archived).map((x:Item)=>en?{...x,name:englishBySlug.get(x.slug)?.name||englishTemplateLabel(x.slug,x.slug),description:englishBySlug.get(x.slug)?.description||englishTemplateLabel(x.slug,"A configurable business system. Request a detailed scope review.","description"),features:englishBySlug.get(x.slug)?.features||englishTemplateFeatures(x.slug,[])}:x));
