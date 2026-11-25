@@ -529,14 +529,14 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         <div className="build-hero-art">
           <img src={siteConfig.theme?.heroImageUrl || "/images/atsh-hero.jpg"} alt={copy("heroImageAlt")} />
           <div className="hero-art-caption"><span>ATSH AI</span><span>{copy("heroBrandLine")}</span></div>
-          <div className="hero-price-card">
+          {copy("heroEstimateVisible")!=="false"&&(()=>{const estimate=(key:string,fallback:number)=>{const raw=copy(key).trim();const n=Number(raw);return raw&&Number.isFinite(n)&&n>=0?n:fallback;};const packagePrice=estimate("heroEstimatePackagePrice",visiblePackages.find(item=>item.id==="multi")?.price??2500);const identityPrice=estimate("heroEstimateIdentityPrice",3500);const hostingPrice=estimate("heroEstimateHostingPrice",600);return <div className="hero-price-card">
             <div className="price-card-top"><span className="status-dot" /> {copy("heroPriceLabel")}</div>
-            <div className="price-preview-line"><span>{visiblePackages.find((item) => item.id === "multi")?.name ?? copy("priceSummaryPackageFallback")}</span><b>{money(visiblePackages.find((item) => item.id === "multi")?.price ?? 2500)}</b></div>
-            <div className="price-preview-line"><span>{copy("heroIdentityLine")}</span><b>{money(3500)}</b></div>
-            <div className="price-preview-line"><span>{copy("heroHostingLine")}</span><b>{money(600)} / {copy("yearUnit")}</b></div>
-            <div className="price-preview-total"><span>{copy("heroTotalLabel")} {vatRate}%</span><strong>{money(((visiblePackages.find((item) => item.id === "multi")?.price ?? 2500) + 3500 + 600) * (1 + vatRate / 100))}</strong></div>
+            <div className="price-preview-line"><span>{copy("heroEstimatePackageName") || (visiblePackages.find((item) => item.id === "multi")?.name ?? copy("priceSummaryPackageFallback"))}</span><b>{money(packagePrice)}</b></div>
+            <div className="price-preview-line"><span>{copy("heroIdentityLine")}</span><b>{money(identityPrice)}</b></div>
+            <div className="price-preview-line"><span>{copy("heroHostingLine")}</span><b>{money(hostingPrice)} / {copy("yearUnit")}</b></div>
+            <div className="price-preview-total"><span>{copy("heroTotalLabel")} {vatRate}%</span><strong>{money((packagePrice + identityPrice + hostingPrice) * (1 + vatRate / 100))}</strong></div>
             <small>{copy("heroPriceFootnote")}</small>
-          </div>
+          </div>;})()}
         </div>
       </section>
 
