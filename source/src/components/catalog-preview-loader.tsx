@@ -25,7 +25,7 @@ export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;loc
      setItem(entry&&entry.published!==false&&!entry.archived?(fromHome?{...entry,previewHtml:chosen&&typeof html==="string"?html:undefined}:entry):undefined);
    }).catch(()=>{if(active)setItem(undefined)}).finally(()=>{if(active)setReady(true)});
    return()=>{active=false};
- },[slug]);
+ },[slug,locale]);
  if(!ready&&!item)return <main lang={locale} dir={en?"ltr":"rtl"} style={{padding:30}}>{t("جارٍ تحميل المعاينة…","Loading interactive demo…")}</main>;
  if(!item)return <main lang={locale} dir={en?"ltr":"rtl"} style={{padding:30}}><h1>{t("النظام المخصص غير متاح","Demo unavailable")}</h1><Link href={`${base}/catalog`}>{t("العودة إلى المعرض","Back to catalog")}</Link></main>;
  // A persisted catalog entry can contain an older, shortened module list.
@@ -39,6 +39,6 @@ export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;loc
     <a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginInlineStart:14,color:"#174e83",fontWeight:700,textDecoration:"underline"}}>{t("افتح النسخة الخارجية ↗","Open external demo ↗")}</a>
     <small style={{display:"block",color:"#64748b",marginTop:5}}>{t("الرابط يُدار من لوحة التحكم وقد يفتح موقعًا خارجيًا مستقلًا عن ATSH AI.","The linked demo is managed by ATSH AI and may open an external website.")}</small>
   </div>}
-  <SectorPreview previewHtml={item.previewHtml} locale={locale} template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} demoSlug={interactiveDemoSlug(item.slug,item.demoSlug)} pricedAddons={item.pricedAddons??[]} basePrice={item.basePrice??null} />
+  <SectorPreview key={item.slug+":"+(item.previewHtml||"")} previewHtml={item.previewHtml} locale={locale} template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} demoSlug={interactiveDemoSlug(item.slug,item.demoSlug)} pricedAddons={item.pricedAddons??[]} basePrice={item.basePrice??null} />
  </>;
 }
