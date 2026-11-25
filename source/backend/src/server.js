@@ -125,6 +125,8 @@ app.use("/api/customer/auth/project-drafts",express.raw({type:["image/png","imag
 app.use("/api/internal/verified-payments",express.raw({type:"application/json",limit:"16kb"}));
 // Allow a wider structured sector catalog while keeping other JSON endpoints tightly bounded.
 app.use("/api/admin/pages/catalog",express.json({limit:"1mb"}));
+app.use(["/api/admin/pages/home","/api/admin/page-drafts/home"],express.json({limit:"1mb"}));
+const validFeaturedHtml=content=>{const files=content?.featuredSystemHtml;if(files===undefined)return true;if(!files||typeof files!=="object"||Array.isArray(files)||Object.keys(files).length>4)return false;return Object.entries(files).every(([slug,entry])=>/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)&&entry&&typeof entry.html==="string"&&Buffer.byteLength(entry.html,"utf8")<=200*1024&&typeof entry.name==="string"&&entry.name.length<=255);};
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 const isolatedCiRate=process.env.ATSH_CI_TEST_RATE_LIMIT==="true"&&process.env.NODE_ENV!=="production";
@@ -558,7 +560,14 @@ app.get("/api/site-content/:slug", route(async(req,res)=>{
     pool.query("SELECT slug,locale,content,updated_at FROM site_pages WHERE slug=$1 AND locale=$2 AND is_published=true",[req.params.slug,locale]),
     pool.query("SELECT theme,vat_rate FROM site_settings WHERE id=1")
   ]);
-  res.json({page:page.rows[0]||null,theme:settings.rows[0]?.theme||null,vatRate:Number(settings.rows[0]?.vat_rate??14)});
+  const publishedPage=page.rows[0]||null;
+  if(req.params.slug==="catalog"&&Array.isArray(publishedPage?.content?.items)){
+    publishedPage.content={...publishedPage.content,items:publishedPage.content.items.map(item=>{
+      if(!item||typeof item!=="object"||item.published!==false&&!item.archived)return item;
+      const {previewHtml,previewHtmlName,...rest}=item;return rest;
+    })};
+  }
+  res.json({page:publishedPage,theme:settings.rows[0]?.theme||null,vatRate:Number(settings.rows[0]?.vat_rate??14)});
 }));
 app.get("/api/site-pages",route(async(req,res)=>{
   const locale=req.query.locale==="en"?"en":"ar";
@@ -1138,6 +1147,7 @@ app.put("/api/admin/page-drafts/:slug",requireAdmin,requirePermission("content")
  if(!/^[a-z0-9-]{1,100}$/.test(req.params.slug))return res.status(400).json({error:"Invalid page"});
  const parsed=z.object({locale:z.enum(["ar","en"]),content:z.record(z.string(),z.unknown())}).strict().safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid draft"});
+ if(req.params.slug==="home"&&!validFeaturedHtml(parsed.data.content))return res.status(400).json({error:"Invalid featured HTML files"});
  const saved=await pool.query("INSERT INTO site_page_drafts(slug,locale,content,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING slug,locale,updated_at",[req.params.slug,parsed.data.locale,JSON.stringify(parsed.data.content),req.admin.email]);
  res.json({draft:saved.rows[0]});
 }));
@@ -1165,6 +1175,12 @@ app.patch("/api/admin/pages/:slug",requireAdmin,requirePermission("content"),rou
   if(!/^[a-z0-9-]{1,100}$/.test(req.params.slug))return res.status(400).json({error:"Invalid page"});
   const parsed=z.object({locale:z.string().regex(/^[a-z]{2}(-[A-Z]{2})?$/).default("ar"),content:z.record(z.string(),z.unknown()),isPublished:z.boolean().default(true),syncMarketing:z.boolean().optional(),expectedUpdatedAt:z.string().datetime({offset:true}).nullable().optional()}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"Invalid page content",details:parsed.error.issues});
+  if(req.params.slug==="catalog"&&Array.isArray(parsed.data.content.items)){
+    for(const item of parsed.data.content.items){
+      if(item?.previewHtml!==undefined&&(typeof item.previewHtml!=="string"||Buffer.byteLength(item.previewHtml,"utf8")>200*1024))return res.status(400).json({error:"Invalid HTML preview or file exceeds 200 KB"});
+    }
+  }
+  if(req.params.slug==="home"&&!validFeaturedHtml(parsed.data.content))return res.status(400).json({error:"Invalid featured HTML files"});
   const marketingKeys=["marketingHeroTitle","marketingHeroSubtitle","marketingCatalogTitle",...Array.from({length:6},(_,i)=>"marketingCatalogBenefit"+(i+1))];
   const target=parsed.data.locale==="ar"?"en":"ar";
   let translated=null;

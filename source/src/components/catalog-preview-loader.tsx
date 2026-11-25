@@ -5,7 +5,7 @@ import SectorPreview from "@/components/sector-preview";
 import Link from "next/link";
 import {englishTemplateLabel} from "@/lib/sector-en";
 import { readPagePreview } from "@/lib/page-preview";
-type Item=SectorTemplate & {published?:boolean;archived?:boolean;previewUrl?:string;demoSlug?:string;pricedAddons?:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>;basePrice?:number|null};
+type Item=SectorTemplate & {published?:boolean;archived?:boolean;previewUrl?:string;previewHtml?:string;demoSlug?:string;pricedAddons?:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>;basePrice?:number|null};
 export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;locale?:"ar"|"en"}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
  const [item,setItem]=useState<Item|undefined>(undefined);
  const [ready,setReady]=useState(false);
@@ -14,13 +14,15 @@ export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;loc
    const preview=readPagePreview("catalog",locale);
    const previewItem=(preview?.content?.items as Item[]|undefined)?.find(x=>x.slug===slug);
    if(previewItem){setItem(previewItem);setReady(true);return()=>{active=false};}
-   fetch("/api/site-content/catalog",{cache:"no-store"}).then(async r=>r.ok?r.json():null).then(data=>{
+   const fromHome=new URLSearchParams(window.location.search).get("featuredHome")==="1";
+   Promise.all([fetch("/api/site-content/catalog",{cache:"no-store"}).then(async r=>r.ok?r.json():null),fromHome?fetch("/api/site-content/home?locale=ar",{cache:"no-store"}).then(async r=>r.ok?r.json():null):Promise.resolve(null)]).then(([data,home])=>{
      if(!active)return;
      const list=data?.page?.content?.items;
      const entry=Array.isArray(list)?list.find((x:Item)=>x?.slug===slug):undefined;
      // Fail closed when a page or catalog entry is unpublished/unavailable.
      // Do not expose an old local fallback after an admin has hidden a demo.
-     setItem(entry&&entry.published!==false&&!entry.archived?entry:undefined);
+     const config=home?.page?.content;const chosen=Array.isArray(config?.featuredSystemSlugs)?config.featuredSystemSlugs.includes(slug):Array.isArray(list)&&list.filter((x:Item)=>x?.published!==false&&!x?.archived).slice(0,4).some((x:Item)=>x.slug===slug);const html=config?.featuredSystemHtml?.[slug]?.html;
+     setItem(entry&&entry.published!==false&&!entry.archived?(fromHome?{...entry,previewHtml:chosen&&typeof html==="string"?html:undefined}:entry):undefined);
    }).catch(()=>{if(active)setItem(undefined)}).finally(()=>{if(active)setReady(true)});
    return()=>{active=false};
  },[slug]);
@@ -37,6 +39,6 @@ export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;loc
     <a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginInlineStart:14,color:"#174e83",fontWeight:700,textDecoration:"underline"}}>{t("افتح النسخة الخارجية ↗","Open external demo ↗")}</a>
     <small style={{display:"block",color:"#64748b",marginTop:5}}>{t("الرابط يُدار من لوحة التحكم وقد يفتح موقعًا خارجيًا مستقلًا عن ATSH AI.","The linked demo is managed by ATSH AI and may open an external website.")}</small>
   </div>}
-  <SectorPreview locale={locale} template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} demoSlug={interactiveDemoSlug(item.slug,item.demoSlug)} pricedAddons={item.pricedAddons??[]} basePrice={item.basePrice??null} />
+  <SectorPreview previewHtml={item.previewHtml} locale={locale} template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} demoSlug={interactiveDemoSlug(item.slug,item.demoSlug)} pricedAddons={item.pricedAddons??[]} basePrice={item.basePrice??null} />
  </>;
 }

@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
+import { isolatedDemoHtml } from "@/lib/sector-catalog";
 import { createPagePreviewUrl } from "@/lib/page-preview";
 import { sectorTemplates, interactiveDemoPaths, type SectorTemplate } from "@/lib/sector-catalog";
 import { normalizeCatalogSectors, defaultCatalogPlacements, resolvePlacement, validCatalogId, canRemoveSector, canRemoveSubcategory, type CatalogSector } from "@/lib/catalog-sectors";
 
 type PricedAddon={code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
-type CatalogItem = SectorTemplate & {published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; demoSlug?:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[];sectorId?:string;subcategoryId?:string};
+type CatalogItem = SectorTemplate & {previewHtml?:string;previewHtmlName?:string;published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; demoSlug?:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[];sectorId?:string;subcategoryId?:string};
 const defaultPricedAddons=():PricedAddon[]=>[
  {code:"extra_page",name:"صفحة إضافية (لكل صفحة)",price:1000,pricingType:"fixed"},
  {code:"domain",name:"دومين (سنة)",price:1000,pricingType:"yearly"},
@@ -23,8 +24,10 @@ export default function CatalogManager() {
   const [draft,setDraft]=useState<CatalogItem>(empty());
   const [originalSlug,setOriginalSlug]=useState("");
   const [previewUrlLocal,setPreviewUrlLocal]=useState("");
+  const [htmlPreview,setHtmlPreview]=useState(false);
+  const goToEditor=()=>requestAnimationFrame(()=>{const el=document.getElementById("catalog-item-editor");el?.scrollIntoView({block:"start"});el?.focus({preventScroll:true});});
   const [previewDevice,setPreviewDevice]=useState<"desktop"|"mobile">("desktop");
-  const showLivePreview=()=>{const slug=draft.slug.trim()||originalSlug;if(!slug)return;const url=createPagePreviewUrl({slug:"catalog",locale:"ar",content:{items:[...items.filter(x=>x.slug!==originalSlug&&x.slug!==slug),{...draft,slug,published:true,archived:false}]}});setPreviewUrlLocal(`/catalog/${encodeURIComponent(slug)}${url.slice(url.indexOf("?"))}`);};
+  const showLivePreview=()=>{if(draft.previewHtml){setPreviewUrlLocal("");setHtmlPreview(true);requestAnimationFrame(()=>document.getElementById("catalog-html-preview")?.scrollIntoView({block:"start"}));return;}const slug=draft.slug.trim()||originalSlug;if(!slug)return;const url=createPagePreviewUrl({slug:"catalog",locale:"ar",content:{items:[...items.filter(x=>x.slug!==originalSlug&&x.slug!==slug),{...draft,slug,published:true,archived:false}]}});setPreviewUrlLocal(`/catalog/${encodeURIComponent(slug)}${url.slice(url.indexOf("?"))}`);};
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState("");
   const [error,setError]=useState("");
@@ -65,6 +68,17 @@ export default function CatalogManager() {
     }catch(e){setError(e instanceof Error?e.message:"فشل رفع الصورة.");}
     finally{setUploading(false);event.target.value="";}
   };
+  const uploadHtml=async(event:ChangeEvent<HTMLInputElement>)=>{
+    const input=event.currentTarget,file=input.files?.[0];input.value="";
+    if(!file)return;
+    setError("");setNotice("");
+    if(!/\.html?$/i.test(file.name)||file.size===0||file.size>200*1024){setError("اختر ملف HTML مستقلًا بحجم لا يتجاوز 200 كيلوبايت.");return;}
+    setUploading(true);
+    try{const html=await file.text();if(!html.trim())throw Error("ملف HTML فارغ.");
+      setDraft(d=>({...d,previewHtml:html,previewHtmlName:file.name.slice(0,255)}));setHtmlPreview(false);setPreviewUrlLocal("");
+      setNotice("تم تجهيز الملف. عاينه ثم احفظ النظام لتطبيقه.");
+    }catch(e){setError(e instanceof Error?e.message:"تعذر قراءة الملف.");}finally{setUploading(false);}
+  };
   const saveAll=async(next:CatalogItem[],message:string,nextSectors:CatalogSector[]=sectors)=>{
     setBusy(true);setError("");setNotice("");
     try{
@@ -90,8 +104,9 @@ export default function CatalogManager() {
     if(updated.subcategoryId&&!placement.subcategory){setError("اختر تصنيفًا فرعيًا تابعًا لهذا القطاع.");return;}
     updated.category=placement.subcategory?.name||placement.sector.name;
     const next=originalSlug?items.map(x=>x.slug===originalSlug?updated:x):[...items,updated];
+    if(new Blob([JSON.stringify({items:next,sectors})]).size>900*1024){setError("حجم المعرض تجاوز الحد المسموح. استخدم ملف HTML أصغر.");return;}
     if(await saveAll(next,"تم حفظ النظام المخصص وتحديث حالته.")){
-      setDraft(empty());setOriginalSlug("");
+      setDraft(empty());setOriginalSlug("");setHtmlPreview(false);setPreviewUrlLocal("");
     }
   };
   const applyDemoPrices=async()=>{
@@ -106,7 +121,7 @@ export default function CatalogManager() {
     if(!window.confirm("استيراد نماذج توضيحية ناقصة بدون استبدال بياناتك أو أسعارك؟"))return;
     await saveAll([...items,...starter],"تم استيراد نماذج توضيحية مبدئية. لا تمثل أنظمة تجارية جاهزة.");
   };
-  const edit=(item:CatalogItem)=>{const place=resolvePlacement(item,sectors);setDraft({...item,sectorId:place.sector?.id,subcategoryId:place.subcategory?.id});setOriginalSlug(item.slug);setError("");setNotice("");};
+  const edit=(item:CatalogItem)=>{const place=resolvePlacement(item,sectors);setDraft({...item,sectorId:place.sector?.id,subcategoryId:place.subcategory?.id});setOriginalSlug(item.slug);setError("");setNotice("");setHtmlPreview(false);setPreviewUrlLocal("");goToEditor();};
   const update=(key:keyof CatalogItem,value:unknown)=>setDraft(d=>({...d,[key]:value}));
   const toggle=async(item:CatalogItem,patch:Partial<CatalogItem>)=>saveAll(items.map(x=>x.slug===item.slug?{...x,...patch}:x),"تم تحديث حالة النظام المخصص.");
   const archive=async(item:CatalogItem)=>{
@@ -187,7 +202,7 @@ export default function CatalogManager() {
       {notice&&<p role="status" className="success-message">{notice}</p>}{error&&<p role="alert" className="error-message">{error}</p>}
       {!ready?<p>جارٍ تحميل الأنظمة المخصصة…</p>:<>
         <div className="admin-actions">
-          <button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());}}>+ نظام مخصص جديد</button>
+          <button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());setHtmlPreview(false);setPreviewUrlLocal("");goToEditor();}}>+ نظام مخصص جديد</button>
           <button type="button" className="button button-outline" disabled={busy} onClick={()=>void importStarter()}>استيراد النماذج الأربعة المبدئية دون تكرار</button>
           <button type="button" className="button button-outline" disabled={busy} onClick={()=>void applyDemoPrices()}>تطبيق الأسعار التجريبية على الأنظمة المخصصة الحالية (٥٠٠٠ + إضافات ١٠٠٠)</button>
           <a className="inline-add" href="/catalog" target="_blank" rel="noreferrer">عرض المعرض ↗</a>
@@ -248,7 +263,8 @@ export default function CatalogManager() {
         <button className="button" disabled={busy}>إضافة التصنيف</button>
       </form>
     </section>}
-    {ready&&<section className="admin-content-card"><h2>{originalSlug?"تعديل النظام المخصص":"إضافة نظام مخصص"}</h2>
+    {ready&&<section id="catalog-item-editor" tabIndex={-1} className="admin-content-card"><h2>{originalSlug?"تعديل النظام المخصص":"إضافة نظام مخصص"}</h2>
+      {error&&<p role="alert" className="error-message">{error}</p>}{notice&&<p role="status" className="success-message">{notice}</p>}
       <form onSubmit={e=>void saveItem(e)} className="admin-form-grid">
         {field("الاسم",draft.name,v=>update("name",v))}
         <label className="admin-field">الرابط (Slug)<input required disabled={Boolean(originalSlug)} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={draft.slug} onChange={e=>update("slug",e.target.value.toLowerCase())}/></label>
@@ -275,6 +291,12 @@ export default function CatalogManager() {
           {uploading&&<small>جارٍ رفع الصورة…</small>}
           {draft.imageUrl&&<img src={draft.imageUrl} alt="معاينة صورة النظام المخصص" style={{maxWidth:230,maxHeight:155,objectFit:"contain",borderRadius:12}} />}
         </label>
+        <label className="admin-field">رفع أو استبدال ملف HTML للمعاينة (حتى 200 كيلوبايت)
+          <input type="file" accept=".html,.htm,text/html" disabled={busy||uploading} onChange={e=>void uploadHtml(e)}/>
+          <small>{draft.previewHtmlName||"المعاينة المدمجة الحالية ستظل كما هي حتى رفع ملف جديد."}</small>
+        </label>
+        <div className="admin-actions"><button type="button" className="button button-outline" disabled={uploading||busy} onClick={showLivePreview}>معاينة تفاعلية قبل الحفظ</button>{draft.previewHtml&&<button type="button" className="button button-outline" onClick={()=>{setDraft(d=>({...d,previewHtml:"",previewHtmlName:""}));setHtmlPreview(false);}}>إزالة ملف HTML والعودة للمعاينة المدمجة</button>}</div>
+        {htmlPreview&&draft.previewHtml&&<div id="catalog-html-preview" style={{gridColumn:"1 / -1"}}><div className="admin-actions"><button type="button" onClick={()=>setPreviewDevice("desktop")}>كمبيوتر</button><button type="button" onClick={()=>setPreviewDevice("mobile")}>موبايل</button><button type="button" onClick={()=>setHtmlPreview(false)}>إغلاق المعاينة</button></div><iframe title="معاينة HTML قبل الحفظ" srcDoc={isolatedDemoHtml(draft.previewHtml)} sandbox="allow-scripts allow-modals" referrerPolicy="no-referrer" style={{width:previewDevice==="mobile"?390:"100%",maxWidth:"100%",height:"65vh",border:0}}/></div>}
         {field("رابط النظام التفاعلي المنشور HTTPS — الصق رابط المعاينة هنا",draft.previewUrl,v=>update("previewUrl",v))}
         <label className="admin-field">سعر بيع النظام المخصص الأساسي (جنيه) — قبل إضافات محرك التسعير<input type="number" min="0" step="0.01" value={draft.basePrice??""} onChange={e=>update("basePrice",e.target.value===""?null:Number(e.target.value))}/></label>
         <p className="field-hint" style={{gridColumn:"1 / -1"}}>تُدار الإضافات وأسعارها من قسم الإضافات المركزي في لوحة الإدارة؛ لا توجد أسعار منفصلة لهذا النظام.</p>
