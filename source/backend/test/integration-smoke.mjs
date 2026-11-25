@@ -152,6 +152,14 @@ try{
   const response=await fetch(base+"/api/internal/verified-payments",{method:"POST",headers:{"content-type":"application/json","x-atsh-timestamp":timestamp,"x-atsh-signature":signed},body:raw});
   return {status:response.status,result:await response.json()};
  };
+ const blockedBridge=await bridge(eventFor(50000,"ci-blocked-"+randomUUID()));
+ assert.equal(blockedBridge.status,409,"Gateway cannot bypass release or payment method");
+ const methodsConfigured=await req(`/api/admin/commercial/quotes/${derived.result.quote.id}/payment-methods`,{method:"PUT",cookie:adminCookie,body:{methods:["xpay","cash"]}});
+ assert.equal(methodsConfigured.status,200,JSON.stringify(methodsConfigured));
+ const release=await req(`/api/admin/commercial/invoices/${targetInvoice.rows[0].id}/release`,{method:"PATCH",cookie:adminCookie,body:{released:true,milestone:"CI first installment"}});
+ assert.equal(release.status,200,JSON.stringify(release));
+ const sandboxDenied=await bridge(eventFor(50000,"cs_test_"+randomUUID()));
+ assert.equal(sandboxDenied.status,409,"Sandbox must not enter verified ledger");
  const partialBridge=await bridge(eventFor(50000,"ci-partial-"+randomUUID()));
  assert.equal(partialBridge.status,201,JSON.stringify(partialBridge));
  const during=await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id]);
@@ -160,6 +168,11 @@ try{
  assert.equal(settledBridge.status,201,JSON.stringify(settledBridge));
  const after=await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id]);
  assert.equal(after.rows[0].status,"paid");
+ const ciFinance=await req("/api/admin/commercial/finance/summary",{cookie:adminCookie});
+ assert.equal(ciFinance.status,200,JSON.stringify(ciFinance));
+ assert.ok(Number(ciFinance.result.totals.gross_paid_piasters)>=114000);
+ assert.equal(Number(ciFinance.result.totals.paid_piasters),Number(ciFinance.result.totals.gross_paid_piasters)-Number(ciFinance.result.totals.refunded_piasters));
+
  // Checkout: authenticated ownership, customer change request and staff resolution.
  const ownedQuote=await pool.query(`INSERT INTO commercial_quotes(customer_email,customer_account_id,status,items,total_piasters,currency,valid_until)
    VALUES($1,$2,'issued',$3::jsonb,22500,'EGP',now()+interval '12 days') RETURNING id`,
