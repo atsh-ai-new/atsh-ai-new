@@ -1,7 +1,7 @@
 name: ATSH Browser E2E (Desktop + Mobile)
 on:
   push:
-    branches: [atsh-platform-rebuild, main, customer-journey-unified-portal-v1, catalog-commerce-payment-ready-v1, fix/full-english-localization-20261118, integration/customer-v2-admin-stability-20261122, feature/unified-four-screens-20261122]
+    branches: [fix/automatic-device-language-20261125, atsh-platform-rebuild, main, customer-journey-unified-portal-v1, catalog-commerce-payment-ready-v1, fix/full-english-localization-20261118, integration/customer-v2-admin-stability-20261122, feature/unified-four-screens-20261122]
     paths:
       - 'source/e2e/**'
       - 'source/src/app/en/**'
@@ -18,6 +18,8 @@ on:
       - 'source/src/app/start/**'
       - 'source/src/app/page.tsx'
       - 'source/src/proxy.ts'
+      - 'source/src/lib/browser-locale.ts'
+      - 'source/src/components/language-switch.tsx'
       - 'source/src/app/layout.tsx'
       - 'source/src/components/customer-journey-hub.tsx'
       - 'source/src/lib/customer-workspace.ts'
@@ -94,6 +96,9 @@ jobs:
       - name: Browser flow on desktop and mobile
         working-directory: source
         run: npx playwright test --config playwright.config.ts e2e/customer-start.spec.ts e2e/customer-services-security.spec.ts e2e/admin-customer-services.spec.ts --project=desktop-chromium
+      - name: Device language negotiation on desktop and mobile
+        working-directory: source
+        run: npx playwright test --config playwright.config.ts e2e/device-language.spec.ts
       - name: Print API and frontend logs on browser failure
         if: failure()
         run: |
