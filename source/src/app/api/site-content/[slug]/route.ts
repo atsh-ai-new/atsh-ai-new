@@ -28,7 +28,7 @@ export async function GET(request: Request, context: RouteContext) {
   const locale = new URL(request.url).searchParams.get("locale");
   if (locale) target.searchParams.set("locale", locale);
   try {
-    const upstream = await fetch(target, { cache: "no-store", signal: AbortSignal.timeout(12000) });
+    const upstream = await fetch(target, { cache: "no-store", signal: AbortSignal.timeout(["home","catalog"].includes(slug)?120000:12000) });
     const payload = await upstream.arrayBuffer();
     return new Response(payload, {
       status: upstream.status,
