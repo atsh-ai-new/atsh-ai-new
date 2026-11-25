@@ -878,3 +878,34 @@ html:root body :is(input,textarea,select,button,option,optgroup)::placeholder{fo
 html:root body :is(input,textarea,select,button,option,optgroup){font-weight:700 !important;}
 html:root body :is(*):not(svg,svg *,i[class*="icon"],[class*="icon-font"])::before,html:root body :is(*):not(svg,svg *,i[class*="icon"],[class*="icon-font"])::after{font-weight:700 !important;}
 html:root body input::file-selector-button{font-weight:700 !important;}
+
+/* Desktop administration and team share the same compact header. */
+@media (min-width: 1024px) {
+  .admin-page .admin-topbar { flex-wrap: nowrap !important; gap: 8px !important; align-items: center !important; }
+  .admin-page .admin-topbar > div:first-of-type { flex: 1 1 auto; min-width: 0; }
+  .admin-page .admin-topbar h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 18px; }
+  .admin-page .admin-topbar > .atsh-social-inline-slot { flex: 0 0 auto !important; margin: 0; }
+  .admin-page .admin-topbar .admin-top-actions { flex-wrap: nowrap !important; flex: 0 1 auto; gap: 6px !important; white-space: nowrap; }
+  .admin-page .admin-topbar .admin-top-actions > * { flex-shrink: 0; }
+  .admin-page .admin-topbar .admin-identity { flex-shrink: 1; min-width: 0; }
+  .admin-page .admin-topbar .admin-identity > span:last-child { min-width: 0; }
+  .admin-page .admin-topbar .admin-identity strong { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .admin-page .admin-topbar .language-pill, .admin-page .admin-topbar .inline-add { padding: 6px 9px; }
+}
+
+/* Compact mobile header: title/social row, controls/account row. */
+@media (max-width: 1023px) {
+ .admin-page .admin-topbar { display:flex !important; flex-wrap:wrap !important; gap:5px 8px !important; padding:6px 8px !important; margin-bottom:6px; }
+ .admin-page .admin-topbar > .atsh-social-inline-slot { flex:0 0 auto !important; margin:0; }
+ .admin-page .admin-topbar > div:has(> h1) { flex:1 1 0 !important; min-width:0; }
+ .admin-page .admin-topbar h1 { font-size:16px !important; margin:0; line-height:1.3; }
+ .admin-page .admin-topbar .admin-top-actions { flex:1 0 100%; display:flex !important; flex-wrap:nowrap !important; justify-content:space-between !important; gap:4px !important; min-width:0; font-size:11px; }
+ .admin-page .admin-topbar .admin-top-actions > * { min-width:0; }
+ .admin-page .admin-topbar .admin-top-actions button { font-size:11px; padding:4px 5px; }
+ .admin-page .admin-topbar .admin-identity { flex:1 1 auto; gap:4px; padding-inline-start:4px; min-width:0; }
+ .admin-page .admin-topbar .admin-identity > span:last-child { min-width:0; }
+ .admin-page .admin-topbar .admin-identity strong { font-size:10px !important; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+ .admin-page .admin-topbar .admin-avatar { width:25px; height:25px; flex:0 0 25px; font-size:11px; }
+ .admin-page .admin-topbar .language-pill { padding:4px 6px; font-size:10px; }
+ .admin-page .admin-topbar .admin-identity small { display:none; }
+}
