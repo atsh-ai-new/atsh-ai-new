@@ -25,6 +25,7 @@ export default function SectorPreview({template,demoSlug,previewHtml,pricedAddon
   const [customTitle,setCustomTitle]=useState("");
   const [showForm,setShowForm]=useState(false);
   useEffect(()=>{
+    if(new URLSearchParams(window.location.search).get("fullscreen")==="1")return;
     const guest=loadGuestWorkspace();
     if(guest.sectorSlug===template.slug){
       setSelectedAddons(Array.isArray(guest.sectorAddonCodes)?guest.sectorAddonCodes.filter(code=>pricedAddons.some(item=>item.code===code)):[]);
@@ -54,6 +55,7 @@ export default function SectorPreview({template,demoSlug,previewHtml,pricedAddon
     }catch{setLogoError("تعذر حفظ الشعار في الحساب. المعاينة المحلية ما زالت تعمل.");}
   };
   useEffect(()=>{
+    if(new URLSearchParams(window.location.search).get("fullscreen")==="1")return;
     let active=true;
     let url:string|null=null;
     void loadAccountWorkspace().then(account=>{
@@ -104,7 +106,7 @@ export default function SectorPreview({template,demoSlug,previewHtml,pricedAddon
         </>}
       </section>
     </div>}
-    {!embedded && <details id="customize" style={{marginTop:24,background:"#f8fafc",border:"1px solid #dce5f0",borderRadius:14,padding:14}}>
+    {!embedded && !immersive && <details id="customize" style={{marginTop:24,background:"#f8fafc",border:"1px solid #dce5f0",borderRadius:14,padding:14}}>
       <summary style={{cursor:"pointer",fontWeight:800,color:"#203958",padding:10}}>{t("اختر هذا النظام وخصص طلبك: الشعار والاسم والألوان والإضافات","Select and customize: logo, name, colors and add-ons")}</summary>
       <div style={{marginTop:18}}>
     <section style={{background:"white",borderRadius:18,border:"1px solid #e2e8f0",padding:20,marginBottom:18}}>
