@@ -1,4 +1,5 @@
 import pg from "pg";
+import {migrateDemoAssets} from "../src/site-demo-assets.js";
 import jwt from "jsonwebtoken";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
@@ -352,6 +353,18 @@ try{
  const retained=await req("/api/admin/home-featured",{method:"PATCH",cookie:adminCookie,body:{slugs:["eyadaty"],files:{eyadaty:storedHome}}});
  assert.equal(retained.status,200);
  assert.equal((await req("/api/site-content/home/demo/eyadaty")).result.html,directHomeHtml);
+ // Simulate an older persisted draft in the disposable CI database.
+ const legacyDraft={title:"Legacy migration test",featuredSystemSlugs:["eyadaty"],featuredSystemHtml:{eyadaty:{html:homeHtml,name:"legacy.html"}}};
+ await pool.query("INSERT INTO site_page_drafts(slug,locale,content,updated_by) VALUES('home','ar',$1,'ci') ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content",[JSON.stringify(legacyDraft)]);
+ await migrateDemoAssets(pool);
+ const migrated=(await pool.query("SELECT content FROM site_page_drafts WHERE slug='home' AND locale='ar'")).rows[0].content;
+ assert.equal(migrated.title,legacyDraft.title);
+ assert.equal(migrated.featuredSystemHtml.eyadaty.html,undefined);
+ assert.equal((await pool.query("SELECT html FROM site_demo_assets WHERE id=$1",[migrated.featuredSystemHtml.eyadaty.assetId])).rows[0].html,homeHtml);
+ await migrateDemoAssets(pool);
+ assert.deepEqual((await pool.query("SELECT content FROM site_page_drafts WHERE slug='home' AND locale='ar'")).rows[0].content,migrated);
+ await pool.query("DELETE FROM site_page_drafts WHERE slug='home' AND locale='ar'");
+ console.log("PASS: legacy draft migration preserves file bytes and is idempotent");
  console.log("PASS: durable demo asset storage, lightweight admin payload, permissions and reference-only save");
  console.log("PASS: lightweight metadata and independent on-demand HTML payloads");
  console.log("PASS: independent featured homepage publishing, public readback and unchanged gallery");
