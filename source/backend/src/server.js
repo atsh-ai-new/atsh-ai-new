@@ -779,6 +779,32 @@ app.post("/api/admin/login",rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?
   res.cookie(cookie,token,cookieOptions).json({authenticated:true,email:session.email,role:session.role});
 }));
 app.post("/api/admin/logout",(_req,res)=>{res.clearCookie(cookie,cookieOptions);res.json({authenticated:false});});
+await pool.query(`CREATE TABLE IF NOT EXISTS visitor_analytics_sessions (
+ id uuid PRIMARY KEY, first_seen timestamptz NOT NULL DEFAULT now(), last_seen timestamptz NOT NULL DEFAULT now(), source text NOT NULL, device text NOT NULL);
+ CREATE INDEX IF NOT EXISTS visitor_analytics_last_seen ON visitor_analytics_sessions(last_seen);
+ CREATE TABLE IF NOT EXISTS visitor_analytics_daily (day date NOT NULL, visitor_id uuid NOT NULL, path text NOT NULL, views integer NOT NULL DEFAULT 0, PRIMARY KEY(day,visitor_id,path));`);
+app.post("/api/visitor/analytics",rateLimit({windowMs:60000,limit:300,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
+ if(req.cookies[cookie]) return res.sendStatus(204);
+ const {id,path,source,device,view}=req.body??{};
+ if(typeof id!=="string"||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)||typeof path!=="string"||path.length>200||!/^\/(?!\/)/.test(path)||/[?#]/.test(path)||/^\/(?:en\/)?(?:admin|team|customer|account|api|login)(?:\/|$)/i.test(path))return res.status(400).json({error:"Invalid analytics event"});
+ const src=["Google","Facebook","Instagram","YouTube","Other","Direct"].includes(source)?source:"Other";
+ const dev=device==="mobile"?"mobile":"desktop";
+ await pool.query(`WITH session AS (INSERT INTO visitor_analytics_sessions(id,source,device) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET last_seen=now() RETURNING id)
+ INSERT INTO visitor_analytics_daily(day,visitor_id,path,views) SELECT (now() AT TIME ZONE 'Africa/Cairo')::date,id,$4,$5 FROM session ON CONFLICT(day,visitor_id,path) DO UPDATE SET views=visitor_analytics_daily.views+EXCLUDED.views`,[id,src,dev,path,view===true?1:0]);
+ res.sendStatus(204);
+}));
+app.get("/api/admin/visitor-analytics",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{
+ const result=await pool.query(`WITH today AS (SELECT (now() AT TIME ZONE 'Africa/Cairo')::date AS d)
+ SELECT (SELECT count(*)::int FROM visitor_analytics_sessions WHERE last_seen>now()-interval '90 seconds') AS online,
+ (SELECT count(DISTINCT visitor_id)::int FROM visitor_analytics_daily,today WHERE day=d) AS daily,
+ (SELECT count(DISTINCT visitor_id)::int FROM visitor_analytics_daily,today WHERE day>=date_trunc('month',d)::date) AS monthly,
+ (SELECT count(*)::int FROM visitor_analytics_sessions) AS total,
+ (SELECT coalesce(json_agg(x),'[]'::json) FROM (SELECT days.d::date::text AS day,count(DISTINCT visitor_id)::int AS visitors FROM today CROSS JOIN generate_series(today.d-6,today.d,interval '1 day') AS days(d) LEFT JOIN visitor_analytics_daily v ON v.day=days.d::date GROUP BY days.d ORDER BY days.d) x) AS week,
+ (SELECT coalesce(json_agg(x),'[]'::json) FROM (SELECT path,sum(views)::int AS views FROM visitor_analytics_daily,today WHERE day>=d-6 GROUP BY path ORDER BY views DESC LIMIT 10) x) AS pages,
+ (SELECT coalesce(json_agg(x),'[]'::json) FROM (SELECT source AS label,count(*)::int AS visitors FROM visitor_analytics_sessions GROUP BY source ORDER BY visitors DESC) x) AS sources,
+ (SELECT coalesce(json_agg(x),'[]'::json) FROM (SELECT device AS label,count(*)::int AS visitors FROM visitor_analytics_sessions GROUP BY device) x) AS devices`);
+ res.set("Cache-Control","no-store").json(result.rows[0]);
+}));
 app.get("/api/admin/me",requireAdmin,(req,res)=>res.json({authenticated:true,email:req.admin.email,role:req.admin.role,permissions:req.admin.permissions}));
 app.get("/api/admin/notifications",requireAdmin,route(async(req,res)=>{
  const table=await pool.query("SELECT to_regclass('public.platform_notifications') AS name");
