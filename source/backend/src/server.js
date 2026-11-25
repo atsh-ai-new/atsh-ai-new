@@ -1607,19 +1607,28 @@ app.get("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermis
  const r=await pool.query('SELECT id,invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by,created_at FROM commercial_invoice_payments WHERE invoice_id=$1 ORDER BY paid_at,id',[id]);res.json({payments:r.rows});
 }));
 app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
- const id=Number(req.params.id),{amountPiasters,paidAt,provider,providerReference}=req.body||{};
+ const id=Number(req.params.id),{amountPiasters,paidAt,provider,providerReference,paymentMethod,receiptNote}=req.body||{};
  if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(amountPiasters)||amountPiasters<1||typeof provider!=='string'||!['manual_verified','gateway_verified'].includes(provider)||typeof providerReference!=='string'||!providerReference.trim()||providerReference.length>180||typeof paidAt!=='string'||Number.isNaN(Date.parse(paidAt)))return res.status(400).json({error:'Invalid verified payment'});
  // Gateway verification requires a server-side provider callback. Manual entries require owner/admin evidence review.
  if(provider==='gateway_verified')return res.status(400).json({error:'Gateway payments must be recorded by verified server webhook'});
+ if(!['cash','bank_transfer','instapay','wallet_direct'].includes(paymentMethod)|| (receiptNote!==undefined&&(typeof receiptNote!=='string'||receiptNote.length>2000)))return res.status(400).json({error:'Invalid manual payment method or receipt'});
  const client=await pool.connect();try{await client.query('BEGIN');
+ const locked=await client.query('SELECT q.id,q.status FROM commercial_quotes q JOIN commercial_invoices i ON i.quote_id=q.id WHERE i.id=$1 FOR UPDATE OF q',[id]);
+ if(!locked.rowCount||locked.rows[0].status!=='accepted'){await client.query('ROLLBACK');return res.status(409).json({error:'Accepted quote required'});}
+ const quoteId=locked.rows[0].id;
+ const contract=await client.query("SELECT id FROM customer_contracts WHERE quote_id=$1 AND status='signed' LIMIT 1",[quoteId]);
+ const revision=await client.query("SELECT id FROM commercial_invoice_revision_requests WHERE quote_id=$1 AND status='issued' LIMIT 1",[quoteId]);
+ const preferences=await client.query("SELECT methods FROM commercial_payment_preferences WHERE quote_id=$1",[quoteId]);
+ const instruction=await client.query("SELECT enabled FROM commercial_payment_instructions WHERE method=$1",[paymentMethod]);
+ if(!contract.rowCount||revision.rowCount||!preferences.rows[0]?.methods?.includes(paymentMethod)||instruction.rows[0]?.enabled!==true){await client.query('ROLLBACK');return res.status(409).json({error:'Contract, revision or payment method does not permit collection'});}
  const inv=await client.query('SELECT * FROM commercial_invoices WHERE id=$1 FOR UPDATE',[id]);
- if(!inv.rowCount||inv.rows[0].status==='void'){await client.query('ROLLBACK');return res.status(409).json({error:'Invoice unavailable'});}
+ if(!inv.rowCount||(inv.rows[0].status==='void'||inv.rows[0].release_for_payment!==true)){await client.query('ROLLBACK');return res.status(409).json({error:'Invoice unavailable'});}
  const remaining=Number(inv.rows[0].amount_piasters)-Number(inv.rows[0].verified_paid_piasters);
  if(amountPiasters>remaining){await client.query('ROLLBACK');return res.status(409).json({error:'Payment exceeds remaining balance'});}
- const payment=await client.query('INSERT INTO commercial_invoice_payments(invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[id,amountPiasters,paidAt,provider,providerReference.trim(),req.admin.email]);
+ const payment=await client.query('INSERT INTO commercial_invoice_payments(invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by,payment_method,receipt_note) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[id,amountPiasters,paidAt,provider,providerReference.trim(),req.admin.email,paymentMethod,receiptNote||null]);
  const newPaid=Number(inv.rows[0].verified_paid_piasters)+amountPiasters;
  await client.query('UPDATE commercial_invoices SET verified_paid_piasters=$1,status=$2 WHERE id=$3',[newPaid,newPaid===Number(inv.rows[0].amount_piasters)?'paid':'part_paid',id]);
- await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.payment.manually_verified','commercial_invoice',$2,$3::jsonb)",[req.admin.email,String(id),JSON.stringify({amountPiasters,paymentId:payment.rows[0].id,providerReference:providerReference.trim()})]);
+ await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.payment.manually_verified','commercial_invoice',$2,$3::jsonb)",[req.admin.email,String(id),JSON.stringify({amountPiasters,paymentId:payment.rows[0].id,providerReference:providerReference.trim(),paymentMethod})]);
  await queueJourneyEvent(client,"payment.verified",`payment.verified:${payment.rows[0].id}`,{invoiceId:id,paymentId:payment.rows[0].id,amountPiasters,invoiceStatus:newPaid===Number(inv.rows[0].amount_piasters)?'paid':'part_paid'});
  await advancePaidJourneyIfEligible(client,id);
  await client.query('COMMIT');res.status(201).json({payment:payment.rows[0],remainingPiasters:Number(inv.rows[0].amount_piasters)-newPaid});
