@@ -311,6 +311,17 @@ try{
  assert.notEqual(galleryPublic.result.page.content.items.find(x=>x.slug==="eyadaty").previewHtml,homePublic.result.page.content.featuredSystemHtml.eyadaty.html);
  const oversize=await req("/api/admin/pages/home",{method:"PATCH",cookie:adminCookie,body:{locale:"ar",isPublished:true,content:{...homeContent,featuredSystemHtml:{eyadaty:{html:"z".repeat(10*1024*1024+1),name:"oversize.html"}}}}});
  assert.equal(oversize.status,400,"Reject HTML above 10 MiB");
+ const directHomeHtml=homeHtml.replace("Home CI","Direct publisher CI");
+ const direct=await req("/api/admin/home-featured",{method:"PATCH",cookie:adminCookie,body:{slugs:["eyadaty"],files:{eyadaty:{html:directHomeHtml,name:"direct.html"}}}});
+ assert.equal(direct.status,200,JSON.stringify({status:direct.status,error:direct.result.error}));
+ const directPublic=await req("/api/site-content/home?locale=ar");
+ assert.equal(directPublic.result.page.content.featuredSystemHtml.eyadaty.html,directHomeHtml);
+ assert.deepEqual(directPublic.result.page.content,{...homeContent,featuredSystemHtml:{eyadaty:{html:directHomeHtml,name:"direct.html"}}});
+ const unchangedGallery=await req("/api/site-content/catalog?locale=ar");
+ assert.equal(unchangedGallery.result.page.content.items.find(x=>x.slug==="eyadaty").previewHtml,catalogHtml);
+ const invalidSelection=await req("/api/admin/home-featured",{method:"PATCH",cookie:adminCookie,body:{slugs:["not-a-system"],files:{}}});
+ assert.equal(invalidSelection.status,400);
+ console.log("PASS: independent featured homepage publishing, public readback and unchanged gallery");
  console.log("PASS: independent large homepage and gallery HTML save and public readback, oversize rejection");
  const nextCatalog={title:"كتالوج اختبار التكامل",sectors:[],items:[]};
  const firstCatalog=await req("/api/admin/pages/catalog",{method:"PATCH",cookie:adminCookie,
