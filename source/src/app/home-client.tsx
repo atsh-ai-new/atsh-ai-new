@@ -30,13 +30,13 @@ const builtInOptionCodes = new Set(["language", "logo", "brand", "writing", "seo
 
 function FeaturedLiveDemo({item,base,html}:{item:HomeCatalogItem;base:string;html?:string}){
  const host=useRef<HTMLDivElement>(null),frame=useRef<HTMLIFrameElement>(null);
- const [width,setWidth]=useState(0),[height,setHeight]=useState(800);
+ const [width,setWidth]=useState(320),[height,setHeight]=useState(800);
  const slug=interactiveDemoSlug(item.slug,item.demoSlug);
  const src=slug?interactiveDemoPaths[slug]:null;
  useEffect(()=>{const el=host.current;if(!el)return;const resize=()=>setWidth(el.clientWidth);resize();const observer=new ResizeObserver(resize);observer.observe(el);return()=>observer.disconnect();},[]);
- useEffect(()=>{const el=frame.current;if(!el||!src)return;const receive=(event:MessageEvent)=>{if(event.source!==el.contentWindow||event.origin!=="null"||event.data?.type!=="atsh-featured-demo-height")return;const n=Number(event.data.height);if(Number.isFinite(n)&&n>0)setHeight(Math.min(20000,Math.max(650,n)));};window.addEventListener("message",receive);return()=>window.removeEventListener("message",receive);},[src]);
+ useEffect(()=>{const el=frame.current;if(!el||(!src&&!html))return;const receive=(event:MessageEvent)=>{if(event.source!==el.contentWindow||event.origin!=="null"||event.data?.type!=="atsh-featured-demo-height")return;const n=Number(event.data.height);if(Number.isFinite(n)&&n>0)setHeight(Math.min(20000,Math.max(650,n)));};window.addEventListener("message",receive);return()=>window.removeEventListener("message",receive);},[src,html]);
  const scale=width/1200;
- return <div ref={host} style={{width:"100%",position:"relative",overflow:"hidden",borderRadius:10,background:"#f4f7fa",height:src||html?height*scale:undefined}}>{src||html?<iframe ref={frame} title={item.name} src={html?undefined:src+"?featured=1"} srcDoc={html?isolatedDemoHtml(html):undefined} loading="lazy" referrerPolicy="no-referrer" sandbox={html?"allow-scripts allow-modals":"allow-scripts allow-forms allow-modals"} scrolling="no" style={{position:"absolute",top:0,left:0,width:1200,height,transform:"scale("+scale+")",transformOrigin:"top left",border:0,display:"block"}}/>:<a className="button button-outline" href={base+"/catalog/"+encodeURIComponent(item.slug)+"?fullscreen=1"}>{item.name} ↗</a>}</div>;
+ return <div ref={host} style={{width:"100%",position:"relative",overflow:"hidden",borderRadius:10,background:"#f4f7fa",height:src||html?Math.max(180,height*scale):undefined}}>{src||html?<iframe ref={frame} title={item.name} src={html?undefined:src+"?featured=1"} srcDoc={html?isolatedDemoHtml(html):undefined} loading="eager" referrerPolicy="no-referrer" sandbox={html?"allow-scripts allow-modals":"allow-scripts allow-forms allow-modals"} scrolling="no" style={{position:"absolute",top:0,left:0,width:1200,height,transform:"scale("+scale+")",transformOrigin:"top left",border:0,display:"block"}}/>:<a className="button button-outline" href={base+"/catalog/"+encodeURIComponent(item.slug)+"?fullscreen=1&featuredHome=1"}>{item.name} ↗</a>}</div>;
 }
 export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly=false}:{locale?:"ar"|"en";configuratorOnly?:boolean;pricingOnly?:boolean}) {
   const isEnglish=locale==="en";
