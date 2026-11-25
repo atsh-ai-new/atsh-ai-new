@@ -82,13 +82,13 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
  }));
  router.get('/quotes/:id/payment-options',safe(async(req,res)=>{
   const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
-  const q=await pool.query("SELECT q.status, EXISTS(SELECT 1 FROM customer_contracts c WHERE c.quote_id=q.id AND c.status='signed') AS signed, EXISTS(SELECT 1 FROM commercial_invoice_revision_requests r WHERE r.quote_id=q.id AND r.status='issued') AS pending FROM commercial_quotes q WHERE q.id=$1 AND q.customer_account_id=$2",[id,req.customer.id]);
+  const q=await pool.query("SELECT q.status,q.currency, EXISTS(SELECT 1 FROM commercial_payment_preferences p WHERE p.quote_id=q.id AND 'xpay'=ANY(p.methods)) AS xpay_allowed, EXISTS(SELECT 1 FROM customer_contracts c WHERE c.quote_id=q.id AND c.status='signed') AS signed, EXISTS(SELECT 1 FROM commercial_invoice_revision_requests r WHERE r.quote_id=q.id AND r.status='issued') AS pending FROM commercial_quotes q WHERE q.id=$1 AND q.customer_account_id=$2",[id,req.customer.id]);
   if(!q.rowCount)return res.status(404).json({error:'Not found'});
   const allowed=q.rows[0].status==='accepted'&&q.rows[0].signed&&!q.rows[0].pending;
   const invoices=await pool.query("SELECT id,amount_piasters,verified_paid_piasters,due_at,status,milestone,release_for_payment FROM commercial_invoices WHERE quote_id=$1 AND status<>'void' ORDER BY id",[id]);
   const payable=allowed&&invoices.rows.some(x=>x.release_for_payment&&Number(x.amount_piasters)>Number(x.verified_paid_piasters));
   const methods=payable?await pool.query("SELECT i.method,i.instructions FROM commercial_payment_instructions i JOIN commercial_payment_preferences p ON i.method=ANY(p.methods) WHERE p.quote_id=$1 AND i.enabled=true ORDER BY i.method",[id]):{rows:[]};
-  res.set('Cache-Control','private, no-store').json({invoices:invoices.rows,methods:methods.rows,canPay:payable&&methods.rows.length>0,onlinePaymentEnabled:false,xpayTestEnabled:payable&&process.env.XPAY_ENABLED==='true'&&process.env.XPAY_SECRET_KEY?.startsWith('sk_test_')&&process.env.XPAY_WEBHOOK_SECRET?.startsWith('whsec_')&&methods.rows.some(m=>m.method==='xpay')});
+  res.set('Cache-Control','private, no-store').json({invoices:invoices.rows,methods:methods.rows,canPay:payable&&methods.rows.length>0,onlinePaymentEnabled:false,xpayTestEnabled:payable&&process.env.XPAY_ENABLED==='true'&&process.env.XPAY_SECRET_KEY?.startsWith('sk_test_')&&process.env.XPAY_WEBHOOK_SECRET?.startsWith('whsec_')&&q.rows[0].currency==='EGP'&&q.rows[0].xpay_allowed});
  }));
  // Sandbox only: quote ownership, signed agreement, released installment and configured method are mandatory.
  router.post('/invoices/:id/xpay-test',safe(async(req,res)=>{
@@ -100,7 +100,7 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
    const q=await c.query("SELECT q.id,q.status,q.currency FROM commercial_quotes q JOIN commercial_invoices i ON i.quote_id=q.id WHERE i.id=$1 AND q.customer_account_id=$2 FOR UPDATE OF q",[id,req.customer.id]);
    if(!q.rowCount){await c.query('ROLLBACK');return res.status(404).json({error:'Not found'});}
    quoteId=q.rows[0].id;
-   const gate=await c.query("SELECT i.amount_piasters-i.verified_paid_piasters AS remaining FROM commercial_invoices i WHERE i.id=$1 AND i.status IN ('unpaid','part_paid') AND i.release_for_payment AND i.amount_piasters>i.verified_paid_piasters AND EXISTS(SELECT 1 FROM customer_contracts WHERE quote_id=$2 AND status='signed') AND NOT EXISTS(SELECT 1 FROM commercial_invoice_revision_requests WHERE quote_id=$2 AND status='issued') AND EXISTS(SELECT 1 FROM commercial_payment_preferences WHERE quote_id=$2 AND 'xpay'=ANY(methods)) AND EXISTS(SELECT 1 FROM commercial_payment_instructions WHERE method='xpay' AND enabled)",[id,quoteId]);
+   const gate=await c.query("SELECT i.amount_piasters-i.verified_paid_piasters AS remaining FROM commercial_invoices i WHERE i.id=$1 AND i.status IN ('unpaid','part_paid') AND i.release_for_payment AND i.amount_piasters>i.verified_paid_piasters AND EXISTS(SELECT 1 FROM customer_contracts WHERE quote_id=$2 AND status='signed') AND NOT EXISTS(SELECT 1 FROM commercial_invoice_revision_requests WHERE quote_id=$2 AND status='issued') AND EXISTS(SELECT 1 FROM commercial_payment_preferences WHERE quote_id=$2 AND 'xpay'=ANY(methods))",[id,quoteId]);
    if(q.rows[0].status!=='accepted'||q.rows[0].currency!=='EGP'||!gate.rowCount){await c.query('ROLLBACK');return res.status(409).json({error:'Invoice not eligible'});}
    const amount=Number(gate.rows[0].remaining);
    const existing=await c.query("SELECT * FROM commercial_xpay_test_attempts WHERE invoice_id=$1 AND status IN ('creating','open') FOR UPDATE",[id]);
