@@ -1,6 +1,7 @@
 export const siteCopyEn: Record<string,string> = {
   galleryHeading: "ATSH AI Systems Gallery",
   galleryDescription: "Choose a solution, customize your requirements and calculate the price.",
+  featuredSystemsHeading: "Explore interactive systems",
   marketingHeroTitle: "Custom development at prices that rival traditional websites.",
   marketingHeroSubtitle: "Beyond ready-made templates, we build around your needs and budget.",
   marketingCatalogTitle: "Don’t adapt your business to ready-made software. Get a system that adapts to your business.",
