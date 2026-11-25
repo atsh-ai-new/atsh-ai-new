@@ -76,7 +76,7 @@ async function proxy(request: Request, context: RouteContext) {
       body = request.body ?? undefined;
     } else {
       const isChatFile = (path[0] === "internal-chat" || path[0] === "internal-groups" || path[0] === "live-support") && path[2] === "files";
-      const limited = await readLimitedBody(request, isChatFile ? 20 * 1024 * 1024 : isContentStudioFile || isContentStudioRequest ? CONTENT_STUDIO_BODY_BYTES : DEFAULT_ADMIN_BODY_BYTES);
+      const limited = await readLimitedBody(request, path[0] === "video-upload" ? 25 * 1024 * 1024 : isChatFile ? 20 * 1024 * 1024 : isContentStudioFile || isContentStudioRequest ? CONTENT_STUDIO_BODY_BYTES : DEFAULT_ADMIN_BODY_BYTES);
       if (limited.tooLarge) return NextResponse.json({ message: "حجم الطلب أكبر من الحد المسموح." }, { status: 413 });
       body = limited.body;
     }
@@ -85,7 +85,7 @@ async function proxy(request: Request, context: RouteContext) {
   try {
     const isProductionRequest = path[0] === "content-studio" && path[2] === "produce";
     const isAnalysisRequest = path[0] === "content-studio" && path[1] === "analyze";
-    const upstream = await fetch(target, { method, headers, body, ...(isPrivateUpload ? {duplex:"half" as const} : {}), cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(isProductionRequest ? 250000 : isAnalysisRequest ? 125000 : isPrivateUpload ? 600000 : 12000) });
+    const upstream = await fetch(target, { method, headers, body, ...(isPrivateUpload ? {duplex:"half" as const} : {}), cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(isProductionRequest ? 250000 : isAnalysisRequest ? 125000 : isPrivateUpload ? 600000 : path[0] === "video-upload" ? 120000 : 12000) });
     const payload = await upstream.arrayBuffer();
     const responseHeaders = new Headers();
     const contentType = upstream.headers.get("content-type");

@@ -565,6 +565,20 @@ app.get("/api/site-pages",route(async(req,res)=>{
   const result=await pool.query("SELECT slug,content,updated_at FROM site_pages WHERE locale=$1 AND is_published=true ORDER BY slug",[locale]);
   res.json({pages:result.rows.map(page=>({slug:page.slug,title:typeof page.content?.title==='string'?page.content.title:page.slug,updatedAt:page.updated_at}))});
 }));
+await pool.query("CREATE TABLE IF NOT EXISTS site_videos (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), data bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now())");
+app.get("/api/site-video/:id",route(async(req,res)=>{
+ if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id))return res.status(404).end();
+ const result=await pool.query("SELECT data FROM site_videos WHERE id=$1",[req.params.id]);if(!result.rowCount)return res.status(404).end();
+ const data=result.rows[0].data,n=data.length;res.set({"Content-Type":"video/mp4","Accept-Ranges":"bytes","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});
+ const range=req.get("range");if(!range)return res.send(data);
+ const m=/^bytes=(\d*)-(\d*)$/.exec(range);let start=m?.[1]?Number(m[1]):Math.max(0,n-Number(m?.[2]||0)),end=m?.[1]&&m[2]?Math.min(n-1,Number(m[2])):n-1;
+ if(!m||(!m[1]&&!m[2])||start>=n||end<start||!Number.isSafeInteger(start)||!Number.isSafeInteger(end))return res.status(416).set("Content-Range","bytes */"+n).end();
+ return res.status(206).set("Content-Range","bytes "+start+"-"+end+"/"+n).send(data.subarray(start,end+1));
+}));
+app.post("/api/admin/video-upload",requireAdmin,requirePermission("content"),express.raw({type:"video/mp4",limit:"25mb"}),route(async(req,res)=>{
+ const b=req.body;if(!Buffer.isBuffer(b)||b.length<16||b.toString("ascii",4,8)!=="ftyp")return res.status(415).json({error:"MP4 required"});
+ const r=await pool.query("INSERT INTO site_videos(data) VALUES($1) RETURNING id",[b]);res.status(201).json({url:"/api/site-video/"+r.rows[0].id});
+}));
 app.get("/api/site-media/:id",route(async(req,res)=>{
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.params.id))return res.status(404).end();
   const media=await pool.query("SELECT content_type,byte_size,data FROM site_media WHERE id=$1",[req.params.id]);
@@ -1115,6 +1129,12 @@ app.patch("/api/admin/pages/:slug",requireAdmin,requirePermission("content"),rou
       if(actual!==parsed.data.expectedUpdatedAt){await client.query("ROLLBACK");return res.status(409).json({error:"تم تعديل هذه الصفحة بواسطة مستخدم آخر. أعد تحميل البيانات قبل الحفظ.",currentUpdatedAt:actual});}
     }
     const saved=await client.query("INSERT INTO site_pages(slug,locale,content,is_published,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,is_published=EXCLUDED.is_published,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING *",[req.params.slug,parsed.data.locale,JSON.stringify(parsed.data.content),parsed.data.isPublished,req.admin.email]);
+    if(req.params.slug==="video-campaigns"&&parsed.data.locale==="ar"){
+      const urls=content=>Array.isArray(content?.campaigns)?content.campaigns.map(c=>c?.url).filter(u=>typeof u==="string"&&/^\/api\/site-video\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(u)):[];
+      const retained=new Set(urls(parsed.data.content));
+      const removed=urls(before.rows[0]?.content).filter(u=>!retained.has(u)).map(u=>u.split("/").pop());
+      if(removed.length)await client.query("DELETE FROM site_videos WHERE id=ANY($1::uuid[])",[removed]);
+    }
     await client.query("DELETE FROM site_page_drafts WHERE slug=$1 AND locale=$2",[req.params.slug,parsed.data.locale]);
     await auditChange(client,req.admin.email,"page.updated","site_page",saved.rows[0].id,before.rows[0]||null,saved.rows[0]);if(translated){
       const other=await client.query("SELECT * FROM site_pages WHERE slug='home' AND locale=$1 FOR UPDATE",[target]);
