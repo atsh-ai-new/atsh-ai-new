@@ -55,10 +55,9 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
    <Link href={en?"/en":"/"} style={{fontWeight:800,color:"#203958"}}>ATSH AI</Link><Link href={`${base}/start`} style={{color:"#203958",fontWeight:700}}>{t("ابدأ مشروعك","Start a project")}</Link>
    <Link href={`${base}/#configurator`} style={{border:"1px solid #ccd1d6",padding:"10px 15px",borderRadius:10}}>{t("الباقات ومحرك التسعير","Packages & pricing")}</Link>
   </header>
-  <section style={{padding:"24px 0 16px"}}>
-   <p style={{color:"#4c78ae",fontWeight:700}}>{t("معرض أنظمة ATSH AI","ATSH AI Systems Gallery")}</p>
-   <h1 style={{fontSize:"clamp(29px,4vw,49px)",color:"#203958",margin:"8px 0"}}>{marketingCopy("marketingCatalogTitle")}</h1>
-   <p style={{lineHeight:1.9,maxWidth:730,color:"#64748b"}}>{t("قطاعات رئيسية، وتخصصات فرعية، ونماذج تفاعلية. اختر النظام المناسب، ثم أضف مواصفاتك واحسب السعر.","Browse sectors, explore interactive demos and customize a solution before requesting a quote.")}</p>
+  <section style={{padding:"12px 0 8px"}}>
+   {marketingCopy("galleryHeading").trim()&&<h1 style={{color:"#4c78ae",fontWeight:700,fontSize:20,margin:0}}>{marketingCopy("galleryHeading")}</h1>}
+   {marketingCopy("galleryDescription").trim()&&<p style={{lineHeight:1.9,maxWidth:730,color:"#64748b"}}>{marketingCopy("galleryDescription")}</p>}
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,145px),1fr))",gap:8,margin:"14px 0"}}>{Array.from({length:6},(_,i)=>marketingCopy("marketingCatalogBenefit"+(i+1))).filter(Boolean).map(label=><span key={label} style={{fontSize:13,fontWeight:600,color:"#203958"}}>✓ {label}</span>)}</div>
    {notice&&<small role="status" style={{color:"#99660b"}}>{notice}</small>}
   </section>
