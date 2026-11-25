@@ -11,7 +11,7 @@ export async function generateMetadata():Promise<Metadata>{
  const en=locale==="en";
  const title=en?"ATSH AI | Digital solutions built for your business":"ATSH AI | حلول برمجية وذكاء اصطناعي لأعمالك";
  const description=en?"Custom websites, mobile applications, business systems and AI solutions. Configure your project and request a clear quotation.":"تطوير المواقع والتطبيقات والأنظمة الذكية حسب احتياجاتك، مع تجربة طلب وتسعير واضحة.";
- return {title,description,applicationName:"ATSH AI",alternates:{languages:{ar:"/",en:"/en"}},openGraph:{title,description,locale:en?"en_US":"ar_EG",type:"website"}};
+ return {title,description,applicationName:"ATSH AI",alternates:{languages:{ar:"/ar",en:"/en"}},openGraph:{title,description,locale:en?"en_US":"ar_EG",type:"website"}};
 }
 export default async function RootLayout({children}:Readonly<{children:React.ReactNode}>){
  const locale=await currentLocale();
