@@ -255,7 +255,17 @@ try{
  const oldSnapshot=await fetch(snapUrl,{headers:{cookie:cookieFor(accountA)}});
  assert.deepEqual(Buffer.from(await oldSnapshot.arrayBuffer()),png,"Old customer preview logo must remain immutable");
  // Signed settlement bridge: reject unsigned, duplicate and excessive payments.
- const invoice=await pool.query("INSERT INTO commercial_invoices(quote_id,amount_piasters) VALUES($1,10000) RETURNING id",[quote.rows[0].id]);
+ // Use a legitimately accepted contract for the settlement/idempotency fixture.
+ const fixtureLink=await req(`/api/admin/commercial/quotes/${quote.rows[0].id}/review-link`,{method:"POST",cookie:adminCookie,body:{}});
+ assert.equal(fixtureLink.status,201,JSON.stringify(fixtureLink));
+ const fixtureSigned=await req(`/api/commercial/review/${fixtureLink.result.reviewToken}/accept-and-sign`,{method:"POST",body:{signerName:"Client A Verified",consent:true}});
+ assert.equal(fixtureSigned.status,200,JSON.stringify(fixtureSigned));
+ const invoice=await pool.query("SELECT id FROM commercial_invoices WHERE quote_id=$1 AND status='unpaid'",[quote.rows[0].id]);
+ assert.equal(invoice.rowCount,1);
+ const fixtureMethods=await req(`/api/admin/commercial/quotes/${quote.rows[0].id}/payment-methods`,{method:"PUT",cookie:adminCookie,body:{methods:["xpay"]}});
+ assert.equal(fixtureMethods.status,200,JSON.stringify(fixtureMethods));
+ const fixtureRelease=await req(`/api/admin/commercial/invoices/${invoice.rows[0].id}/release`,{method:"PATCH",cookie:adminCookie,body:{released:true,milestone:"CI verified settlement"}});
+ assert.equal(fixtureRelease.status,200,JSON.stringify(fixtureRelease));
  const gatewayEvent={invoiceId:Number(invoice.rows[0].id),amountPiasters:4000,providerReference:"integration-"+randomUUID(),paidAt:new Date().toISOString(),status:"settled"};
  const gatewayRaw=Buffer.from(JSON.stringify(gatewayEvent));
  const gatewayTimestamp=Math.floor(Date.now()/1000).toString();
