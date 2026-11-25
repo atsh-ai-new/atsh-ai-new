@@ -72,6 +72,23 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
  router.get('/contracts',safe(async(req,res)=>{
   const q=await pool.query('SELECT c.id,c.quote_id,c.body_snapshot,c.status,c.signer_name,c.signed_at,c.created_at FROM customer_contracts c JOIN commercial_quotes q ON q.id=c.quote_id WHERE q.customer_account_id=$1 ORDER BY c.created_at DESC LIMIT 100',[req.customer.id]);res.json({contracts:q.rows});
  }));
+ // PDF documents are available only to the verified account that owns the quote.
+ router.get('/contracts/:id/pdf',safe(async(req,res)=>{
+  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
+  const result=await pool.query("SELECT p.pdf_bytes,p.sha256 FROM commercial_contract_pdfs p JOIN customer_contracts c ON c.id=p.contract_id JOIN commercial_quotes q ON q.id=c.quote_id WHERE c.id=$1 AND q.customer_account_id=$2 AND c.status IN ('issued','signed')",[id,req.customer.id]);
+  if(!result.rowCount)return res.status(404).json({error:'Not found'});
+  res.set({'Cache-Control':'private, no-store','Content-Type':'application/pdf','Content-Disposition':'attachment; filename="contract-'+id+'.pdf"','X-Content-Type-Options':'nosniff'}).send(result.rows[0].pdf_bytes);
+ }));
+ router.get('/quotes/:id/payment-options',safe(async(req,res)=>{
+  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
+  const q=await pool.query("SELECT q.status, EXISTS(SELECT 1 FROM customer_contracts c WHERE c.quote_id=q.id AND c.status='signed') AS signed, EXISTS(SELECT 1 FROM commercial_invoice_revision_requests r WHERE r.quote_id=q.id AND r.status='issued') AS pending FROM commercial_quotes q WHERE q.id=$1 AND q.customer_account_id=$2",[id,req.customer.id]);
+  if(!q.rowCount)return res.status(404).json({error:'Not found'});
+  const allowed=q.rows[0].status==='accepted'&&q.rows[0].signed&&!q.rows[0].pending;
+  const invoices=await pool.query("SELECT id,amount_piasters,verified_paid_piasters,due_at,status,milestone,release_for_payment FROM commercial_invoices WHERE quote_id=$1 AND status<>'void' ORDER BY id",[id]);
+  const payable=allowed&&invoices.rows.some(x=>x.release_for_payment&&Number(x.amount_piasters)>Number(x.verified_paid_piasters));
+  const methods=payable?await pool.query("SELECT i.method,i.instructions FROM commercial_payment_instructions i JOIN commercial_payment_preferences p ON i.method=ANY(p.methods) WHERE p.quote_id=$1 AND i.enabled=true ORDER BY i.method",[id]):{rows:[]};
+  res.set('Cache-Control','private, no-store').json({invoices:invoices.rows,methods:methods.rows,canPay:payable&&methods.rows.length>0,onlinePaymentEnabled:false});
+ }));
  router.get('/invoices',safe(async(req,res)=>{
   const q=await pool.query('SELECT i.id,i.quote_id,i.amount_piasters,i.due_at,i.status,i.verified_paid_piasters,i.created_at FROM commercial_invoices i JOIN commercial_quotes q ON q.id=i.quote_id WHERE q.customer_account_id=$1 ORDER BY i.created_at DESC LIMIT 100',[req.customer.id]);res.json({invoices:q.rows});
  }));
@@ -120,7 +137,7 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
   const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
   const [quoteResult,contractResult,invoiceResult,feedbackResult,projectResult]=await Promise.all([
    pool.query('SELECT id,revision,status,items,total_piasters,currency,valid_until,accepted_at,created_at FROM commercial_quotes WHERE id=$1 AND customer_account_id=$2',[id,req.customer.id]),
-   pool.query("SELECT id,quote_id,body_snapshot,status,signer_name,signed_at,template_revision,template_category FROM customer_contracts WHERE quote_id=$1 AND status<>'void' AND EXISTS(SELECT 1 FROM commercial_quotes WHERE id=$1 AND customer_account_id=$2) ORDER BY id DESC LIMIT 1",[id,req.customer.id]),
+   pool.query("SELECT c.id,c.quote_id,c.body_snapshot,c.status,c.signer_name,c.signed_at,c.template_revision,c.template_category,p.sha256 AS pdf_sha256,p.filename AS pdf_filename FROM customer_contracts c LEFT JOIN commercial_contract_pdfs p ON p.contract_id=c.id WHERE c.quote_id=$1 AND c.status<>'void' AND EXISTS(SELECT 1 FROM commercial_quotes WHERE id=$1 AND customer_account_id=$2) ORDER BY c.id DESC LIMIT 1",[id,req.customer.id]),
    pool.query("SELECT id,amount_piasters,verified_paid_piasters,due_at,status FROM commercial_invoices WHERE quote_id=$1 AND EXISTS(SELECT 1 FROM commercial_quotes WHERE id=$1 AND customer_account_id=$2) ORDER BY id",[id,req.customer.id]),
    pool.query("SELECT id,details,status,created_at,resolution_note FROM commercial_quote_change_requests WHERE quote_id=$1 AND customer_account_id=$2 ORDER BY created_at DESC LIMIT 30",[id,req.customer.id]),
    pool.query(`SELECT p.id,p.status,p.template_id,l.draft_id
@@ -157,7 +174,7 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
  // qualified national electronic signature. The payment gateway is separate.
  router.post('/quotes/:id/accept',safe(async(req,res)=>{
   const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
-  const parsed=z.object({signerName:z.string().trim().min(3).max(160),consent:z.literal(true),quoteRevision:z.number().int().positive(),contractId:z.number().int().positive()}).strict().safeParse(req.body);
+  const parsed=z.object({signerName:z.string().trim().min(3).max(160),consent:z.literal(true),quoteRevision:z.number().int().positive(),contractId:z.number().int().positive(),contractSha256:z.string().regex(/^[a-f0-9]{64}$/).optional()}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:'Explicit consent and current document IDs required'});
   const client=await pool.connect();
   try{
@@ -169,7 +186,9 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
    const quote=quoteResult.rows[0],contract=contractResult.rows[0];
    const gate=validateCheckoutGate({quote,contract,hasPendingChangeRequest:pending.rowCount>0,expectedRevision:parsed.data.quoteRevision,expectedContractId:parsed.data.contractId});
    if(gate){await client.query('ROLLBACK');return res.status(409).json({error:gate});}
-   const evidence={method:'authenticated_account_approval',customerId:req.customer.id,verifiedEmail:req.customer.email,contractSha256:createHash('sha256').update(contract.body_snapshot).digest('hex'),quoteRevision:quote.revision,contractId:contract.id,consent:true,ip:req.ip,userAgent:String(req.get('user-agent')||'').slice(0,250)};
+   const pdf=await client.query('SELECT sha256 FROM commercial_contract_pdfs WHERE contract_id=$1',[contract.id]);
+   if(pdf.rowCount&&parsed.data.contractSha256!==pdf.rows[0].sha256){await client.query('ROLLBACK');return res.status(409).json({error:'Review the current PDF before accepting'});}
+   const evidence={method:'authenticated_account_approval',customerId:req.customer.id,verifiedEmail:req.customer.email,contractSha256:pdf.rows[0]?.sha256||createHash('sha256').update(contract.body_snapshot).digest('hex'),quoteRevision:quote.revision,contractId:contract.id,consent:true,ip:req.ip,userAgent:String(req.get('user-agent')||'').slice(0,250)};
    const accepted=await client.query("UPDATE commercial_quotes SET status='accepted',accepted_at=now() WHERE id=$1 AND status='issued' RETURNING id,accepted_at",[id]);
    const signed=await client.query("UPDATE customer_contracts SET status='signed',signer_name=$2,signed_at=now(),signature_evidence=$3::jsonb WHERE id=$1 AND status='issued' RETURNING id,signed_at",[contract.id,parsed.data.signerName,JSON.stringify(evidence)]);
    if(!accepted.rowCount||!signed.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'Document changed before acceptance'});}
