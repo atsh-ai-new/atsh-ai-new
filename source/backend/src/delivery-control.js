@@ -17,6 +17,7 @@ const mimeFor = value => allowedMime.has(value) ? value : null;
 const serviceKeys=['customer_assistant','content_studio','project_builder','new_orders','customer_deliveries'];
 import {safeAssetUrl} from './delivery-validation.js';
 import {operationGuard} from './operation-guards.js';
+import {fullPaymentGateSql} from './customer-journey-state.js';
 
 export function deliveryAdminRouter({pool,operationsOnly=false}){
  const r=express.Router();
@@ -70,6 +71,7 @@ export function deliveryAdminRouter({pool,operationsOnly=false}){
    FROM customer_journey_projects p
    WHERE d.id=$1 AND p.id=d.project_id
      AND ($2<>'published' OR (p.status IN ('paid','building','preview_ready','approved','delivered','support')
+       AND ${fullPaymentGateSql('p.id')}
        AND (d.asset_url<>'' OR EXISTS (SELECT 1 FROM customer_deliverable_files f WHERE f.deliverable_id=d.id))))
    RETURNING d.*`,[req.params.id,d.data.status]);
   if(!q.rowCount)return res.status(409).json({error:'Deliverable not found, no artifact is attached, or project payment has not been confirmed'});await pool.query('INSERT INTO delivery_events(deliverable_id,actor_type,actor_id,event_type) VALUES($1,$2,$3,$4)',[req.params.id,'admin',req.admin.email||req.admin.userId||'owner',d.data.status]);res.json({deliverable:q.rows[0]});}));
@@ -78,13 +80,13 @@ export function deliveryAdminRouter({pool,operationsOnly=false}){
 export function deliveryCustomerRouter({pool,allowedOrigins=[]}){
  const r=express.Router();
  r.use(wrap(async(req,res,next)=>{try{const token=req.cookies?.atsh_customer;const p=jwt.verify(token,process.env.JWT_SECRET,{issuer:'atsh-ai-api',audience:'atsh-customer'});if(p.kind!=='customer')throw Error();const q=await pool.query('SELECT id,session_version,is_active,email_verified_at FROM customer_accounts WHERE id=$1',[p.sub]);const u=q.rows[0];if(!u?.is_active||!u.email_verified_at||u.session_version!==p.ver)throw Error();req.customer=u;next();}catch{return res.status(401).json({error:'Sign in required'});}}));
- r.get('/',wrap(async(req,res)=>{const q=await pool.query(`SELECT d.id,d.project_id,d.title,d.kind,d.asset_url,d.version,d.customer_decision,d.customer_feedback,d.published_at,(f.deliverable_id IS NOT NULL) AS has_private_file FROM customer_deliverables d LEFT JOIN customer_deliverable_files f ON f.deliverable_id=d.id JOIN customer_journey_projects p ON p.id=d.project_id WHERE p.customer_account_id=$1 AND d.status='published' ORDER BY d.published_at DESC LIMIT 100`,[req.customer.id]);res.json({deliverables:q.rows});}));
+ r.get('/',wrap(async(req,res)=>{const q=await pool.query(`SELECT d.id,d.project_id,d.title,d.kind,d.asset_url,d.version,d.customer_decision,d.customer_feedback,d.published_at,(f.deliverable_id IS NOT NULL) AS has_private_file FROM customer_deliverables d LEFT JOIN customer_deliverable_files f ON f.deliverable_id=d.id JOIN customer_journey_projects p ON p.id=d.project_id WHERE p.customer_account_id=$1 AND d.status='published' AND ${fullPaymentGateSql('p.id')} ORDER BY d.published_at DESC LIMIT 100`,[req.customer.id]);res.json({deliverables:q.rows});}));
  r.get('/:id/file',wrap(async(req,res)=>{
   if(!uuid.safeParse(req.params.id).success)return res.status(400).json({error:'Invalid ID'});
   const q=await pool.query(`SELECT f.storage_key,f.mime_type,f.byte_size,d.title
    FROM customer_deliverable_files f JOIN customer_deliverables d ON d.id=f.deliverable_id
    JOIN customer_journey_projects p ON p.id=d.project_id
-   WHERE d.id=$1 AND p.customer_account_id=$2 AND d.status='published'`,[req.params.id,req.customer.id]);
+   WHERE d.id=$1 AND p.customer_account_id=$2 AND d.status='published' AND ${fullPaymentGateSql('p.id')}`,[req.params.id,req.customer.id]);
   if(!q.rowCount)return res.status(404).json({error:'File unavailable'});
   const file=q.rows[0];
   if(!/^[0-9a-f-]{36}$/.test(file.storage_key))return res.status(500).json({error:'Invalid storage key'});
@@ -101,6 +103,6 @@ export function deliveryCustomerRouter({pool,allowedOrigins=[]}){
   stream.on('error',err=>{if(!res.headersSent)res.status(500).end();else res.destroy(err);});
   stream.pipe(res);
  }));
- r.post('/:id/decision',operationGuard(pool,'customer_deliveries'),wrap(async(req,res)=>{if(!allowedOrigins.includes(req.get('origin')))return res.status(403).json({error:'Origin not allowed'});if(!uuid.safeParse(req.params.id).success)return res.status(400).json({error:'Invalid ID'});const d=z.object({decision:z.enum(['approved','revision_requested']),feedback:z.string().max(3000).default('')}).strict().safeParse(req.body);if(!d.success||d.data.decision==='revision_requested'&&!d.data.feedback.trim())return res.status(400).json({error:'Feedback required for revision'});const client=await pool.connect();try{await client.query('BEGIN');const q=await client.query(`UPDATE customer_deliverables d SET customer_decision=$3,customer_feedback=$4,updated_at=now() FROM customer_journey_projects p WHERE d.project_id=p.id AND d.id=$1 AND p.customer_account_id=$2 AND d.status='published' AND d.customer_decision='pending' RETURNING d.id,d.customer_decision`,[req.params.id,req.customer.id,d.data.decision,d.data.feedback]);if(!q.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Not found or already reviewed'});}await client.query('INSERT INTO delivery_events(deliverable_id,actor_type,actor_id,event_type,details) VALUES($1,$2,$3,$4,$5)',[req.params.id,'customer',String(req.customer.id),d.data.decision,JSON.stringify({feedback:d.data.feedback})]);await client.query('COMMIT');res.json({deliverable:q.rows[0]});}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}}));
+ r.post('/:id/decision',operationGuard(pool,'customer_deliveries'),wrap(async(req,res)=>{if(!allowedOrigins.includes(req.get('origin')))return res.status(403).json({error:'Origin not allowed'});if(!uuid.safeParse(req.params.id).success)return res.status(400).json({error:'Invalid ID'});const d=z.object({decision:z.enum(['approved','revision_requested']),feedback:z.string().max(3000).default('')}).strict().safeParse(req.body);if(!d.success||d.data.decision==='revision_requested'&&!d.data.feedback.trim())return res.status(400).json({error:'Feedback required for revision'});const client=await pool.connect();try{await client.query('BEGIN');const q=await client.query(`UPDATE customer_deliverables d SET customer_decision=$3,customer_feedback=$4,updated_at=now() FROM customer_journey_projects p WHERE d.project_id=p.id AND d.id=$1 AND p.customer_account_id=$2 AND d.status='published' AND ${fullPaymentGateSql('p.id')} AND d.customer_decision='pending' RETURNING d.id,d.customer_decision`,[req.params.id,req.customer.id,d.data.decision,d.data.feedback]);if(!q.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Not found or already reviewed'});}await client.query('INSERT INTO delivery_events(deliverable_id,actor_type,actor_id,event_type,details) VALUES($1,$2,$3,$4,$5)',[req.params.id,'customer',String(req.customer.id),d.data.decision,JSON.stringify({feedback:d.data.feedback})]);await client.query('COMMIT');res.json({deliverable:q.rows[0]});}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}}));
  return r;
 }
