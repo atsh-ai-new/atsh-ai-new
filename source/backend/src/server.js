@@ -125,6 +125,7 @@ app.use("/api/customer/auth/project-drafts",express.raw({type:["image/png","imag
 app.use("/api/internal/verified-payments",express.raw({type:"application/json",limit:"16kb"}));
 // Allow a wider structured sector catalog while keeping other JSON endpoints tightly bounded.
 app.use("/api/admin/pages/catalog",express.json({limit:"1mb"}));
+app.use("/api/admin/commercial/contracts/pdf",express.raw({type:"application/pdf",limit:"5mb"}));
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 const isolatedCiRate=process.env.ATSH_CI_TEST_RATE_LIMIT==="true"&&process.env.NODE_ENV!=="production";
@@ -1512,6 +1513,24 @@ app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requirePermissio
  await client.query("COMMIT");res.status(201).json({quote:newer.rows[0],supersedes:x.id});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
 }));
+app.post("/api/admin/commercial/contracts/pdf",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const quoteId=Number(req.query.quoteId);
+ if(!Number.isSafeInteger(quoteId)||quoteId<1||!Buffer.isBuffer(req.body))return res.status(400).json({error:"PDF and quote required"});
+ const {contractPdf}=await import("./payment-revision-rules.js");
+ let fingerprint;try{fingerprint=contractPdf(req.body);}catch{return res.status(400).json({error:"Invalid PDF"});}
+ const c=await pool.connect();try{
+ await c.query("BEGIN");
+ const q=await c.query("SELECT id,status,valid_until,customer_account_id FROM commercial_quotes WHERE id=$1 FOR UPDATE",[quoteId]);
+ if(!q.rowCount||q.rows[0].status!=="issued"||!q.rows[0].customer_account_id||(q.rows[0].valid_until&&new Date(q.rows[0].valid_until)<=new Date())){await c.query("ROLLBACK");return res.status(409).json({error:"Issued account-owned quote required"});}
+ const prior=await c.query("SELECT id,status FROM customer_contracts WHERE quote_id=$1 AND status<>'void' FOR UPDATE",[quoteId]);
+ if(prior.rows.some(x=>x.status!=="issued")){await c.query("ROLLBACK");return res.status(409).json({error:"Signed contract cannot be replaced"});}
+ await c.query("UPDATE customer_contracts SET status='void' WHERE quote_id=$1 AND status='issued'",[quoteId]);
+ await c.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[quoteId]);
+ const ins=await c.query("INSERT INTO customer_contracts(quote_id,body_snapshot) VALUES($1,$2) RETURNING id,status,created_at",[quoteId,"PDF contract SHA256: "+fingerprint.sha256]);
+ await c.query("INSERT INTO commercial_contract_pdfs(contract_id,filename,pdf_bytes,sha256,uploaded_by) VALUES($1,$2,$3,$4,$5)",[ins.rows[0].id,"contract-"+ins.rows[0].id+".pdf",req.body,fingerprint.sha256,req.admin.email]);
+ await c.query("COMMIT");res.status(201).json({contract:ins.rows[0],sha256:fingerprint.sha256});
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}));
 app.post("/api/admin/commercial/contracts/issue",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const {quoteId,templateId}=req.body||{};if(!validCommercialId(quoteId)||!validCommercialId(templateId))return res.status(400).json({error:"Invalid identifiers"});
  const client=await pool.connect();
@@ -1552,6 +1571,9 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
  const client=await pool.connect();try{await client.query("BEGIN");const l=await client.query("SELECT quote_id FROM commercial_review_links WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>now() FOR UPDATE",[hashReviewToken(token)]);
  if(!l.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Link expired or used"})}
  const id=l.rows[0].quote_id;
+ const lock=await client.query("SELECT id FROM commercial_quotes WHERE id=$1 FOR UPDATE",[id]);
+ const pdf=await client.query("SELECT 1 FROM commercial_contract_pdfs p JOIN customer_contracts c ON c.id=p.contract_id WHERE c.quote_id=$1 AND c.status='issued'",[id]);
+ if(pdf.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Sign in to review and approve the PDF contract"});}
  const pendingChanges=await client.query("SELECT 1 FROM commercial_quote_change_requests WHERE quote_id=$1 AND status='pending' LIMIT 1",[id]);
  if(pendingChanges.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Unresolved quote change request must be reviewed first"});}
  const q=await client.query("UPDATE commercial_quotes SET status='accepted',accepted_at=now() WHERE id=$1 AND status='issued' AND (valid_until IS NULL OR valid_until>now()) RETURNING id",[id]);
