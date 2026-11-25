@@ -45,12 +45,12 @@ const nav: Array<{ id: View; label: string; icon: string }> = [
 ];
 const adminGroups: Array<{label:string;views:View[]}>= [
  {label:"نظرة عامة",views:["overview"]},
- {label:"المساعد الذكي",views:["assistant-knowledge"]},
- {label:"العملاء",views:["inbox","journey"]},
  {label:"المراسلات",views:["messages"]},
- {label:"الفريق",views:["team"]},
+ {label:"العملاء",views:["inbox","journey"]},
  {label:"محتوى المنصة",views:["pages","content-studio","videos"]},
- {label:"المنتجات",views:["options"]}
+ {label:"المنتجات",views:["options"]},
+ {label:"الفريق",views:["team"]},
+ {label:"المساعد الذكي",views:["assistant-knowledge"]}
 ];
 const defaultTheme: Theme = { navy: "#203958", blue: "#4c78ae", gold: "#b59a6b", page: "#faf9f5", logoUrl: "/images/atsh-logo.jpg", heroImageUrl: "/images/atsh-hero.jpg", backgroundImageUrl: "", fontFamily: "IBM Plex Sans Arabic", cardRadius: 16 };
 const statuses = ["new", "reviewing", "quoted", "approved", "in_progress", "completed", "cancelled"] as const;
