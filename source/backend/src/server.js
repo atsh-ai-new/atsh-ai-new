@@ -1,3 +1,4 @@
+import {publishedThumbnail,startThumbnailWorker} from "./demo-thumbnail.js";
 import {extractDemoAssets,migrateDemoAssets,readDemoAsset,expandDemoAssets,storeDemoAsset} from "./site-demo-assets.js";
 import { effectivePermissions, hasPermission } from "./team-permissions.js";
 import {validCalendarDate} from './invoice-ledger-rules.js';
@@ -83,6 +84,7 @@ await pool.query(await readFile(new URL("../db/unified_pricing_stage53.sql", imp
 await pool.query(await readFile(new URL("../db/order_submission_idempotency_stage54.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/site_demo_assets.sql",import.meta.url),"utf8"));
 await migrateDemoAssets(pool);
+startThumbnailWorker(pool);
 await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim().replace(/\/$/, "")).filter(Boolean);
 // The public website is also an explicitly configured, trusted origin.
@@ -557,6 +559,11 @@ app.post("/api/admin/templates",requireAdmin,requirePermission("content"),route(
 }));
 
 // Return one uploaded demo only, never an entire page of executable files.
+app.get("/api/site-content/demo-thumbnail/:id",route(async(req,res)=>{
+ const bytes=await publishedThumbnail(pool,req.params.id);
+ if(!bytes)return res.set("Cache-Control","no-store").status(404).end();
+ res.set("Cache-Control","public, max-age=300").type("image/jpeg").send(bytes);
+}));
 app.get("/api/site-content/:slug/demo/:system",route(async(req,res)=>{
  const {slug,system}=req.params;
  if(!["home","catalog"].includes(slug)||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(system))return res.status(400).json({error:"Invalid demo"});
