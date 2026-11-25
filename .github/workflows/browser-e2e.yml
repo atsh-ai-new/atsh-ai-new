@@ -104,12 +104,17 @@ jobs:
       - name: Browser flow on desktop and mobile
         working-directory: source
         run: npx playwright test --config playwright.config.ts e2e/customer-start.spec.ts e2e/customer-services-security.spec.ts e2e/admin-customer-services.spec.ts --project=desktop-chromium
-      - name: Device language negotiation on desktop and mobile
+      - name: Device language and uploaded catalog demo independent verification
         working-directory: source
-        run: npx playwright test --config playwright.config.ts e2e/device-language.spec.ts
-      - name: Uploaded catalog demo on desktop and Android viewport
-        working-directory: source
-        run: npx playwright test --config playwright.config.ts e2e/mobile-uploaded-demo.spec.ts
+        run: |
+          set +e
+          npx playwright test --config playwright.config.ts e2e/device-language.spec.ts
+          language_status=$?
+          npx playwright test --config playwright.config.ts e2e/mobile-uploaded-demo.spec.ts
+          preview_status=$?
+          echo "Device language exit status: $language_status"
+          echo "Uploaded preview exit status: $preview_status"
+          if [ "$language_status" -ne 0 ] || [ "$preview_status" -ne 0 ]; then exit 1; fi
       - name: Print API and frontend logs on browser failure
         if: failure()
         run: |
