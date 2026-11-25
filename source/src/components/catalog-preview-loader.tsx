@@ -5,7 +5,7 @@ import SectorPreview from "@/components/sector-preview";
 import Link from "next/link";
 import {englishTemplateLabel} from "@/lib/sector-en";
 import { readPagePreview } from "@/lib/page-preview";
-type Item=SectorTemplate & {published?:boolean;archived?:boolean;previewUrl?:string;previewHtml?:string;hasPreviewHtml?:boolean;demoSlug?:string;pricedAddons?:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>;basePrice?:number|null};
+type Item=SectorTemplate & {published?:boolean;archived?:boolean;previewUrl?:string;previewHtml?:string;demoDocumentUrl?:string;hasPreviewHtml?:boolean;demoSlug?:string;pricedAddons?:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>;basePrice?:number|null};
 export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;locale?:"ar"|"en"}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
  const [item,setItem]=useState<Item|undefined>(undefined);
  const [ready,setReady]=useState(false);
@@ -22,10 +22,9 @@ export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;loc
      // Fail closed when a page or catalog entry is unpublished/unavailable.
      // Do not expose an old local fallback after an admin has hidden a demo.
      const config=home?.page?.content;const chosen=Array.isArray(config?.featuredSystemSlugs)?config.featuredSystemSlugs.includes(slug):Array.isArray(list)&&list.filter((x:Item)=>x?.published!==false&&!x?.archived).slice(0,4).some((x:Item)=>x.slug===slug);const homeOverride=fromHome&&chosen&&config?.featuredSystemHtml?.[slug]?.available;const available=homeOverride||entry?.hasPreviewHtml;
-     let html:string|undefined;
-     if(available){const response=await fetch("/api/site-content/"+(homeOverride?"home":"catalog")+"?demo="+encodeURIComponent(slug),{cache:"no-store"});if(!response.ok)throw Error("Demo unavailable");const result=await response.json();if(typeof result.html!=="string")throw Error("Invalid demo");html=result.html;}
+     const demoDocumentUrl=available?"/api/site-content/"+(homeOverride?"home":"catalog")+"?demo="+encodeURIComponent(slug)+"&document=1":undefined;
      if(!active)return;
-     setItem(entry&&entry.published!==false&&!entry.archived?{...entry,previewHtml:html}:undefined);
+     setItem(entry&&entry.published!==false&&!entry.archived?{...entry,previewHtml:undefined,demoDocumentUrl}:undefined);
    }).catch(()=>{if(active)setItem(undefined)}).finally(()=>{if(active)setReady(true)});
    return()=>{active=false};
  },[slug,locale]);
@@ -42,6 +41,6 @@ export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;loc
     <a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginInlineStart:14,color:"#174e83",fontWeight:700,textDecoration:"underline"}}>{t("افتح النسخة الخارجية ↗","Open external demo ↗")}</a>
     <small style={{display:"block",color:"#64748b",marginTop:5}}>{t("الرابط يُدار من لوحة التحكم وقد يفتح موقعًا خارجيًا مستقلًا عن ATSH AI.","The linked demo is managed by ATSH AI and may open an external website.")}</small>
   </div>}
-  <SectorPreview key={item.slug} previewHtml={item.previewHtml} locale={locale} template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} demoSlug={interactiveDemoSlug(item.slug,item.demoSlug)} pricedAddons={item.pricedAddons??[]} basePrice={item.basePrice??null} />
+  <SectorPreview key={item.slug} previewHtml={item.previewHtml} demoDocumentUrl={item.demoDocumentUrl} locale={locale} template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} demoSlug={interactiveDemoSlug(item.slug,item.demoSlug)} pricedAddons={item.pricedAddons??[]} basePrice={item.basePrice??null} />
  </>;
 }
