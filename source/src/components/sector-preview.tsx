@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 type PreviewAddon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
 import Link from "next/link";
@@ -8,6 +8,8 @@ import SectorInteractiveDemo,{isInteractiveSector} from "@/components/sector-int
 import {englishDemoLabel,englishTemplateLabel,englishTemplateFeatures} from "@/lib/sector-en";
 
 export default function SectorPreview({template,demoSlug,previewHtml,pricedAddons=[],basePrice=null,locale="ar"}: {template: SectorTemplate;demoSlug?:string;previewHtml?:string;pricedAddons?:PreviewAddon[];basePrice?:number|null;locale?:"ar"|"en"}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
+  // Keep srcdoc stable across state updates and mobile viewport changes.
+  const demoDocument=useMemo(()=>previewHtml?isolatedDemoHtml(previewHtml):undefined,[previewHtml]);
   const [active,setActive]=useState(template.modules[0]);
   const [embedded,setEmbedded]=useState(false);
   const [fullScreen,setFullScreen]=useState(false);
@@ -72,10 +74,10 @@ export default function SectorPreview({template,demoSlug,previewHtml,pricedAddon
     }).catch(()=>undefined);
     return()=>{active=false;if(url)URL.revokeObjectURL(url);};
   },[template.slug]);
-  return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:"none",width:"100%",margin:0,padding:embedded||fullScreen||immersive?0:"12px",minHeight:embedded?"100%":"100dvh",boxSizing:"border-box"}}>
-    <style>{`@media(max-width:700px){.sector-preview-grid{grid-template-columns:1fr!important}.sector-preview-nav{display:flex;overflow-x:auto;gap:5px}.sector-preview-nav button{min-width:max-content}}`}</style>
+  return <main data-catalog-immersive={immersive?"true":undefined} lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:"none",width:"100%",margin:0,padding:embedded||fullScreen||immersive?0:"12px",minHeight:embedded?"100%":"100dvh",boxSizing:"border-box"}}>
+    <style>{`main[data-catalog-immersive=true]{position:relative;z-index:200;background:white}main[data-catalog-immersive=true] iframe{min-height:0!important;height:100vh!important;height:100dvh!important} @media(max-width:700px){.sector-preview-grid{grid-template-columns:1fr!important}.sector-preview-nav{display:flex;overflow-x:auto;gap:5px}.sector-preview-nav button{min-width:max-content}}`}</style>
     {(previewHtml || (demoSlug && interactiveDemoPaths[demoSlug])) && previewMode==="full" ? <section aria-label={t("المعاينة التفاعلية الكاملة","Full interactive demo")} style={{background:"white",border:fullScreen||immersive?0:"1px solid #e2e8f0",borderRadius:fullScreen||immersive?0:12,overflow:"hidden",width:"100%"}}>
-      <iframe title={en?`${englishTemplateLabel(template.slug,template.name)} interactive demo`:`معاينة ${template.name} التفاعلية الكاملة`} src={previewHtml?undefined:demoSlug?interactiveDemoPaths[demoSlug]:undefined} srcDoc={previewHtml?isolatedDemoHtml(previewHtml):undefined} loading="eager" referrerPolicy="no-referrer" sandbox={previewHtml?"allow-scripts allow-modals":"allow-scripts allow-forms allow-modals"} style={{width:"100%",height:fullScreen||immersive?"100dvh":"calc(100dvh - 110px)",minHeight:embedded?360:480,border:0,display:"block"}} />
+      <iframe title={en?`${englishTemplateLabel(template.slug,template.name)} interactive demo`:`معاينة ${template.name} التفاعلية الكاملة`} src={previewHtml?undefined:demoSlug?interactiveDemoPaths[demoSlug]:undefined} srcDoc={demoDocument} loading="eager" referrerPolicy="no-referrer" sandbox={previewHtml?"allow-scripts allow-modals":"allow-scripts allow-forms allow-modals"} style={{width:"100%",height:fullScreen||immersive?"100dvh":"calc(100dvh - 110px)",minHeight:embedded?360:480,border:0,display:"block"}} />
       <p style={{fontSize:12,padding:"8px 14px",color:"#64748b"}}>{t("المعاينة تفاعلية وبياناتها تجريبية داخل المتصفح؛ ليست متصلة ببيانات العملاء أو بالفوترة الحقيقية.","This demo uses sample browser data; it is not connected to live customers or billing.")}</p>
     </section> : <div className="sector-preview-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,230px) minmax(0,1fr)",gap:16}}> 
       <nav className="sector-preview-nav" aria-label={t("أقسام النموذج","Demo sections")} style={{background:brand,color:"white",borderRadius:16,padding:14,alignSelf:"start"}}>
