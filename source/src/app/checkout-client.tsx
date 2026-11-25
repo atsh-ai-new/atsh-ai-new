@@ -41,7 +41,7 @@ export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){cons
    else{setSuccess("وصل طلب التعديل إلى فريق ATSH AI، ولن يمكنك اعتماد هذه النسخة حتى تتم معالجة الملاحظة.");setShowChanges(false);setChanges("")}
   }catch(err){setError(err instanceof Error?err.message:"تعذر الاتصال بالخدمة") }finally{setBusy(false)}
  };
- const [financial,setFinancial]=useState<{methods:Array<{method:string;instructions:string}>;invoices:Array<{id:number;milestone:string;release_for_payment:boolean}>;canPay:boolean}|null>(null);
+ const [financial,setFinancial]=useState<{methods:Array<{method:string;instructions:string}>;invoices:Array<{id:number;milestone:string;release_for_payment:boolean}>;canPay:boolean;xpayTestEnabled?:boolean}|null>(null);
  const [balance,setBalance]=useState<{paidPiasters:number;remainingPiasters:number;creditPiasters:number;refundedPiasters:number}|null>(null);
  const [revisions,setRevisions]=useState<Array<{id:number;status:string;reason:string;proposed_total_piasters:number;contract_sha256:string}>>([]);
  const [revisionConsent,setRevisionConsent]=useState<Record<number,boolean>>({});
@@ -53,6 +53,15 @@ export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){cons
  },[id,data]);
  async function decideRevision(revisionId:number,sha:string,decision:"accept"|"reject"){
   setBusy(true);setError("");try{const r=await fetch(`/api/customer/commercial/revisions/${revisionId}/decision`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({decision,contractSha256:sha,consent:decision==="accept"&&revisionConsent[revisionId]===true})});const b=await r.json();if(!r.ok)throw Error(b.error||"تعذر حفظ القرار");await refresh();setSuccess("تم تسجيل قرارك");}catch(e){setError(String(e));}finally{setBusy(false);}
+ }
+ async function startXpayTest(invoiceId:number){
+  if(!financial?.xpayTestEnabled)return;
+  setBusy(true);setError("");setSuccess("");
+  try{const r=await fetch(`/api/customer/commercial/invoices/${invoiceId}/xpay-test`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:"{}"});const b=await r.json();if(!r.ok)throw Error(b.error||t("تعذر بدء الدفع التجريبي","Could not start test payment"));const url=new URL(b.url);if(b.testMode!==true||url.origin!=="https://checkout.xpay.app"||url.username||url.password)throw Error(t("رابط دفع غير صالح","Invalid checkout link"));window.location.assign(url.href);}catch(e){setError(String(e));}finally{setBusy(false);}
+ }
+ async function checkXpayTest(invoiceId:number){
+  setBusy(true);setError("");setSuccess("");
+  try{const r=await fetch(`/api/customer/commercial/invoices/${invoiceId}/xpay-test`,{credentials:"include",cache:"no-store"});const b=await r.json();if(!r.ok)throw Error(b.error||"Test status unavailable");setSuccess(b.attempt?.status==="test_paid"?t("تم تأكيد الدفع التجريبي فقط؛ لم تتغير الفاتورة الحقيقية.","Test payment verified only; real invoice unchanged."):t("حالة الاختبار: ","Test status: ")+(b.attempt?.status||t("لا توجد جلسة","No session")));}catch(e){setError(String(e));}finally{setBusy(false);}
  }
  const pending=Boolean(data?.changeRequests.some(x=>x.status==="pending"));
  const canAccept=data?.quote.status==="issued"&&data.contract?.status==="issued"&&!pending&&(!data.quote.valid_until||new Date(data.quote.valid_until).getTime()>Date.now());
@@ -102,6 +111,7 @@ export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){cons
      <p>المستحق: {money(invoice.amount_piasters,quote.currency)} · المدفوع المؤكد: {money(invoice.verified_paid_piasters,quote.currency)}</p>
      <p style={{marginBottom:0}}>الرصيد: {money(invoice.amount_piasters-invoice.verified_paid_piasters,quote.currency)} {invoice.due_at?`· الاستحقاق ${new Date(invoice.due_at).toLocaleDateString("ar-EG")}`:"· تاريخ الاستحقاق يُحدد بالعقد"}</p>
     </article>)}
+   {financial?.xpayTestEnabled&&<section style={{border:"1px solid #dce5ec",padding:12,borderRadius:10}}><h3>{t("XPay — دفع تجريبي فقط","XPay — test payments only")}</h3><p>{t("لا تُخصم أموال حقيقية ولا تتغير أرصدة الفواتير.","No real money is charged and invoice balances remain unchanged.")}</p>{data.invoices.filter(i=>i.status!=="void"&&i.amount_piasters>i.verified_paid_piasters&&financial.invoices.some(f=>String(f.id)===String(i.id)&&f.release_for_payment)).map(i=><div key={i.id} style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:8}}><span>#{i.id} · {money(i.amount_piasters-i.verified_paid_piasters)}</span><button disabled={busy} type="button" onClick={()=>void startXpayTest(i.id)}>{t("دفع تجريبي","Test payment")}</button><button disabled={busy} type="button" onClick={()=>void checkXpayTest(i.id)}>{t("تحقق من حالة الاختبار","Check test status")}</button></div>)}</section>}
    {financeError&&<p role="alert">{financeError}</p>}
    {balance&&<div style={{padding:12,background:"#f1f5fa",borderRadius:10}}><p>{t("صافي المدفوع","Net paid")}: {money(balance.paidPiasters)}</p><p>{t("المتبقي","Outstanding")}: {money(balance.remainingPiasters)}</p><p>{t("رصيد للعميل","Customer credit")}: {money(balance.creditPiasters)}</p><p>{t("المسترد","Refunded")}: {money(balance.refundedPiasters)}</p></div>}
    {financial?.canPay&&<section><h3>{t("طرق السداد المتاحة","Available payment methods")}</h3>{financial.methods.map(m=><details key={m.method}><summary>{({cash:"نقدي",bank_transfer:"تحويل بنكي",instapay:"InstaPay",wallet_direct:"محفظة إلكترونية"} as Record<string,string>)[m.method]||m.method}</summary><p style={{whiteSpace:"pre-wrap"}}>{m.instructions}</p><small>{t("يؤكد السداد فريق الإدارة بعد الاستلام","Staff confirm payment after receipt")}</small></details>)}</section>}
