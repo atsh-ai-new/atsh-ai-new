@@ -92,7 +92,7 @@ export default function ContentManager({ initialSlug = "home", onSaved, logoEdit
     if(!/\.html?$/i.test(file.name)||!file.size||file.size>200*1024){setError("اختر ملف HTML مستقلًا حتى 200 كيلوبايت.");return;}
     setBusy(true);
     try{const html=await file.text();if(!html.trim())throw Error("ملف فارغ");
-      setDraft(current=>current?{...current,content:{...current.content,featuredSystemHtml:{...asRecord(current.content.featuredSystemHtml),[slug]:{html,name:file.name.slice(0,255)}}}}:current);
+      setDraft(current=>{if(!current)return current;const ids=Array.isArray(current.content.featuredSystemSlugs)?current.content.featuredSystemSlugs:featuredOptions.slice(0,4).map(x=>x.slug);const files=Object.fromEntries(Object.entries(asRecord(current.content.featuredSystemHtml)).filter(([key])=>ids.includes(key)));return {...current,content:{...current.content,featuredSystemHtml:{...files,[slug]:{html,name:file.name.slice(0,255)}}}};});
       setNotice("تم تجهيز ملف الرئيسية فقط. احفظ وانشر الصفحة لتفعيله.");
     }catch(e){setError(e instanceof Error?e.message:"تعذر قراءة الملف");}finally{setBusy(false);}
   };
@@ -100,6 +100,7 @@ export default function ContentManager({ initialSlug = "home", onSaved, logoEdit
   const canonicalContent = (value:unknown):string => JSON.stringify(value,(_key,item)=>item&&typeof item==="object"&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);
   const savePage = async (publish=false) => {
     if (!draft)return;
+    if(draft.slug==="home"&&new Blob([JSON.stringify(draft.content)]).size>900*1024){setError("حجم محتوى الرئيسية تجاوز الحد المسموح؛ استخدم ملفات أصغر.");return;}
     setBusy(true);setError("");setNotice("");
     try {
       if(publish){
