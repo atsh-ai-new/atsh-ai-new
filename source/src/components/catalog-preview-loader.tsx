@@ -14,13 +14,15 @@ export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;loc
    const preview=readPagePreview("catalog",locale);
    const previewItem=(preview?.content?.items as Item[]|undefined)?.find(x=>x.slug===slug);
    if(previewItem){setItem(previewItem);setReady(true);return()=>{active=false};}
-   fetch("/api/site-content/catalog",{cache:"no-store"}).then(async r=>r.ok?r.json():null).then(data=>{
+   const fromHome=new URLSearchParams(window.location.search).get("featuredHome")==="1";
+   Promise.all([fetch("/api/site-content/catalog",{cache:"no-store"}).then(async r=>r.ok?r.json():null),fromHome?fetch("/api/site-content/home?locale=ar",{cache:"no-store"}).then(async r=>r.ok?r.json():null):Promise.resolve(null)]).then(([data,home])=>{
      if(!active)return;
      const list=data?.page?.content?.items;
      const entry=Array.isArray(list)?list.find((x:Item)=>x?.slug===slug):undefined;
      // Fail closed when a page or catalog entry is unpublished/unavailable.
      // Do not expose an old local fallback after an admin has hidden a demo.
-     setItem(entry&&entry.published!==false&&!entry.archived?entry:undefined);
+     const config=home?.page?.content;const chosen=Array.isArray(config?.featuredSystemSlugs)?config.featuredSystemSlugs.includes(slug):Array.isArray(list)&&list.filter((x:Item)=>x?.published!==false&&!x?.archived).slice(0,4).some((x:Item)=>x.slug===slug);const html=config?.featuredSystemHtml?.[slug]?.html;
+     setItem(entry&&entry.published!==false&&!entry.archived?(fromHome?{...entry,previewHtml:chosen&&typeof html==="string"?html:undefined}:entry):undefined);
    }).catch(()=>{if(active)setItem(undefined)}).finally(()=>{if(active)setReady(true)});
    return()=>{active=false};
  },[slug]);
