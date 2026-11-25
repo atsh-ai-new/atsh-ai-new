@@ -380,7 +380,7 @@ export default function AdminPage() {
         
         {view === "assistant-knowledge" && canEditContent && <AssistantKnowledge />}
         {view === "videos" && canEditContent && <VideoManager />}
-        {view === "pages" && <ContentManager onSaved={loadData} />}
+        {view === "pages" && <ContentManager onSaved={loadData} logoEditor={<><ImageSetting label="الشعار" value={theme.logoUrl} onChange={value=>setTheme(current=>({...current,logoUrl:value}))} onUpload={event=>void uploadThemeImage(event,"logoUrl")} busy={busy}/><button type="button" className="button button-small" disabled={busy} onClick={saveTheme}>حفظ الشعار</button></>} heroImageEditor={<><ImageSetting label="صورة الواجهة" value={theme.heroImageUrl} onChange={value=>setTheme(current=>({...current,heroImageUrl:value}))} onUpload={event=>void uploadThemeImage(event,"heroImageUrl")} busy={busy}/><button type="button" className="button button-small" disabled={busy} onClick={saveTheme}>حفظ صورة الواجهة</button></>} />}
         {view === "works" && <ContentManager initialSlug="works" onSaved={loadData} />}
         {view === "content-studio" && canEditContent && <ContentStudio />}
         {view === "journey" && <><JourneyManager mode="projects" canManageTasks={canEditCatalog} canArchive={user.role === "owner" || user.role === "admin"} canDelete={user.role === "owner"} />{(user.role === "owner" || user.role === "admin") && <CustomerServicesAdmin canEdit={true} />}</>}
