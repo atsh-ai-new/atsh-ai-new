@@ -1232,10 +1232,11 @@ app.post("/api/admin/team/:id/purge",requireAdmin,requirePermission("team"),requ
   await client.query("COMMIT");res.json({deleted:true});
  }catch(e){await client.query("ROLLBACK");if(e.code==="23503")return res.status(409).json({error:"تعذر حذف العضو بسبب بيانات مرتبطة؛ أوقف الحساب بدلًا من الحذف."});throw e;}finally{client.release();}
 }));
+await pool.query("ALTER TABLE packages ADD COLUMN IF NOT EXISTS deleted_at timestamptz");
 app.get("/api/admin/packages",requireAdmin,requirePermission("products"),route(async(_req,res)=>{
   const [p,o]=await Promise.all([
-    pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote,is_published,sort_order,created_at,updated_at FROM packages ORDER BY sort_order,created_at"),
-    pool.query("SELECT id,package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,created_at FROM package_options ORDER BY sort_order,created_at")
+    pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote,is_published,sort_order,created_at,updated_at FROM packages WHERE deleted_at IS NULL ORDER BY sort_order,created_at"),
+    pool.query("SELECT id,package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,created_at FROM package_options WHERE package_id IN (SELECT id FROM packages WHERE deleted_at IS NULL) ORDER BY sort_order,created_at")
   ]);
   res.json({packages:p.rows,options:o.rows});
 }));
@@ -1258,20 +1259,20 @@ app.patch("/api/admin/packages/:id",requireAdmin,requirePermission("products"),r
   const parsed=packageSchema.partial().strict().safeParse(req.body);if(!parsed.success||!Object.keys(req.body||{}).length||!Object.keys(parsed.data||{}).length)return res.status(400).json({error:"Invalid package update"});
   const map={name:"name",tagline:"tagline",description:"description",price:"price",currency:"currency",features:"features",isFeatured:"is_featured",isCustomQuote:"is_custom_quote",isPublished:"is_published",sortOrder:"sort_order",visibility:"visibility"};
   const entries=Object.entries(parsed.data);const client=await pool.connect();
-  try{await client.query("BEGIN");const before=await client.query("SELECT * FROM packages WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
+  try{await client.query("BEGIN");const before=await client.query("SELECT * FROM packages WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
     const sets=[],values=[];for(const [k,v] of entries){values.push(k==="features"?JSON.stringify(v):v);sets.push(map[k]+"=$"+values.length+(k==="features"?"::jsonb":""));}
     values.push(req.params.id);const q=await client.query("UPDATE packages SET "+sets.join(",")+",updated_at=now() WHERE id=$"+values.length+" RETURNING *",values);
     await auditChange(client,req.admin.email,"package.updated","package",req.params.id,before.rows[0],q.rows[0]);await client.query("COMMIT");res.json({package:q.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.delete("/api/admin/packages/:id",requireAdmin,requirePermission("products"),route(async(req,res)=>{
-  const client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM packages WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
-    const q=await client.query("UPDATE packages SET is_published=false,updated_at=now() WHERE id=$1 RETURNING *",[req.params.id]);await auditChange(client,req.admin.email,"package.unpublished","package",req.params.id,before.rows[0],q.rows[0]);await client.query("COMMIT");res.json({package:q.rows[0],message:"Package unpublished; historical orders preserved."});
+  const client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM packages WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
+    const q=await client.query("UPDATE packages SET is_published=false,deleted_at=now(),updated_at=now() WHERE id=$1 RETURNING *",[req.params.id]);await auditChange(client,req.admin.email,"package.deleted","package",req.params.id,before.rows[0],q.rows[0]);await client.query("COMMIT");res.json({package:q.rows[0],message:"Package deleted from catalog; historical orders preserved."});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.post("/api/admin/options",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=optionSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:"Invalid option",details:parsed.error.issues});
-  const x=parsed.data,client=await pool.connect();try{await client.query("BEGIN");const p=await client.query("SELECT id FROM packages WHERE id=$1 FOR SHARE",[x.packageId]);if(!p.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
+  const x=parsed.data,client=await pool.connect();try{await client.query("BEGIN");const p=await client.query("SELECT id FROM packages WHERE id=$1 AND deleted_at IS NULL FOR SHARE",[x.packageId]);if(!p.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
     const q=await client.query("INSERT INTO package_options(package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,visibility) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",[x.packageId,x.code,x.name,x.description,x.price,x.pricingType,x.unitLabel,x.isRequired,x.isActive,x.sortOrder,x.visibility]);
     await auditChange(client,req.admin.email,"package_option.created","package_option",q.rows[0].id,null,q.rows[0]);await client.query("COMMIT");res.status(201).json({option:q.rows[0]});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
