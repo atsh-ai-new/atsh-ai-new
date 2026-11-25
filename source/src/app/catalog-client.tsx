@@ -14,7 +14,7 @@ const defaults:Item[]=sectorTemplates.map((s,i)=>({...s,published:true,sortOrder
 export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
  const [items,setItems]=useState<Item[]>(defaults);
  const [marketing,setMarketing]=useState<Record<string,unknown>>({});
- useEffect(()=>{let active=true;fetch("/api/site-content/home?locale="+locale,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(d=>{if(active)setMarketing(d?.page?.content??{})}).catch(()=>{});return()=>{active=false}},[locale]);
+ useEffect(()=>{let active=true;fetch("/api/site-content/home?metadata=1&locale="+locale,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(d=>{if(active)setMarketing(d?.page?.content??{})}).catch(()=>{});return()=>{active=false}},[locale]);
  const marketingCopy=(key:string)=>typeof marketing[key]==="string"?String(marketing[key]):(en?siteCopyEn:siteCopyDefaults)[key]??"";
  const [sectors,setSectors]=useState<CatalogSector[]>(locale==="en"?englishCatalogSectors(normalizeCatalogSectors(undefined)):normalizeCatalogSectors(undefined));
  const [query,setQuery]=useState("");
@@ -23,7 +23,7 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
  const [notice,setNotice]=useState("");
  useEffect(()=>{
   let active=true;
-  fetch("/api/site-content/catalog",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();const arabic=await r.json();if(!en)return {data:arabic,english:null};const english=await fetch("/api/site-content/catalog?locale=en",{cache:"no-store"}).then(async x=>x.ok?x.json():null).catch(()=>null);return {data:arabic,english};}).then(({data,english})=>{
+  fetch("/api/site-content/catalog?metadata=1",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();const arabic=await r.json();if(!en)return {data:arabic,english:null};const english=await fetch("/api/site-content/catalog?locale=en&metadata=1",{cache:"no-store"}).then(async x=>x.ok?x.json():null).catch(()=>null);return {data:arabic,english};}).then(({data,english})=>{
    if(!active)return;if(!data?.page||!Array.isArray(data.page.content?.items)){setItems([]);return;}
    const englishBySlug=new Map<string,Partial<Item>>((Array.isArray(english?.page?.content?.items)?english.page.content.items:[]).filter((x:Item)=>x&&typeof x.slug==="string").map((x:Item)=>[x.slug,x]));
    setItems(data.page.content.items.filter((x:Item)=>x&&typeof x.slug==="string"&&typeof x.name==="string"&&x.published!==false&&!x.archived).map((x:Item)=>en?{...x,name:englishBySlug.get(x.slug)?.name||englishTemplateLabel(x.slug,x.slug),description:englishBySlug.get(x.slug)?.description||englishTemplateLabel(x.slug,"A configurable business system. Request a detailed scope review.","description"),features:englishBySlug.get(x.slug)?.features||englishTemplateFeatures(x.slug,[])}:x));
@@ -80,7 +80,7 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,245px),1fr))",gap:15}}>
     {records.map(item=>{const place=resolvePlacement(item,sectors);return <article key={item.slug} style={{background:"white",padding:12,borderRadius:16,border:"1px solid #e2e8f0",display:"flex",flexDirection:"column",gap:10,minWidth:0}}>
      <div style={{position:"relative",height:360,border:"1px solid #dce4ed",borderRadius:12,overflow:"hidden",background:"#f8fafc"}}>
-      <iframe title={t("معاينة تفاعلية: ","Interactive preview: ")+item.name} src={item.previewHtml?undefined:`${base}/catalog/${encodeURIComponent(item.slug)}?embedded=1`} srcDoc={item.previewHtml?isolatedDemoHtml(item.previewHtml):undefined} sandbox={item.previewHtml?"allow-scripts allow-modals":undefined} referrerPolicy="no-referrer" loading="eager" style={{width:"100%",height:"100%",border:0,background:"white"}} allowFullScreen />
+      <iframe title={t("معاينة تفاعلية: ","Interactive preview: ")+item.name} src={`${base}/catalog/${encodeURIComponent(item.slug)}?embedded=1`} referrerPolicy="no-referrer" loading="lazy" style={{width:"100%",height:"100%",border:0,background:"white"}} allowFullScreen />
      </div>
      <h3 style={{margin:"2px 0",color:"#203958"}}>{en?englishTemplateLabel(item.slug,item.name):item.name}</h3>
      <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("جرّب النظام بملء الشاشة ←","Try full-screen demo →")}</Link>

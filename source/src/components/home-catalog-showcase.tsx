@@ -8,7 +8,7 @@ import {isolatedDemoHtml,type SectorTemplate} from "@/lib/sector-catalog";
 
 type PricedAddon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
 export type HomeCatalogItem=SectorTemplate&{
- published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;demoSlug?:string;previewHtml?:string;
+ published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;demoSlug?:string;previewHtml?:string;hasPreviewHtml?:boolean;
  sectorId?:string;subcategoryId?:string;basePrice?:number|null;pricedAddons?:PricedAddon[];
 };
 type Props={
@@ -33,8 +33,8 @@ export default function HomeCatalogShowcase({selectedSlug,selectedAddons,onSelec
  useEffect(()=>{const query=window.matchMedia("(max-width:560px)");const sync=()=>setMobile(query.matches);sync();query.addEventListener("change",sync);return()=>query.removeEventListener("change",sync)},[]);
  useEffect(()=>{
   const controller=new AbortController();
-  fetch("/api/site-content/catalog",{signal:controller.signal,cache:"no-store"})
-   .then(async response=>{if(!response.ok)throw Error();const data=await response.json();const english=en?await fetch("/api/site-content/catalog?locale=en",{signal:controller.signal,cache:"no-store"}).then(async response=>response.ok?response.json():null).catch(()=>null):null;return {data,english};})
+  fetch("/api/site-content/catalog?metadata=1",{signal:controller.signal,cache:"no-store"})
+   .then(async response=>{if(!response.ok)throw Error();const data=await response.json();const english=en?await fetch("/api/site-content/catalog?locale=en&metadata=1",{signal:controller.signal,cache:"no-store"}).then(async response=>response.ok?response.json():null).catch(()=>null):null;return {data,english};})
    .then(({data,english})=>{
     const content=data?.page?.content;
     if(!Array.isArray(content?.items))throw Error("missing catalog");
@@ -89,7 +89,7 @@ export default function HomeCatalogShowcase({selectedSlug,selectedAddons,onSelec
     const addons=Array.isArray(item.pricedAddons)?item.pricedAddons:[];
     const price=typeof item.basePrice==="number"&&Number.isFinite(item.basePrice)&&item.basePrice>=0?item.basePrice:null;
     return <article className="hc-card" key={item.slug} aria-label={item.name}>
-     {item.previewHtml?<iframe title={item.name} srcDoc={isolatedDemoHtml(item.previewHtml)} sandbox="allow-scripts allow-modals" referrerPolicy="no-referrer" style={{width:"100%",height:135,border:0,borderRadius:11}}/>:safeImage(item.imageUrl)?<img src={item.imageUrl} alt={t("صورة توضيحية: ","Preview image: ")+(en?englishTemplateLabel(item.slug,item.name):item.name)} loading="lazy" style={{width:"100%",height:135,objectFit:"cover",borderRadius:11}}/>:<div style={{height:135,overflow:"hidden",borderRadius:11}}><CatalogCardPreview slug={item.slug} name={en?englishTemplateLabel(item.slug,item.name):item.name}/></div>}
+     {item.hasPreviewHtml?<iframe title={item.name} src={`${base}/catalog/${encodeURIComponent(item.slug)}?embedded=1`} loading="lazy" referrerPolicy="no-referrer" style={{width:"100%",height:135,border:0,borderRadius:11}}/>:safeImage(item.imageUrl)?<img src={item.imageUrl} alt={t("صورة توضيحية: ","Preview image: ")+(en?englishTemplateLabel(item.slug,item.name):item.name)} loading="lazy" style={{width:"100%",height:135,objectFit:"cover",borderRadius:11}}/>:<div style={{height:135,overflow:"hidden",borderRadius:11}}><CatalogCardPreview slug={item.slug} name={en?englishTemplateLabel(item.slug,item.name):item.name}/></div>}
      <small style={{color:"#3d6897",fontWeight:700}}>{place.sector?.name} / {place.subcategory?.name||t("عام","General")}</small>
      <h4 style={{margin:0,color:"#203958",fontSize:20}}>{item.icon} {en?englishTemplateLabel(item.slug,item.name):item.name}</h4>
      <p style={{margin:0,color:"#66788b",lineHeight:1.7,flex:1}}>{en?englishTemplateLabel(item.slug,item.description,"description"):item.description}</p>
