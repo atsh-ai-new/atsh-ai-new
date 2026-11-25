@@ -1172,6 +1172,11 @@ app.put("/api/admin/page-drafts/:slug",requireAdmin,requirePermission("content")
  const saved=await pool.query("INSERT INTO site_page_drafts(slug,locale,content,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING slug,locale,updated_at",[req.params.slug,parsed.data.locale,JSON.stringify(stored),req.admin.email]);
  res.json({draft:saved.rows[0]});
 }));
+app.get("/api/admin/demo-assets/:id",requireAdmin,requirePermission("content"),route(async(req,res)=>{
+ const html=await readDemoAsset(pool,req.params.id);
+ if(html===null)return res.status(404).json({error:"Demo not found"});
+ res.set("Cache-Control","no-store").json({html});
+}));
 app.get("/api/admin/pages",requireAdmin,requirePermission("content"),route(async(_req,res)=>{
   const result=await pool.query("SELECT id,slug,locale,content,is_published,updated_by,updated_at FROM site_pages ORDER BY slug,locale");
   const drafts=await pool.query("SELECT slug,locale,content,updated_at FROM site_page_drafts");
