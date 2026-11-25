@@ -553,21 +553,38 @@ app.post("/api/admin/templates",requireAdmin,requirePermission("content"),route(
  res.status(201).json({template:result.rows[0]});
 }));
 
+// Return one uploaded demo only, never an entire page of executable files.
+app.get("/api/site-content/:slug/demo/:system",route(async(req,res)=>{
+ const {slug,system}=req.params;
+ if(!["home","catalog"].includes(slug)||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(system))return res.status(400).json({error:"Invalid demo"});
+ const found=await pool.query(`SELECT CASE WHEN $1='home' THEN
+ CASE WHEN NOT (content ? 'featuredSystemSlugs') OR content->'featuredSystemSlugs' ? $2 THEN content->'featuredSystemHtml'->$2->>'html' END
+ ELSE (SELECT item->>'previewHtml' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(content->'items')='array' THEN content->'items' ELSE '[]'::jsonb END) item WHERE item->>'slug'=$2 AND COALESCE(item->>'published','true')!='false' AND COALESCE(item->>'archived','false')!='true' LIMIT 1) END AS html
+ FROM site_pages WHERE slug=$1 AND locale='ar' AND is_published=true`,[slug,system]);
+ const html=found.rows[0]?.html;
+ if(typeof html!=="string"||!html)return res.status(404).json({error:"Demo not found"});
+ // JSON transport prevents uploaded HTML from being served as a same-origin page.
+ res.set("Cache-Control","no-store").json({html});
+}));
 app.get("/api/site-content/:slug", route(async(req,res)=>{
   if(!/^[a-z0-9-]{1,100}$/.test(req.params.slug))return res.status(400).json({error:"Invalid page"});
   const locale=typeof req.query.locale==="string"&&/^[a-z]{2}(-[A-Z]{2})?$/.test(req.query.locale)?req.query.locale:"ar";
+  const metadata=req.query.metadata==="1";
+  // Strip file bodies inside PostgreSQL before serialization or network transfer.
+  const contentSql=metadata?`CASE WHEN slug='home' THEN (content-'featuredSystemHtml') || jsonb_build_object('featuredSystemHtml',COALESCE((SELECT jsonb_object_agg(key,jsonb_build_object('name',value->>'name','available',true)) FROM jsonb_each(CASE WHEN jsonb_typeof(content->'featuredSystemHtml')='object' THEN content->'featuredSystemHtml' ELSE '{}'::jsonb END) WHERE COALESCE(value->>'html','')<>''),'{}'::jsonb))
+  WHEN slug='catalog' THEN (content-'items') || jsonb_build_object('items',COALESCE((SELECT jsonb_agg((item-'previewHtml') || jsonb_build_object('hasPreviewHtml',COALESCE(item->>'previewHtml','')<>'') ORDER BY ord) FROM jsonb_array_elements(CASE WHEN jsonb_typeof(content->'items')='array' THEN content->'items' ELSE '[]'::jsonb END) WITH ORDINALITY AS entries(item,ord)),'[]'::jsonb)) ELSE content END`:"content";
   const [page,settings]=await Promise.all([
-    pool.query("SELECT slug,locale,content,updated_at FROM site_pages WHERE slug=$1 AND locale=$2 AND is_published=true",[req.params.slug,locale]),
+    pool.query("SELECT slug,locale,"+contentSql+" AS content,updated_at FROM site_pages WHERE slug=$1 AND locale=$2 AND is_published=true",[req.params.slug,locale]),
     pool.query("SELECT theme,vat_rate FROM site_settings WHERE id=1")
   ]);
   const publishedPage=page.rows[0]||null;
   if(req.params.slug==="catalog"&&Array.isArray(publishedPage?.content?.items)){
     publishedPage.content={...publishedPage.content,items:publishedPage.content.items.map(item=>{
       if(!item||typeof item!=="object"||item.published!==false&&!item.archived)return item;
-      const {previewHtml,previewHtmlName,...rest}=item;return rest;
+      const {previewHtml,previewHtmlName,hasPreviewHtml,...rest}=item;return rest;
     })};
   }
-  res.json({page:publishedPage,theme:settings.rows[0]?.theme||null,vatRate:Number(settings.rows[0]?.vat_rate??14)});
+  res.set("Cache-Control","no-store").json({page:publishedPage,theme:settings.rows[0]?.theme||null,vatRate:Number(settings.rows[0]?.vat_rate??14)});
 }));
 app.get("/api/site-pages",route(async(req,res)=>{
   const locale=req.query.locale==="en"?"en":"ar";
@@ -1192,7 +1209,7 @@ app.patch("/api/admin/home-featured",requireAdmin,requirePermission("content"),r
   await client.query("UPDATE site_page_drafts SET content=content || $1::jsonb,updated_at=now() WHERE slug='home' AND locale='ar'",[JSON.stringify(patch)]);
   await auditChange(client,req.admin.email,"page.updated","site_page",updated.rows[0].id,{featuredSystemSlugs:before.rows[0].content?.featuredSystemSlugs},{featuredSystemSlugs:slugs,featuredFiles:Object.keys(patch.featuredSystemHtml)});
   await client.query("COMMIT");
-  res.json({published:true,...patch});
+  res.json({published:true,slugs,files:Object.keys(parsed.data.files)});
  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.patch("/api/admin/pages/:slug",requireAdmin,requirePermission("content"),route(async(req,res)=>{
