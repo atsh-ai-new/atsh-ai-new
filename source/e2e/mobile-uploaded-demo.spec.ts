@@ -5,8 +5,14 @@ test("uploaded standalone demo stays interactive inside catalog",async({page})=>
  await page.route("**/api/site-content/catalog?demo=avocato",route=>route.fulfill({json:{html}}));
  await page.goto("/catalog/avocato?fullscreen=1");
  const frame=page.frameLocator('iframe[title*="معاينة"]');
+ await expect(page.locator("main[data-catalog-immersive=true]")).toBeVisible();
  await frame.getByRole("button",{name:"Enter demo"}).click();
  await expect(frame.getByText("Entered")).toBeVisible();
+ await page.setViewportSize({width:390,height:700});
+ await expect(frame.getByText("Entered")).toBeVisible();
+ const bounds=await page.locator("main[data-catalog-immersive=true]").boundingBox();
+ expect(bounds?.x).toBe(0);
+ expect(bounds?.width).toBe(390);
  await expect(page).toHaveURL(/\/catalog\/avocato\?fullscreen=1$/);
  await expect(page.locator('iframe[title*="معاينة"]')).not.toHaveAttribute("sandbox",/allow-same-origin/);
 });
