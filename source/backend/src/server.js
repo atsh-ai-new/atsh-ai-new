@@ -1,4 +1,4 @@
-import {extractDemoAssets,migrateDemoAssets,readDemoAsset,expandDemoAssets} from "./site-demo-assets.js";
+import {extractDemoAssets,migrateDemoAssets,readDemoAsset,expandDemoAssets,storeDemoAsset} from "./site-demo-assets.js";
 import { effectivePermissions, hasPermission } from "./team-permissions.js";
 import {validCalendarDate} from './invoice-ledger-rules.js';
 import { deliveryAdminRouter, deliveryCustomerRouter } from "./delivery-control.js";
@@ -1171,6 +1171,13 @@ app.put("/api/admin/page-drafts/:slug",requireAdmin,requirePermission("content")
  const stored=await extractDemoAssets(pool,req.params.slug,parsed.data.content);
  const saved=await pool.query("INSERT INTO site_page_drafts(slug,locale,content,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(slug,locale) DO UPDATE SET content=EXCLUDED.content,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING slug,locale,updated_at",[req.params.slug,parsed.data.locale,JSON.stringify(stored),req.admin.email]);
  res.json({draft:saved.rows[0]});
+}));
+app.post("/api/admin/demo-assets",requireAdmin,requirePermission("content"),express.raw({type:"application/octet-stream",limit:"10mb"}),route(async(req,res)=>{
+ if(!Buffer.isBuffer(req.body)||!req.body.length||req.body.length>10*1024*1024)return res.status(400).json({error:"Invalid HTML file"});
+ const html=req.body.toString("utf8");
+ if(!html.trim()||!Buffer.from(html,"utf8").equals(req.body)||html.includes(String.fromCharCode(0)))return res.status(400).json({error:"Choose a non-empty UTF-8 HTML file"});
+ const assetId=await storeDemoAsset(pool,html);
+ res.status(201).json({assetId,byteSize:req.body.length});
 }));
 app.get("/api/admin/demo-assets/:id",requireAdmin,requirePermission("content"),route(async(req,res)=>{
  const html=await readDemoAsset(pool,req.params.id);

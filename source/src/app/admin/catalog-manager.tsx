@@ -74,8 +74,10 @@ export default function CatalogManager() {
     setError("");setNotice("");
     if(!/\.html?$/i.test(file.name)||file.size===0||file.size>MAX_DEMO_HTML_BYTES){setError("اختر ملف HTML مستقلًا بحجم لا يتجاوز 10 ميجابايت.");return;}
     setUploading(true);
-    try{const html=await file.text();if(!html.trim())throw Error("ملف HTML فارغ.");
-      setDraft(d=>({...d,previewHtml:html,previewHtmlName:file.name.slice(0,255)}));setHtmlPreview(false);setPreviewUrlLocal("");
+    try{const response=await fetch("/api/admin/demo-assets",{method:"POST",credentials:"include",headers:{"Content-Type":"application/octet-stream"},body:file});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||! /^[a-f0-9]{64}$/.test(data.assetId??""))throw Error(data.error||data.message||"تعذر رفع ملف HTML");
+      setDraft(d=>({...d,previewHtml:undefined,previewAssetId:data.assetId,hasPreviewHtml:true,previewHtmlName:file.name.slice(0,255)}));setHtmlPreview(false);setPreviewUrlLocal("");
       setNotice("تم تجهيز الملف. عاينه ثم احفظ النظام لتطبيقه.");
     }catch(e){setError(e instanceof Error?e.message:"تعذر قراءة الملف.");}finally{setUploading(false);}
   };
@@ -101,7 +103,7 @@ export default function CatalogManager() {
     if(slug!==originalSlug && items.some(x=>x.slug===slug)){setError("الرابط مستخدم بالفعل.");return;}
     if(draft.previewUrl.trim()){try{const url=new URL(draft.previewUrl.trim());if(url.protocol!=="https:")throw Error();}catch{setError("رابط المعاينة يجب أن يكون رابط HTTPS صالحًا للنظام المنشور.");return;}}
     if(draft.basePrice!==null&&(!Number.isFinite(draft.basePrice)||draft.basePrice<0)){setError("أدخل سعر بيع صحيحًا للنظام مخصص، أو اتركه فارغًا حتى تحديد السعر.");return;}
-    const updated={...draft,previewUrl:draft.previewUrl.trim(),pricedAddons:[],slug,name:draft.name.trim(),description:draft.description.trim()};
+    const updated={...draft,previewHtml:draft.previewAssetId?undefined:draft.previewHtml,previewUrl:draft.previewUrl.trim(),pricedAddons:[],slug,name:draft.name.trim(),description:draft.description.trim()};
     if(!updated.name){setError("اسم النظام المخصص مطلوب.");return;}
     const placement=resolvePlacement(updated,sectors);
     if(!placement.sector||!updated.sectorId){setError("اختر قطاعًا رئيسيًا صالحًا.");return;}

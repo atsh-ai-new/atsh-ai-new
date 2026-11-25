@@ -3,7 +3,7 @@ import {createHash} from "node:crypto";
 const idFor=html=>createHash("sha256").update(html,"utf8").digest("hex");
 const record=x=>x&&typeof x==="object"&&!Array.isArray(x);
 const validId=id=>typeof id==="string"&&/^[a-f0-9]{64}$/.test(id);
-async function asset(db,html){
+export async function storeDemoAsset(db,html){
  const id=idFor(html);
  await db.query("INSERT INTO site_demo_assets(id,html,byte_size) VALUES($1,$2,$3) ON CONFLICT(id) DO NOTHING",[id,html,Buffer.byteLength(html,"utf8")]);
  return id;
@@ -14,7 +14,7 @@ export async function extractDemoAssets(db,slug,content){
   const files={};
   for(const [key,entry] of Object.entries(content.featuredSystemHtml)){
    if(!record(entry))continue;
-   if(typeof entry.html==="string"&&entry.html.trim())files[key]={name:entry.name??"",assetId:await asset(db,entry.html),available:true};
+   if(typeof entry.html==="string"&&entry.html.trim())files[key]={name:entry.name??"",assetId:await storeDemoAsset(db,entry.html),available:true};
    else if(validId(entry.assetId)){
     const result=await db.query("SELECT 1 FROM site_demo_assets WHERE id=$1",[entry.assetId]);
     if(!result.rowCount)throw Error("Unknown demo asset");
@@ -29,7 +29,7 @@ export async function extractDemoAssets(db,slug,content){
    if(!record(item)){items.push(item);continue;}
    const {previewHtml,previewAssetId,hasPreviewHtml,...rest}=item;
    if(typeof previewHtml==="string"&&previewHtml.trim()){
-    items.push({...rest,previewAssetId:await asset(db,previewHtml),hasPreviewHtml:true});
+    items.push({...rest,previewAssetId:await storeDemoAsset(db,previewHtml),hasPreviewHtml:true});
    }else if(previewHtml===undefined&&validId(previewAssetId)){
     const result=await db.query("SELECT 1 FROM site_demo_assets WHERE id=$1",[previewAssetId]);
     if(!result.rowCount)throw Error("Unknown demo asset");

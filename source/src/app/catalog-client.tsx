@@ -1,25 +1,19 @@
 "use client";
 import {siteCopyDefaults} from "@/lib/site-copy";
 import {siteCopyEn} from "@/lib/site-copy-en";
-import {useEffect,useState,useRef,useMemo} from "react";
+import {useEffect,useState} from "react";
 import Link from "next/link";
-import {isolatedDemoHtml,sectorTemplates,type SectorTemplate} from "@/lib/sector-catalog";
+import {sectorTemplates,type SectorTemplate} from "@/lib/sector-catalog";
 import {normalizeCatalogSectors,resolvePlacement,type CatalogSector} from "@/lib/catalog-sectors";
 import {loadGuestWorkspace,saveGuestWorkspace} from "@/lib/customer-workspace";
 import CatalogCardPreview from "@/components/catalog-card-preview";
 import {englishCatalogSectors,englishTemplateLabel,englishTemplateFeatures} from "@/lib/sector-en";
-import {isInteractiveSector} from "@/components/sector-interactive-demo";
 type Item=SectorTemplate&{published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;previewUrl?:string;previewHtml?:string;hasPreviewHtml?:boolean;previewAssetId?:string;sectorId?:string;subcategoryId?:string;basePrice?:number|null};
 function GalleryDemo({item,base,title}:{item:Item;base:string;title:string}){
- const host=useRef<HTMLDivElement>(null);
- const [visible,setVisible]=useState(false),[html,setHtml]=useState<string>();
- const [failed,setFailed]=useState(false);
- useEffect(()=>{const el=host.current;if(!el)return;const observer=new IntersectionObserver(entries=>{if(entries.some(x=>x.isIntersecting)){setVisible(true);observer.disconnect();}},{rootMargin:"200px"});observer.observe(el);return()=>observer.disconnect();},[]);
- useEffect(()=>{if(!visible||!item.hasPreviewHtml)return;const controller=new AbortController();setHtml(undefined);setFailed(false);fetch("/api/site-content/catalog?demo="+encodeURIComponent(item.slug),{signal:controller.signal,cache:"no-store"}).then(r=>{if(!r.ok)throw Error("Demo unavailable");return r.json()}).then(d=>{if(!controller.signal.aborted&&typeof d.html==="string")setHtml(d.html)}).catch(()=>{if(!controller.signal.aborted)setFailed(true)});return()=>controller.abort();},[visible,item.slug,item.hasPreviewHtml,item.previewAssetId]);
- const doc=useMemo(()=>html?isolatedDemoHtml(html):undefined,[html]);
- return <div ref={host} style={{position:"relative",height:360,border:"1px solid #dce4ed",borderRadius:12,overflow:"hidden",background:"#f8fafc"}}>
- {visible&&(!item.hasPreviewHtml||doc)?<iframe title={title} src={item.hasPreviewHtml?undefined:`${base}/catalog/${encodeURIComponent(item.slug)}?embedded=1`} srcDoc={doc} sandbox={item.hasPreviewHtml?"allow-scripts allow-modals":undefined} referrerPolicy="no-referrer" loading="lazy" style={{width:"100%",height:"100%",border:0,background:"white"}} allowFullScreen/>:<span style={{padding:12,display:"block"}}>{failed?(base? "Demo unavailable":"المعاينة غير متاحة"):item.name}</span>}
- </div>;
+ const url=item.imageUrl;
+ return <Link prefetch={false} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} aria-label={title} style={{display:"block",overflow:"hidden",borderRadius:12}}>
+ {url&&(/^(\/api\/site-media\/[0-9a-f-]{36}$)/i.test(url)||url.startsWith("https://"))?<img src={url} alt={item.name} loading="lazy" style={{width:"100%",height:156,objectFit:"cover"}}/>:<CatalogCardPreview slug={item.slug} name={item.name}/>}
+ </Link>;
 }
 const defaults:Item[]=sectorTemplates.map((s,i)=>({...s,published:true,sortOrder:i*10}));
 export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
@@ -92,7 +86,7 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
     {records.map(item=>{const place=resolvePlacement(item,sectors);return <article key={item.slug} style={{background:"white",padding:12,borderRadius:16,border:"1px solid #e2e8f0",display:"flex",flexDirection:"column",gap:10,minWidth:0}}>
      <GalleryDemo item={item} base={base} title={t("معاينة تفاعلية: ","Interactive preview: ")+item.name}/>
      <h3 style={{margin:"2px 0",color:"#203958"}}>{en?englishTemplateLabel(item.slug,item.name):item.name}</h3>
-     <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("جرّب النظام بملء الشاشة ←","Try full-screen demo →")}</Link>
+     <Link prefetch={false} onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("جرّب النظام بملء الشاشة ←","Try full-screen demo →")}</Link>
      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",borderTop:"1px solid #e2e8f0",paddingTop:12}}>
       <span style={{fontWeight:800,color:"#203958"}}>{typeof item.basePrice==="number"&&Number.isFinite(item.basePrice)&&item.basePrice>=0? t("السعر الأساسي: ","Base price: ")+item.basePrice.toLocaleString(en?"en-EG":"ar-EG")+t(" ج.م"," EGP"):t("السعر يُحدد من لوحة الإدارة","Price pending admin setup")}</span>
       <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}/pricing`} style={{fontSize:13,color:"#203958",textDecoration:"underline",fontWeight:700}}>{t("أضف المواصفات واحسب الإجمالي ←","Add options & calculate total →")}</Link>

@@ -21,9 +21,9 @@ export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;loc
      const entry=Array.isArray(list)?list.find((x:Item)=>x?.slug===slug):undefined;
      // Fail closed when a page or catalog entry is unpublished/unavailable.
      // Do not expose an old local fallback after an admin has hidden a demo.
-     const config=home?.page?.content;const chosen=Array.isArray(config?.featuredSystemSlugs)?config.featuredSystemSlugs.includes(slug):Array.isArray(list)&&list.filter((x:Item)=>x?.published!==false&&!x?.archived).slice(0,4).some((x:Item)=>x.slug===slug);const available=fromHome?chosen&&config?.featuredSystemHtml?.[slug]?.available:entry?.hasPreviewHtml;
+     const config=home?.page?.content;const chosen=Array.isArray(config?.featuredSystemSlugs)?config.featuredSystemSlugs.includes(slug):Array.isArray(list)&&list.filter((x:Item)=>x?.published!==false&&!x?.archived).slice(0,4).some((x:Item)=>x.slug===slug);const homeOverride=fromHome&&chosen&&config?.featuredSystemHtml?.[slug]?.available;const available=homeOverride||entry?.hasPreviewHtml;
      let html:string|undefined;
-     if(available){const response=await fetch("/api/site-content/"+(fromHome?"home":"catalog")+"?demo="+encodeURIComponent(slug),{cache:"no-store"});if(!response.ok)throw Error("Demo unavailable");const result=await response.json();if(typeof result.html!=="string")throw Error("Invalid demo");html=result.html;}
+     if(available){const response=await fetch("/api/site-content/"+(homeOverride?"home":"catalog")+"?demo="+encodeURIComponent(slug),{cache:"no-store"});if(!response.ok)throw Error("Demo unavailable");const result=await response.json();if(typeof result.html!=="string")throw Error("Invalid demo");html=result.html;}
      if(!active)return;
      setItem(entry&&entry.published!==false&&!entry.archived?{...entry,previewHtml:html}:undefined);
    }).catch(()=>{if(active)setItem(undefined)}).finally(()=>{if(active)setReady(true)});
