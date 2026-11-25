@@ -7,7 +7,7 @@ function isolatedDemoHtml(html) {
  // origin or blob URL. Supply an inert base for resolution, not for network access.
  const routerCompat="<script>(()=>{const U=window.URL;window.URL=class extends U{constructor(input,base){if(base==='about:srcdoc'||base==='null'||(typeof base==='string'&&base.startsWith('blob:')))base='https://demo.invalid/';super(input,base)}}})();</script>";
  const injection=policy+routerCompat;
- let documentHtml:string;
+ let documentHtml;
  if(/<head(?:\s[^>]*)?>/i.test(html))documentHtml=html.replace(/<head(?:\s[^>]*)?>/i,match=>match+injection);
  else if(/<html(?:\s[^>]*)?>/i.test(html))documentHtml=html.replace(/<html(?:\s[^>]*)?>/i,match=>match+"<head>"+injection+"</head>");
  else documentHtml="<!doctype html><html><head>"+injection+"</head><body>"+html.replace(/^\s*<!doctype[^>]*>/i,"")+"</body></html>";
