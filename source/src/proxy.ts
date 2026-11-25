@@ -16,9 +16,7 @@ export function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   if (pathname === "/ar" || pathname === "/ar/") {
     requestHeaders.set("x-atsh-locale", "ar");
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.rewrite(url, { request: { headers: requestHeaders } });
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
   requestHeaders.set("x-atsh-locale", pathname === "/en" || pathname.startsWith("/en/") ? "en" : "ar");
   return NextResponse.next({ request: { headers: requestHeaders } });
