@@ -125,7 +125,7 @@ app.use("/api/customer/auth/project-drafts",express.raw({type:["image/png","imag
 app.use("/api/internal/verified-payments",express.raw({type:"application/json",limit:"16kb"}));
 // Allow a wider structured sector catalog while keeping other JSON endpoints tightly bounded.
 app.use("/api/admin/pages/catalog",express.json({limit:"68mb"}));
-app.use(["/api/admin/pages/home","/api/admin/page-drafts/home"],express.json({limit:"68mb"}));
+app.use(["/api/admin/pages/home","/api/admin/page-drafts/home","/api/admin/home-featured"],express.json({limit:"68mb"}));
 const validFeaturedHtml=content=>{const files=content?.featuredSystemHtml;if(files===undefined)return true;if(!files||typeof files!=="object"||Array.isArray(files)||Object.keys(files).length>4)return false;return Object.entries(files).every(([slug,entry])=>/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)&&entry&&typeof entry.html==="string"&&Buffer.byteLength(entry.html,"utf8")<=10*1024*1024&&typeof entry.name==="string"&&entry.name.length<=255);};
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
@@ -1170,6 +1170,30 @@ app.post("/api/admin/media",requireAdmin,requirePermission("content"),express.ra
     await auditChange(client,req.admin.email,"media.uploaded","site_media",saved.rows[0].id,null,{id:saved.rows[0].id,content_type:actualType,byte_size:bytes.length,original_name:name});
     await client.query("COMMIT");res.status(201).json({media:{...saved.rows[0],url:`/api/site-media/${saved.rows[0].id}`}});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
+// Publish the homepage's shared featured-system settings independently of marketing translation.
+app.patch("/api/admin/home-featured",requireAdmin,requirePermission("content"),route(async(req,res)=>{
+ const parsed=z.object({slugs:z.array(z.string().regex(/^(?:[a-z0-9]+(?:-[a-z0-9]+)*)?$/)).max(4),files:z.record(z.string(),z.object({html:z.string(),name:z.string().max(255)}).strict())}).strict().safeParse(req.body);
+ if(!parsed.success||!validFeaturedHtml({featuredSystemHtml:parsed.data.files}))return res.status(400).json({error:"Invalid featured systems or HTML files"});
+ const slugs=parsed.data.slugs,selected=slugs.filter(Boolean);
+ if(new Set(selected).size!==selected.length||Object.keys(parsed.data.files).some(key=>!selected.includes(key)))return res.status(400).json({error:"Invalid featured system selection"});
+ const patch={featuredSystemSlugs:slugs,featuredSystemHtml:parsed.data.files};
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  await client.query("SELECT pg_advisory_xact_lock(hashtext('home-marketing-sync'))");
+  const catalog=await client.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true FOR SHARE");
+  const items=catalog.rows[0]?.content?.items;
+  if(selected.some(slug=>!Array.isArray(items)||!items.some(item=>item?.slug===slug&&item.published!==false&&!item.archived))){await client.query("ROLLBACK");return res.status(400).json({error:"Selected system is not published in the catalog"});}
+  const before=await client.query("SELECT * FROM site_pages WHERE slug='home' AND locale='ar' FOR UPDATE");
+  if(!before.rows[0]?.is_published){await client.query("ROLLBACK");return res.status(409).json({error:"Publish the homepage first"});}
+  const updated=await client.query("UPDATE site_pages SET content=content || $1::jsonb,updated_at=now(),updated_by=$2 WHERE slug='home' AND locale='ar' RETURNING *",[JSON.stringify(patch),req.admin.email]);
+  // Preserve other unpublished edits, but keep their featured fields in sync.
+  await client.query("UPDATE site_page_drafts SET content=content || $1::jsonb,updated_at=now() WHERE slug='home' AND locale='ar'",[JSON.stringify(patch)]);
+  await auditChange(client,req.admin.email,"page.updated","site_page",updated.rows[0].id,{featuredSystemSlugs:before.rows[0].content?.featuredSystemSlugs},{featuredSystemSlugs:slugs,featuredFiles:Object.keys(patch.featuredSystemHtml)});
+  await client.query("COMMIT");
+  res.json({published:true,...patch});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.patch("/api/admin/pages/:slug",requireAdmin,requirePermission("content"),route(async(req,res)=>{
   if(!/^[a-z0-9-]{1,100}$/.test(req.params.slug))return res.status(400).json({error:"Invalid page"});
