@@ -5,7 +5,7 @@ import SectorPreview from "@/components/sector-preview";
 import Link from "next/link";
 import {englishTemplateLabel} from "@/lib/sector-en";
 import { readPagePreview } from "@/lib/page-preview";
-type Item=SectorTemplate & {published?:boolean;archived?:boolean;previewUrl?:string;demoSlug?:string;pricedAddons?:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>;basePrice?:number|null};
+type Item=SectorTemplate & {published?:boolean;archived?:boolean;previewUrl?:string;previewHtml?:string;demoSlug?:string;pricedAddons?:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>;basePrice?:number|null};
 export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;locale?:"ar"|"en"}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
  const [item,setItem]=useState<Item|undefined>(undefined);
  const [ready,setReady]=useState(false);
@@ -37,6 +37,6 @@ export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;loc
     <a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginInlineStart:14,color:"#174e83",fontWeight:700,textDecoration:"underline"}}>{t("افتح النسخة الخارجية ↗","Open external demo ↗")}</a>
     <small style={{display:"block",color:"#64748b",marginTop:5}}>{t("الرابط يُدار من لوحة التحكم وقد يفتح موقعًا خارجيًا مستقلًا عن ATSH AI.","The linked demo is managed by ATSH AI and may open an external website.")}</small>
   </div>}
-  <SectorPreview locale={locale} template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} demoSlug={interactiveDemoSlug(item.slug,item.demoSlug)} pricedAddons={item.pricedAddons??[]} basePrice={item.basePrice??null} />
+  <SectorPreview previewHtml={item.previewHtml} locale={locale} template={{...item,modules:modules.length?modules:["لوحة القيادة"],sampleRows:item.sampleRows??[],sampleStats:item.sampleStats??[]}} demoSlug={interactiveDemoSlug(item.slug,item.demoSlug)} pricedAddons={item.pricedAddons??[]} basePrice={item.basePrice??null} />
  </>;
 }
