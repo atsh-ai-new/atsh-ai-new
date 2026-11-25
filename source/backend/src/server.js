@@ -126,6 +126,7 @@ app.use("/api/internal/verified-payments",express.raw({type:"application/json",l
 // Allow a wider structured sector catalog while keeping other JSON endpoints tightly bounded.
 app.use("/api/admin/pages/catalog",express.json({limit:"1mb"}));
 app.use("/api/admin/commercial/contracts/pdf",express.raw({type:"application/pdf",limit:"5mb"}));
+app.use("/api/admin/commercial/revision-pdf",express.raw({type:"application/pdf",limit:"5mb"}));
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 const isolatedCiRate=process.env.ATSH_CI_TEST_RATE_LIMIT==="true"&&process.env.NODE_ENV!=="production";
@@ -1637,6 +1638,51 @@ app.patch("/api/admin/commercial/invoices/:id/release",requireAdmin,requireRole(
  const r=await c.query("UPDATE commercial_invoices SET release_for_payment=$2,milestone=$3 WHERE id=$1 AND status IN ('unpaid','part_paid') RETURNING id,release_for_payment,milestone",[id,released,milestone.trim()]);
  if(!r.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Invoice unavailable"});}
  await c.query("COMMIT");res.json({invoice:r.rows[0]});
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}));
+// Revisions are proposals until the verified customer accepts the exact PDF.
+app.post("/api/admin/commercial/quotes/:id/revisions",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id),{items,schedule,reason}=req.body||{};
+ if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"Invalid quote"});
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const q=await c.query("SELECT id,revision,status FROM commercial_quotes WHERE id=$1 FOR UPDATE",[id]);
+ if(!q.rowCount||q.rows[0].status!=="accepted"){await c.query("ROLLBACK");return res.status(409).json({error:"Accepted quote required"});}
+ const signed=await c.query("SELECT 1 FROM customer_contracts WHERE quote_id=$1 AND status='signed'",[id]);
+ if(!signed.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Signed contract required"});}
+ const p=await c.query("SELECT COALESCE(sum(p.amount_piasters),0) AS paid FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1",[id]);
+ const {revisionProposal}=await import("./payment-revision-rules.js");
+ let proposal;try{proposal=revisionProposal({items,schedule,reason,paidPiasters:Number(p.rows[0].paid)});}catch(e){await c.query("ROLLBACK");return res.status(422).json({error:e.message});}
+ const inserted=await c.query("INSERT INTO commercial_invoice_revision_requests(quote_id,base_revision,proposed_items,proposed_total_piasters,proposed_schedule,reason,proposed_by) VALUES($1,$2,$3::jsonb,$4,$5::jsonb,$6,$7) RETURNING id,status,created_at",[id,q.rows[0].revision,JSON.stringify(proposal.items),proposal.totalPiasters,JSON.stringify(proposal.schedule),proposal.reason,req.admin.email]);
+ await c.query("COMMIT");res.status(201).json({revision:inserted.rows[0],balance:proposal});
+ }catch(e){await c.query("ROLLBACK");if(e.code==="23505")return res.status(409).json({error:"A revision is already open"});throw e;}finally{c.release();}
+}));
+app.get("/api/admin/commercial/quotes/:id/revisions",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"Invalid quote"});
+ const r=await pool.query("SELECT id,base_revision,proposed_items,proposed_total_piasters,proposed_schedule,reason,status,proposed_by,created_at,issued_at,accepted_at,contract_sha256 FROM commercial_invoice_revision_requests WHERE quote_id=$1 ORDER BY id DESC",[id]);
+ res.set("Cache-Control","no-store").json({revisions:r.rows});
+}));
+app.post("/api/admin/commercial/revisions/:id/cancel",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"Invalid revision"});
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const q=await c.query("SELECT q.id FROM commercial_quotes q JOIN commercial_invoice_revision_requests r ON r.quote_id=q.id WHERE r.id=$1 FOR UPDATE OF q",[id]);
+ if(!q.rowCount){await c.query("ROLLBACK");return res.status(404).json({error:"Not found"});}
+ const r=await c.query("UPDATE commercial_invoice_revision_requests SET status='cancelled' WHERE id=$1 AND status IN ('draft','issued') RETURNING id,status",[id]);
+ if(!r.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Accepted revisions cannot be cancelled"});}
+ await c.query("COMMIT");res.json({revision:r.rows[0]});
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}));
+app.post("/api/admin/commercial/revision-pdf",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.query.revisionId);if(!Number.isSafeInteger(id)||id<1||!Buffer.isBuffer(req.body))return res.status(400).json({error:"PDF and revision required"});
+ const {contractPdf,revisionProposal}=await import("./payment-revision-rules.js");
+ let fingerprint;try{fingerprint=contractPdf(req.body);}catch{return res.status(400).json({error:"Invalid PDF"});}
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const q=await c.query("SELECT q.id,q.revision,q.status FROM commercial_quotes q JOIN commercial_invoice_revision_requests r ON r.quote_id=q.id WHERE r.id=$1 FOR UPDATE OF q",[id]);
+ const r=await c.query("SELECT * FROM commercial_invoice_revision_requests WHERE id=$1 FOR UPDATE",[id]);
+ if(!q.rowCount||q.rows[0].status!=="accepted"||r.rows[0]?.status!=="draft"||Number(r.rows[0].base_revision)!==Number(q.rows[0].revision)){await c.query("ROLLBACK");return res.status(409).json({error:"Revision unavailable"});}
+ const p=await c.query("SELECT COALESCE(sum(p.amount_piasters),0) AS paid FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1",[q.rows[0].id]);
+ try{revisionProposal({items:r.rows[0].proposed_items,schedule:r.rows[0].proposed_schedule,reason:r.rows[0].reason,paidPiasters:Number(p.rows[0].paid)});}catch(e){await c.query("ROLLBACK");return res.status(409).json({error:"Balance changed; cancel and prepare a new revision"});}
+ await c.query("UPDATE commercial_invoice_revision_requests SET status='issued',issued_at=now(),contract_pdf=$2,contract_sha256=$3 WHERE id=$1",[id,req.body,fingerprint.sha256]);
+ await c.query("COMMIT");res.json({id,status:"issued",sha256:fingerprint.sha256});
  }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
 }));
 app.post("/api/admin/commercial/invoices/schedule",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
