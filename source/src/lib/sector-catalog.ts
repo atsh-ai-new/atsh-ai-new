@@ -42,6 +42,9 @@ export function isolatedDemoHtml(html:string):string {
  if(/<head(?:\s[^>]*)?>/i.test(html))documentHtml=html.replace(/<head(?:\s[^>]*)?>/i,match=>match+injection);
  else if(/<html(?:\s[^>]*)?>/i.test(html))documentHtml=html.replace(/<html(?:\s[^>]*)?>/i,match=>match+"<head>"+injection+"</head>");
  else documentHtml="<!doctype html><html><head>"+injection+"</head><body>"+html.replace(/^\s*<!doctype[^>]*>/i,"")+"</body></html>";
+ // Plain standalone demos do not need a Blob navigation. Avoid it on all browsers
+ // (in particular mobile WebKit); retain it for demos using hash/history routing.
+ if(!/HashRouter|createHashRouter|createHashHistory|hashchange|location\s*\.\s*hash|history\s*\.\s*(?:pushState|replaceState)/i.test(html))return documentHtml;
  // Bootstrap inside the already opaque sandbox. The Blob MUST be created by
  // this iframe, not the ATSH parent page; its origin is null, not the platform.
  // A blob URL permits hash-based history changes unlike about:srcdoc.
