@@ -2,6 +2,7 @@ name: Branch validation (no deployment)
 on:
   push:
     branches:
+      - fix/automatic-device-language-20261125
       - fix/demo-thumbnail-blank-20261125
       - fix/real-demo-thumbnails-20261125
       - fix/demo-assets-lightweight-20261125

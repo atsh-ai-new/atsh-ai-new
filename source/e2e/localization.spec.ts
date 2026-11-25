@@ -5,9 +5,9 @@ test("public homepage is real English LTR and switches back to Arabic",async({pa
  await expect(page.locator("html")).toHaveAttribute("lang","en");
  await expect(page.locator("html")).toHaveAttribute("dir","ltr");
  await expect(page.getByRole("heading",{level:1})).toContainText("Build a website");
- await expect(page.getByRole("link",{name:/Switch to Arabic/})).toHaveAttribute("href","/");
- await page.getByRole("link",{name:/Switch to Arabic/}).click();
- await expect(page).toHaveURL(/\/$/);
+ await expect(page.getByRole("link",{name:"التحويل إلى العربية"})).toHaveAttribute("href","/ar");
+ await page.getByRole("link",{name:"التحويل إلى العربية"}).click();
+ await expect(page).toHaveURL(/\/ar$/);
  await expect(page.locator("html")).toHaveAttribute("lang","ar");
  await expect(page.locator("html")).toHaveAttribute("dir","rtl");
 });
