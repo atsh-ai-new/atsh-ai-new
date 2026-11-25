@@ -36,7 +36,7 @@ async function adminApi(path: string, init?: RequestInit) {
 
 export default function ContentManager({ initialSlug = "home", onSaved, logoEditor, heroImageEditor }: { initialSlug?: string; onSaved?: () => Promise<unknown> | void; logoEditor?: React.ReactNode; heroImageEditor?: React.ReactNode }) {
   const [featuredOptions,setFeaturedOptions]=useState<Array<{slug:string;name:string}>>([]);
-  useEffect(()=>{void fetch("/api/site-content/catalog?locale=ar",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(data=>{const items=data?.page?.content?.items;if(Array.isArray(items))setFeaturedOptions(items.filter(x=>x&&typeof x.slug==="string"&&typeof x.name==="string"&&x.published!==false&&!x.archived));}).catch(()=>{});},[]);
+  useEffect(()=>{void fetch("/api/site-content/catalog?locale=ar&metadata=1",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(data=>{const items=data?.page?.content?.items;if(Array.isArray(items))setFeaturedOptions(items.filter(x=>x&&typeof x.slug==="string"&&typeof x.name==="string"&&x.published!==false&&!x.archived));}).catch(()=>{});},[]);
   const [pages, setPages] = useState<PageRecord[]>([]);
   const [activeSlug, setActiveSlug] = useState("home");
   const [activeLocale,setActiveLocale]=useState<"ar"|"en">("ar");
@@ -105,10 +105,11 @@ export default function ContentManager({ initialSlug = "home", onSaved, logoEdit
     setBusy(true);setError("");setNotice("");
     try{
       await adminApi("home-featured",{method:"PATCH",body:JSON.stringify({slugs,files})});
-      const response=await fetch("/api/site-content/home?locale=ar",{cache:"no-store"});
+      const response=await fetch("/api/site-content/home?locale=ar&metadata=1",{cache:"no-store"});
       const data=response.ok?await response.json():null;
       const content=data?.page?.content;
-      if(!content||canonicalContent(content.featuredSystemSlugs)!==canonicalContent(slugs)||canonicalContent(content.featuredSystemHtml)!==canonicalContent(files))throw Error("لم تتطابق الملفات مع النسخة العامة بعد النشر.");
+      if(!content||canonicalContent(content.featuredSystemSlugs)!==canonicalContent(slugs)||canonicalContent(Object.keys(asRecord(content.featuredSystemHtml)).sort())!==canonicalContent(Object.keys(files).sort()))throw Error("لم تتطابق البطاقات مع النسخة العامة بعد النشر.");
+      for(const [slug,entry] of Object.entries(files)){const check=await fetch("/api/site-content/home?demo="+encodeURIComponent(slug),{cache:"no-store"});const result=check.ok?await check.json():null;if(result?.html!==asRecord(entry).html)throw Error("لم يتطابق الملف المنشور: "+slug);}
       setDraft(current=>current?{...current,content:{...current.content,featuredSystemSlugs:slugs,featuredSystemHtml:files}}:current);
       setArabicHomeReference(content);
       setNotice("تم نشر بطاقات الرئيسية والتحقق من الملفات عبر الموقع العام باللغتين.");
