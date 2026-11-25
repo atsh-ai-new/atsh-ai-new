@@ -28,7 +28,11 @@ export async function GET(request: Request, context: RouteContext) {
   const query = new URL(request.url).searchParams;
   const locale = query.get("locale");
   const demo = query.get("demo");
-  if (demo) {
+  const thumbnail = query.get("thumbnail");
+  if (thumbnail) {
+    if(slug!=="catalog"||! /^[a-f0-9]{64}$/.test(thumbnail))return NextResponse.json({message:"Invalid thumbnail"},{status:400});
+    target.pathname="/api/site-content/demo-thumbnail/"+thumbnail;
+  } else if (demo) {
     if (!["home","catalog"].includes(slug) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(demo)) return NextResponse.json({message:"Invalid demo"},{status:400});
     target.pathname += "/demo/"+encodeURIComponent(demo);
   } else if (query.get("metadata")==="1") target.searchParams.set("metadata","1");
@@ -39,7 +43,7 @@ export async function GET(request: Request, context: RouteContext) {
       status: upstream.status,
       headers: {
         "content-type": upstream.headers.get("content-type") ?? "application/json",
-        "cache-control": "no-store"
+        "cache-control": thumbnail ? (upstream.headers.get("cache-control") ?? "no-store") : "no-store"
       }
     });
   } catch {

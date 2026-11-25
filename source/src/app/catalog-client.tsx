@@ -6,13 +6,12 @@ import Link from "next/link";
 import {sectorTemplates,type SectorTemplate} from "@/lib/sector-catalog";
 import {normalizeCatalogSectors,resolvePlacement,type CatalogSector} from "@/lib/catalog-sectors";
 import {loadGuestWorkspace,saveGuestWorkspace} from "@/lib/customer-workspace";
-import CatalogCardPreview from "@/components/catalog-card-preview";
+import SystemThumbnail from "@/components/system-thumbnail";
 import {englishCatalogSectors,englishTemplateLabel,englishTemplateFeatures} from "@/lib/sector-en";
 type Item=SectorTemplate&{published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;previewUrl?:string;previewHtml?:string;hasPreviewHtml?:boolean;previewAssetId?:string;sectorId?:string;subcategoryId?:string;basePrice?:number|null};
 function GalleryDemo({item,base,title}:{item:Item;base:string;title:string}){
- const url=item.imageUrl;
  return <Link prefetch={false} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} aria-label={title} style={{display:"block",overflow:"hidden",borderRadius:12}}>
- {url&&(/^(\/api\/site-media\/[0-9a-f-]{36}$)/i.test(url)||url.startsWith("https://"))?<img src={url} alt={item.name} loading="lazy" style={{width:"100%",height:156,objectFit:"cover"}}/>:<CatalogCardPreview slug={item.slug} name={item.name}/>}
+ <SystemThumbnail slug={item.slug} name={item.name} assetId={item.previewAssetId} imageUrl={item.imageUrl}/>
  </Link>;
 }
 const defaults:Item[]=sectorTemplates.map((s,i)=>({...s,published:true,sortOrder:i*10}));

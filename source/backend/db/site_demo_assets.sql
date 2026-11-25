@@ -6,3 +6,6 @@ CREATE TABLE IF NOT EXISTS site_demo_assets (
 );
 -- Asset bodies are immutable and independent of page rows.
 -- Existing assets are retained when a reference changes to support rollback.
+
+ALTER TABLE site_demo_assets ADD COLUMN IF NOT EXISTS thumbnail bytea;
+ALTER TABLE site_demo_assets ADD COLUMN IF NOT EXISTS thumbnail_retry_at timestamptz;
