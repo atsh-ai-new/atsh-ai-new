@@ -1,4 +1,5 @@
 export const siteCopyDefaults: Record<string, string> = {
+  featuredSystemsHeading: "أنظمة جاهزة للمعاينة",
   marketingHeroTitle: "برمجة مخصصة بأسعار تنافس المواقع التقليدية.",
   marketingHeroSubtitle: "بدون قيود القوالب الجاهزة، نصمم مشروعك وفق احتياجاتك وميزانيتك.",
   marketingCatalogTitle: "لا تكيّف أعمالك مع نظام جاهز، بل امتلك نظامًا يتكيف مع أعمالك.",
