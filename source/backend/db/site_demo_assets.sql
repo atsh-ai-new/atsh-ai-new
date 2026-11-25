@@ -9,3 +9,5 @@ CREATE TABLE IF NOT EXISTS site_demo_assets (
 
 ALTER TABLE site_demo_assets ADD COLUMN IF NOT EXISTS thumbnail bytea;
 ALTER TABLE site_demo_assets ADD COLUMN IF NOT EXISTS thumbnail_retry_at timestamptz;
+
+ALTER TABLE site_demo_assets ADD COLUMN IF NOT EXISTS thumbnail_version integer NOT NULL DEFAULT 0;
