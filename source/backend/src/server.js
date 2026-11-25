@@ -145,8 +145,8 @@ async function requireAdmin(req,res,next) {
     }
     let permissionOverrides = null;
     if (session.userId) {
-      const active = await pool.query("SELECT is_active,role,permission_overrides FROM team_members WHERE id=$1",[session.userId]);
-      if (!active.rowCount || !active.rows[0].is_active || active.rows[0].role !== session.role) throw new Error("Session revoked or role changed");
+      const active = await pool.query("SELECT is_active,role,permission_overrides,session_version FROM team_members WHERE id=$1",[session.userId]);
+      if (!active.rowCount || !active.rows[0].is_active || active.rows[0].role !== session.role || Number(session.teamVersion??0)!==Number(active.rows[0].session_version)) throw new Error("Session revoked or role changed");
       permissionOverrides = active.rows[0].permission_overrides;
     }
     req.admin = { ...session, permissions: effectivePermissions(session.role, permissionOverrides) };
@@ -724,11 +724,19 @@ app.post("/api/orders", route(async (req,res) => {
   } catch(e){await client.query("ROLLBACK");throw e;} finally{client.release();}
 }));
 
+await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS session_version integer NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS team_password_reset_tokens (member_id uuid PRIMARY KEY REFERENCES team_members(id) ON DELETE CASCADE, token_hash text NOT NULL UNIQUE, expires_at timestamptz NOT NULL, used_at timestamptz);`);
 app.post("/api/admin/password-reset/request",rateLimit({windowMs:15*60*1000,limit:2,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
   const parsed=z.object({email:z.string().email().max(254)}).safeParse(req.body);
-  const responseMessage=process.env.BREVO_API_KEY
-    ?"إذا كان البريد يخص مالك المنصة، أُرسل رمز الاستعادة إلى admin@atsh-ai.com. صالح لمدة 15 دقيقة ويُستخدم مرة واحدة."
-    :"إذا كان البريد يخص مالك المنصة، فتحقق من سجل Runtime Logs لخدمة atsh-website-api في Coolify للحصول على رمز صالح لمدة 15 دقيقة.";
+  const responseMessage="إذا كان البريد مسجلاً ونشطاً، سيصلك رمز الاستعادة عبر البريد الإلكتروني، صالح لمدة 15 دقيقة.";
+  if(parsed.success && parsed.data.email.trim().toLowerCase()!==process.env.ADMIN_EMAIL.trim().toLowerCase()){
+    const member=await pool.query("SELECT id,email,display_name FROM team_members WHERE lower(email)=lower($1) AND is_active=true",[parsed.data.email.trim()]);
+    if(member.rowCount && process.env.BREVO_API_KEY){
+      const m=member.rows[0], token=randomBytes(32).toString("base64url"), hash=createHash("sha256").update(token).digest("hex");
+      const saved=await pool.query("INSERT INTO team_password_reset_tokens(member_id,token_hash,expires_at) VALUES($1,$2,now()+interval '15 minutes') ON CONFLICT(member_id) DO UPDATE SET token_hash=EXCLUDED.token_hash,expires_at=EXCLUDED.expires_at,used_at=NULL WHERE team_password_reset_tokens.used_at IS NOT NULL OR team_password_reset_tokens.expires_at<=now() RETURNING member_id",[m.id,hash]);
+      if(saved.rowCount){try{if(!await sendTransactionalEmail({to:m.email,toName:m.display_name,subject:"استعادة كلمة مرور ATSH AI",textContent:`رمز الاستعادة: ${token}\nصالح لمدة 15 دقيقة ويستخدم مرة واحدة.`}))throw Error("Mail unavailable");}catch{await pool.query("DELETE FROM team_password_reset_tokens WHERE member_id=$1 AND token_hash=$2",[m.id,hash]);}}
+    }
+  }
   if(parsed.success&&parsed.data.email.trim().toLowerCase()===process.env.ADMIN_EMAIL.trim().toLowerCase()){
     const active=await pool.query("SELECT 1 FROM owner_password_reset_tokens WHERE id=1 AND expires_at>now() AND used_at IS NULL");
     if(!active.rowCount){
@@ -752,7 +760,15 @@ app.post("/api/admin/password-reset/complete",rateLimit({windowMs:15*60*1000,lim
   try{
     await client.query("BEGIN");
     const reset=await client.query("SELECT id FROM owner_password_reset_tokens WHERE id=1 AND token_hash=$1 AND expires_at>now() AND used_at IS NULL FOR UPDATE",[tokenHash]);
-    if(!reset.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"رمز الاستعادة غير صالح أو منتهي الصلاحية."});}
+    if(!reset.rowCount){
+      const team=await client.query("SELECT t.member_id FROM team_password_reset_tokens t JOIN team_members m ON m.id=t.member_id WHERE t.token_hash=$1 AND t.expires_at>now() AND t.used_at IS NULL AND m.is_active=true FOR UPDATE OF t,m",[tokenHash]);
+      if(!team.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"رمز الاستعادة غير صالح أو منتهي الصلاحية."});}
+      const id=team.rows[0].member_id;
+      await client.query("UPDATE team_members SET password_hash=$2,session_version=session_version+1,updated_at=now() WHERE id=$1",[id,passwordHash]);
+      await client.query("UPDATE team_password_reset_tokens SET used_at=now() WHERE member_id=$1",[id]);
+      await client.query("COMMIT");
+      return res.json({message:"تم تغيير كلمة المرور. سجّل الدخول بها الآن."});
+    }
     await client.query("INSERT INTO owner_password_overrides(id,password_hash,updated_at,session_version) VALUES(1,$1,now(),1) ON CONFLICT(id) DO UPDATE SET password_hash=EXCLUDED.password_hash,updated_at=now(),session_version=owner_password_overrides.session_version+1",[passwordHash]);
     await client.query("UPDATE owner_password_reset_tokens SET used_at=now() WHERE id=1");
     await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id) VALUES($1,'owner.password.reset','owner',gen_random_uuid())",[process.env.ADMIN_EMAIL]);
@@ -771,8 +787,8 @@ app.post("/api/admin/login",rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?
     if(await bcrypt.compare(parsed.data.password,ownerHash))session={email:process.env.ADMIN_EMAIL.trim(),role:"owner",ownerVersion:Number(override.rows[0]?.session_version??0)};
   }
   else {
-    const member=await pool.query("SELECT id,email,role,password_hash FROM team_members WHERE lower(email)=lower($1) AND is_active=true",[email]);
-    if(member.rowCount&&await bcrypt.compare(parsed.data.password,member.rows[0].password_hash))session={email:member.rows[0].email,role:member.rows[0].role,userId:member.rows[0].id};
+    const member=await pool.query("SELECT id,email,role,password_hash,session_version FROM team_members WHERE lower(email)=lower($1) AND is_active=true",[email]);
+    if(member.rowCount&&await bcrypt.compare(parsed.data.password,member.rows[0].password_hash))session={email:member.rows[0].email,role:member.rows[0].role,userId:member.rows[0].id,teamVersion:Number(member.rows[0].session_version)};
   }
   if(!session)return res.status(401).json({error:"البريد الإلكتروني أو كلمة المرور غير صحيحة."});
   const token=jwt.sign(session,process.env.JWT_SECRET,{expiresIn:"8h",issuer:"atsh-ai-api",audience:"atsh-admin"});
