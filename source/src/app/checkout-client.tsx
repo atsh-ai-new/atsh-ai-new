@@ -6,7 +6,7 @@ import {useParams} from "next/navigation";
 type QuoteLine={label:string;quantity:number;unitPricePiasters:number;period?:string};
 type Checkout={
  quote:{id:number;revision:number;status:string;items:QuoteLine[];total_piasters:number;currency:string;valid_until:string|null;accepted_at:string|null};
- contract:{id:number;status:string;body_snapshot:string;signer_name:string|null;signed_at:string|null;template_category:string|null;template_revision:number|null}|null;
+ contract:{id:number;status:string;body_snapshot:string;signer_name:string|null;signed_at:string|null;template_category:string|null;template_revision:number|null;pdf_sha256?:string;pdf_filename?:string}|null;
  invoices:Array<{id:number;amount_piasters:number;verified_paid_piasters:number;status:string;due_at:string|null}>;
  changeRequests:Array<{id:number;details:string;status:string;created_at:string;resolution_note?:string|null}>;
  project:{id:string;status:string;template_id:string|null;draft_id:string}|null;
@@ -41,6 +41,19 @@ export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){cons
    else{setSuccess("وصل طلب التعديل إلى فريق ATSH AI، ولن يمكنك اعتماد هذه النسخة حتى تتم معالجة الملاحظة.");setShowChanges(false);setChanges("")}
   }catch(err){setError(err instanceof Error?err.message:"تعذر الاتصال بالخدمة") }finally{setBusy(false)}
  };
+ const [financial,setFinancial]=useState<{methods:Array<{method:string;instructions:string}>;invoices:Array<{id:number;milestone:string;release_for_payment:boolean}>;canPay:boolean}|null>(null);
+ const [balance,setBalance]=useState<{paidPiasters:number;remainingPiasters:number;creditPiasters:number;refundedPiasters:number}|null>(null);
+ const [revisions,setRevisions]=useState<Array<{id:number;status:string;reason:string;proposed_total_piasters:number;contract_sha256:string}>>([]);
+ const [revisionConsent,setRevisionConsent]=useState<Record<number,boolean>>({});
+ const [financeError,setFinanceError]=useState("");
+ useEffect(()=>{let active=true;const prefix=`/api/customer/commercial/quotes/${encodeURIComponent(id)}`;
+  const get=async(path:string)=>{const r=await fetch(prefix+path,{credentials:"include",cache:"no-store"});if(!r.ok)throw Error("تعذر تحميل بيانات الدفع");return r.json();};
+  void Promise.all([get("/payment-options"),get("/balance"),get("/revisions")]).then(([p,b,v])=>{if(active){setFinancial(p);setBalance(b);setRevisions(v.revisions||[]);setFinanceError("");}}).catch(e=>{if(active){setFinancial(null);setBalance(null);setRevisions([]);setFinanceError(String(e));}});
+  return()=>{active=false};
+ },[id,data]);
+ async function decideRevision(revisionId:number,sha:string,decision:"accept"|"reject"){
+  setBusy(true);setError("");try{const r=await fetch(`/api/customer/commercial/revisions/${revisionId}/decision`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({decision,contractSha256:sha,consent:decision==="accept"&&revisionConsent[revisionId]===true})});const b=await r.json();if(!r.ok)throw Error(b.error||"تعذر حفظ القرار");await refresh();setSuccess("تم تسجيل قرارك");}catch(e){setError(String(e));}finally{setBusy(false);}
+ }
  const pending=Boolean(data?.changeRequests.some(x=>x.status==="pending"));
  const canAccept=data?.quote.status==="issued"&&data.contract?.status==="issued"&&!pending&&(!data.quote.valid_until||new Date(data.quote.valid_until).getTime()>Date.now());
  if(loading)return <main lang={locale} dir={en?"ltr":"rtl"} style={{padding:30}}>{t("جارٍ تحميل عرض السعر الآمن…","Loading your secure quote…")}</main>;
@@ -69,14 +82,14 @@ export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){cons
   <section style={{background:"white",padding:"clamp(14px,3vw,23px)",border:"1px solid #dce5ed",borderRadius:16,marginBottom:14}}>
    <h2 style={{marginTop:0,fontSize:22}}>{t("العقد وشروط الخدمة والتسليم","Contract, service and delivery terms")}</h2>
    {contract?<><p>رقم العقد: #{contract.id} — {status(contract.status)} — إصدار القالب {contract.template_revision||"—"}</p>
-    <details open={quote.status==="issued"||undefined} style={{border:"1px solid #dbe4ee",borderRadius:12,padding:13,background:"#fbfcfe"}}><summary style={{cursor:"pointer",fontWeight:700}}>{t("اقرأ النص الكامل للعقد","Read the full contract")}</summary><div style={{whiteSpace:"pre-wrap",lineHeight:2,marginTop:14,overflowWrap:"anywhere"}}>{contract.body_snapshot}</div></details>
+    {contract.pdf_sha256?<a href={`/api/customer/commercial/contracts/${contract.id}/pdf`} target="_blank" rel="noopener noreferrer">{t("تحميل العقد PDF","Download PDF contract")}</a>:<details open={quote.status==="issued"||undefined} style={{border:"1px solid #dbe4ee",borderRadius:12,padding:13,background:"#fbfcfe"}}><summary style={{cursor:"pointer",fontWeight:700}}>{t("اقرأ النص الكامل للعقد","Read the full contract")}</summary><div style={{whiteSpace:"pre-wrap",lineHeight:2,marginTop:14,overflowWrap:"anywhere"}}>{contract.body_snapshot}</div></details>}
     <p style={{fontSize:12,color:"#6b768a",lineHeight:1.7}}>{t("سيُسجل إقرارك إلكترونيًا مع نسخة المستند وبصمتها ووقت الموافقة. هذا لا يُعد توقيعًا إلكترونيًا مؤهلًا من مزود معتمد؛ يلزم تقييم المتطلبات القانونية قبل الاعتماد النهائي.","Your acceptance will be recorded with a copy and timestamp. This is not a qualified electronic signature; relevant legal requirements must be evaluated before final approval.")}</p>
    </>:<p>{t("لم تصدر الإدارة عقدًا صالحًا لهذا العرض بعد. لا يمكن تسجيل الموافقة قبل إصداره.","A valid contract has not yet been issued for this quote. Approval is unavailable until one is issued.")}</p>}
    {quote.status==="issued"&&<div style={{background:"#f5f8fc",borderRadius:12,padding:14,marginTop:14}}>
     {pending?<p role="status">{t("لديك طلب تعديل مفتوح؛ يجب مراجعته من الإدارة قبل قبول العرض.","You have an open revision request that must be reviewed before approval.")}</p>:<p>{t("إذا كانت المواصفات والرسوم وشروط الملكية مناسبة، يمكنك تسجيل موافقتك على إصدار العرض والعقد الحاليين.","If the scope, fees and ownership terms meet your expectations, you can approve the current quote and contract versions.")}</p>}
     <label style={{display:"grid",gap:6,marginBottom:12}}>{t("الاسم الكامل لصاحب الإقرار","Full name of person accepting")}<input value={name} onChange={e=>setName(e.target.value)} maxLength={160} placeholder="اسمك الثلاثي" style={{padding:12,border:"1px solid #cedbeb",borderRadius:9,fontSize:16}}/></label>
     <label style={{display:"flex",gap:9,alignItems:"flex-start",lineHeight:1.8}}><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> قرأت عرض السعر والعقد بإصداريهما الحاليين وأوافق صراحةً على تسجيل إقراري الإلكتروني.</label>
-    <button type="button" disabled={!canAccept||busy||!consent||name.trim().length<3} onClick={()=>void action("accept",{contractId:contract?.id,quoteRevision:quote.revision,signerName:name.trim(),consent:true})} style={{marginTop:13,border:0,borderRadius:10,padding:"12px 19px",background:"#203958",color:"white",fontWeight:800,cursor:"pointer"}}>{busy?"جارٍ التحقق…":"اعتماد العرض وإقرار العقد ←"}</button>
+    <button type="button" disabled={!canAccept||busy||!consent||name.trim().length<3} onClick={()=>void action("accept",{contractId:contract?.id,quoteRevision:quote.revision,signerName:name.trim(),consent:true,contractSha256:contract?.pdf_sha256})} style={{marginTop:13,border:0,borderRadius:10,padding:"12px 19px",background:"#203958",color:"white",fontWeight:800,cursor:"pointer"}}>{busy?"جارٍ التحقق…":"اعتماد العرض وإقرار العقد ←"}</button>
     <button type="button" disabled={busy} onClick={()=>setShowChanges(v=>!v)} style={{marginInlineStart:9,border:"1px solid #cad7e4",padding:"12px 15px",borderRadius:10,background:"white"}}>{t("طلب تعديل على العرض","Request quote revisions")}</button>
     {showChanges&&<div style={{marginTop:12}}><label style={{display:"grid",gap:8}}>{t("ما البنود التي تريد تعديلها؟","Which items would you like to revise?")}<textarea rows={3} minLength={10} maxLength={2000} value={changes} onChange={e=>setChanges(e.target.value)} placeholder="حدد البنود أو الاختيارات المطلوبة بالتفصيل…" style={{padding:12,border:"1px solid #cdd8e4",borderRadius:9}}/></label><button type="button" disabled={busy||pending||changes.trim().length<10} onClick={()=>void action("request-changes",{details:changes.trim()})}>إرسال طلب التعديل للإدارة</button></div>}
    </div>}
@@ -89,7 +102,11 @@ export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){cons
      <p>المستحق: {money(invoice.amount_piasters,quote.currency)} · المدفوع المؤكد: {money(invoice.verified_paid_piasters,quote.currency)}</p>
      <p style={{marginBottom:0}}>الرصيد: {money(invoice.amount_piasters-invoice.verified_paid_piasters,quote.currency)} {invoice.due_at?`· الاستحقاق ${new Date(invoice.due_at).toLocaleDateString("ar-EG")}`:"· تاريخ الاستحقاق يُحدد بالعقد"}</p>
     </article>)}
-   {!data.payment.canPayOnline&&<div role="status" style={{padding:14,borderRadius:12,background:"#fff5db",color:"#755114",lineHeight:1.9}}>⏳ بوابة الدفع الإلكتروني غير مفعّلة بعد. الفواتير محفوظة ولكن لا يوجد زر دفع ولا يتم تحصيل أموال أو تأكيد سداد من هذا القسم. يبدأ التنفيذ فقط عند وصول تأكيد دفع موثوق للخادم.</div>}
+   {financeError&&<p role="alert">{financeError}</p>}
+   {balance&&<div style={{padding:12,background:"#f1f5fa",borderRadius:10}}><p>{t("صافي المدفوع","Net paid")}: {money(balance.paidPiasters)}</p><p>{t("المتبقي","Outstanding")}: {money(balance.remainingPiasters)}</p><p>{t("رصيد للعميل","Customer credit")}: {money(balance.creditPiasters)}</p><p>{t("المسترد","Refunded")}: {money(balance.refundedPiasters)}</p></div>}
+   {financial?.canPay&&<section><h3>{t("طرق السداد المتاحة","Available payment methods")}</h3>{financial.methods.map(m=><details key={m.method}><summary>{({cash:"نقدي",bank_transfer:"تحويل بنكي",instapay:"InstaPay",wallet_direct:"محفظة إلكترونية"} as Record<string,string>)[m.method]||m.method}</summary><p style={{whiteSpace:"pre-wrap"}}>{m.instructions}</p><small>{t("يؤكد السداد فريق الإدارة بعد الاستلام","Staff confirm payment after receipt")}</small></details>)}</section>}
+   {revisions.length>0&&<section><h3>{t("تعديلات الفاتورة","Invoice revisions")}</h3>{revisions.map(v=><article key={v.id} style={{border:"1px solid #dce5ec",padding:12,borderRadius:10,marginBottom:8}}><p>{v.reason} — {money(v.proposed_total_piasters)} — {status(v.status)}</p><a href={`/api/customer/commercial/revisions/${v.id}/pdf`}>{t("تحميل ملحق العقد","Download amendment")}</a>{v.status==="issued"&&<div><label><input type="checkbox" checked={!!revisionConsent[v.id]} onChange={e=>setRevisionConsent(old=>({...old,[v.id]:e.target.checked}))}/>{t("قرأت الملحق وأوافق عليه","I have read and accept the amendment")}</label><button disabled={busy||!revisionConsent[v.id]} onClick={()=>void decideRevision(v.id,v.contract_sha256,"accept")}>{t("اعتماد","Accept")}</button><button disabled={busy} onClick={()=>void decideRevision(v.id,v.contract_sha256,"reject")}>{t("رفض","Reject")}</button></div>}</article>)}</section>}
+   {!data.payment.canPayOnline&&<div role="status" style={{padding:14,borderRadius:12,background:"#fff5db",color:"#755114",lineHeight:1.9}}>⏳ الدفع الإلكتروني غير مفعل حاليًا. يمكنك اتباع طرق السداد اليدوية المتاحة أعلاه بعد اعتماد العقد.</div>}
    <Link href={`${base}/account/dashboard`} style={{display:"inline-block",marginTop:14,color:"#203958",fontWeight:700}}>{t("متابعة التنفيذ والتسليم في حسابي ←","Track project delivery in my account →")}</Link>
   </section>
   {success&&<p role="status" style={{padding:14,background:"#e6f7ed",color:"#186139",borderRadius:11}}>{success}</p>}
