@@ -1,3 +1,4 @@
+import VisitorAnalytics from "@/components/visitor-analytics";
 import type {Metadata} from "next";
 import {headers} from "next/headers";
 import Concierge from "@/components/concierge";
@@ -14,5 +15,5 @@ export async function generateMetadata():Promise<Metadata>{
 }
 export default async function RootLayout({children}:Readonly<{children:React.ReactNode}>){
  const locale=await currentLocale();
- return <html lang={locale} dir={locale==="en"?"ltr":"rtl"}><body><SocialHeader /><Concierge locale={locale} />{children}<VideoCampaigns /></body></html>;
+ return <html lang={locale} dir={locale==="en"?"ltr":"rtl"}><body><SocialHeader /><Concierge locale={locale} />{children}<VideoCampaigns /><VisitorAnalytics /></body></html>;
 }
