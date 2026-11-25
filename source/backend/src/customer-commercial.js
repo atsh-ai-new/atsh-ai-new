@@ -235,12 +235,14 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
    }
    const invoices=await c.query("SELECT id,amount_piasters,verified_paid_piasters,status FROM commercial_invoices WHERE quote_id=$1 ORDER BY id FOR UPDATE",[quote.id]);
    const paid=await c.query("SELECT COALESCE(sum(p.amount_piasters),0) AS paid FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1",[quote.id]);
-   const paidPiasters=Number(paid.rows[0].paid);
+   const grossPaidPiasters=Number(paid.rows[0].paid);
+   const refund=await c.query("SELECT COALESCE(sum(amount_piasters),0) AS refunded FROM commercial_refund_payments WHERE quote_id=$1",[quote.id]);
+   const paidPiasters=grossPaidPiasters-Number(refund.rows[0].refunded);
    const accounted=invoices.rows.reduce((n,x)=>n+Number(x.verified_paid_piasters),0);
-   if(accounted!==paidPiasters){await c.query('ROLLBACK');return res.status(409).json({error:'Existing ledger requires reconciliation'});}
+   if(accounted!==grossPaidPiasters){await c.query('ROLLBACK');return res.status(409).json({error:'Existing ledger requires reconciliation'});}
    const {revisionProposal}=await import('./payment-revision-rules.js');
    let proposal;try{proposal=revisionProposal({items:rev.proposed_items,schedule:rev.proposed_schedule,reason:rev.reason,paidPiasters});}catch(e){await c.query('ROLLBACK');return res.status(409).json({error:'Payment balance changed; request updated revision'});}
-   if(proposal.totalPiasters!==Number(rev.proposed_total_piasters)||proposal.creditPiasters>0){await c.query('ROLLBACK');return res.status(409).json({error:'Revision requires separate credit or refund reconciliation by finance'});}
+   if(proposal.totalPiasters!==Number(rev.proposed_total_piasters)){await c.query('ROLLBACK');return res.status(409).json({error:'Revision total changed'});}
    const evidence={customerId:req.customer.id,email:req.customer.email,contractSha256:rev.contract_sha256,consent:true,previousItems:null,previousInvoices:invoices.rows,previousQuoteRevision:quote.revision};
    const previous=await c.query('SELECT items FROM commercial_quotes WHERE id=$1',[quote.id]);evidence.previousItems=previous.rows[0].items;
    for(const invoice of invoices.rows){
@@ -259,6 +261,15 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
    await c.query("UPDATE commercial_invoice_revision_requests SET status='accepted',accepted_at=now(),acceptance_evidence=$2::jsonb WHERE id=$1",[id,JSON.stringify(evidence)]);
    await c.query('COMMIT');res.json({status:'accepted',balance:proposal});
   }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
+ }));
+ router.get('/quotes/:id/balance',safe(async(req,res)=>{
+  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
+  const q=await pool.query("SELECT q.total_piasters,(SELECT COALESCE(sum(p.amount_piasters),0) FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=q.id) AS gross,(SELECT COALESCE(sum(amount_piasters),0) FROM commercial_refund_payments WHERE quote_id=q.id) AS refunded FROM commercial_quotes q WHERE q.id=$1 AND q.customer_account_id=$2",[id,req.customer.id]);
+  if(!q.rowCount)return res.status(404).json({error:'Not found'});
+  const b=q.rows[0],gross=Number(b.gross),refunded=Number(b.refunded),total=Number(b.total_piasters);
+  const {revisedBalance}=await import('./payment-revision-rules.js');
+  const refunds=await pool.query("SELECT id,amount_piasters,method,recorded_at FROM commercial_refund_payments WHERE quote_id=$1 ORDER BY id DESC",[id]);
+  res.set('Cache-Control','private, no-store').json({...revisedBalance(total,gross-refunded),grossPaidPiasters:gross,refundedPiasters:refunded,refunds:refunds.rows});
  }));
  return router;
 }
