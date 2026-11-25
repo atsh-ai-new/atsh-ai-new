@@ -1,4 +1,5 @@
 import express from 'express';
+import {xpayConfig,createXpaySession,retrieveXpaySession,verifiedTestPayment} from './xpay-adapter.js';
 import jwt from 'jsonwebtoken';
 import {createHash} from 'node:crypto';
 import {validateCheckoutGate,ensureInvoiceScheduleOnAcceptance} from './customer-checkout.js';
@@ -87,7 +88,42 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
   const invoices=await pool.query("SELECT id,amount_piasters,verified_paid_piasters,due_at,status,milestone,release_for_payment FROM commercial_invoices WHERE quote_id=$1 AND status<>'void' ORDER BY id",[id]);
   const payable=allowed&&invoices.rows.some(x=>x.release_for_payment&&Number(x.amount_piasters)>Number(x.verified_paid_piasters));
   const methods=payable?await pool.query("SELECT i.method,i.instructions FROM commercial_payment_instructions i JOIN commercial_payment_preferences p ON i.method=ANY(p.methods) WHERE p.quote_id=$1 AND i.enabled=true ORDER BY i.method",[id]):{rows:[]};
-  res.set('Cache-Control','private, no-store').json({invoices:invoices.rows,methods:methods.rows,canPay:payable&&methods.rows.length>0,onlinePaymentEnabled:false});
+  res.set('Cache-Control','private, no-store').json({invoices:invoices.rows,methods:methods.rows,canPay:payable&&methods.rows.length>0,onlinePaymentEnabled:false,xpayTestEnabled:payable&&process.env.XPAY_ENABLED==='true'&&process.env.XPAY_SECRET_KEY?.startsWith('sk_test_')&&process.env.XPAY_WEBHOOK_SECRET?.startsWith('whsec_')&&methods.rows.some(m=>m.method==='xpay')});
+ }));
+ // Sandbox only: quote ownership, signed agreement, released installment and configured method are mandatory.
+ router.post('/invoices/:id/xpay-test',safe(async(req,res)=>{
+  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
+  let cfg;try{cfg=xpayConfig();}catch{return res.status(503).json({error:'Sandbox not configured'});}
+  if(!cfg)return res.status(503).json({error:'Sandbox disabled'});
+  const c=await pool.connect();let attempt,quoteId;
+  try{await c.query('BEGIN');
+   const q=await c.query("SELECT q.id,q.status,q.currency FROM commercial_quotes q JOIN commercial_invoices i ON i.quote_id=q.id WHERE i.id=$1 AND q.customer_account_id=$2 FOR UPDATE OF q",[id,req.customer.id]);
+   if(!q.rowCount){await c.query('ROLLBACK');return res.status(404).json({error:'Not found'});}
+   quoteId=q.rows[0].id;
+   const gate=await c.query("SELECT i.amount_piasters-i.verified_paid_piasters AS remaining FROM commercial_invoices i WHERE i.id=$1 AND i.status IN ('unpaid','part_paid') AND i.release_for_payment AND i.amount_piasters>i.verified_paid_piasters AND EXISTS(SELECT 1 FROM customer_contracts WHERE quote_id=$2 AND status='signed') AND NOT EXISTS(SELECT 1 FROM commercial_invoice_revision_requests WHERE quote_id=$2 AND status='issued') AND EXISTS(SELECT 1 FROM commercial_payment_preferences WHERE quote_id=$2 AND 'xpay'=ANY(methods)) AND EXISTS(SELECT 1 FROM commercial_payment_instructions WHERE method='xpay' AND enabled)",[id,quoteId]);
+   if(q.rows[0].status!=='accepted'||q.rows[0].currency!=='EGP'||!gate.rowCount){await c.query('ROLLBACK');return res.status(409).json({error:'Invoice not eligible'});}
+   const amount=Number(gate.rows[0].remaining);
+   const existing=await c.query("SELECT * FROM commercial_xpay_test_attempts WHERE invoice_id=$1 AND status IN ('creating','open') FOR UPDATE",[id]);
+   if(existing.rowCount){attempt=existing.rows[0];if(Number(attempt.amount_piasters)!==amount){await c.query('ROLLBACK');return res.status(409).json({error:'Existing sandbox attempt has a different amount'});}}
+   else{attempt=(await c.query("INSERT INTO commercial_xpay_test_attempts(invoice_id,amount_piasters) VALUES($1,$2) RETURNING *",[id,amount])).rows[0];}
+   await c.query('COMMIT');
+  }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
+  if(attempt.status==='open'&&attempt.checkout_url){
+   const remote=await retrieveXpaySession({key:cfg.key,sessionId:attempt.session_id});
+   if(remote.status==='open'&&!remote.isExpired)return res.json({testMode:true,url:attempt.checkout_url});
+   const paid=verifiedTestPayment(remote,{sessionId:attempt.session_id,amountPiasters:Number(attempt.amount_piasters)});
+   if(paid)await pool.query("UPDATE commercial_xpay_test_attempts SET status='test_paid',verified_at=now() WHERE id=$1 AND status='open'",[attempt.id]);
+   else if(remote.status==='expired'||remote.isExpired)await pool.query("UPDATE commercial_xpay_test_attempts SET status='expired' WHERE id=$1 AND status='open'",[attempt.id]);
+   return res.status(409).json({error:paid?'Sandbox payment already verified; no real balance changed':'Sandbox session closed; retry if expired'});
+  }
+  const session=await createXpaySession({key:cfg.key,invoiceId:id,amountPiasters:Number(attempt.amount_piasters),attemptId:attempt.id,returnUrl:'https://atsh-ai.com/account/checkout/'+encodeURIComponent(quoteId)});
+  await pool.query("UPDATE commercial_xpay_test_attempts SET session_id=$2,checkout_url=$3,status='open' WHERE id=$1 AND status='creating'",[attempt.id,session.id,session.url]);
+  res.set('Cache-Control','private, no-store').json({testMode:true,url:session.url});
+ }));
+ router.get('/invoices/:id/xpay-test',safe(async(req,res)=>{
+  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
+  const q=await pool.query("SELECT a.id,a.status,a.amount_piasters,a.verified_at FROM commercial_xpay_test_attempts a JOIN commercial_invoices i ON i.id=a.invoice_id JOIN commercial_quotes q ON q.id=i.quote_id WHERE i.id=$1 AND q.customer_account_id=$2 ORDER BY a.created_at DESC LIMIT 1",[id,req.customer.id]);
+  res.set('Cache-Control','private, no-store').json({testMode:true,attempt:q.rows[0]||null});
  }));
  router.get('/invoices',safe(async(req,res)=>{
   const q=await pool.query('SELECT i.id,i.quote_id,i.amount_piasters,i.due_at,i.status,i.verified_paid_piasters,i.created_at FROM commercial_invoices i JOIN commercial_quotes q ON q.id=i.quote_id WHERE q.customer_account_id=$1 ORDER BY i.created_at DESC LIMIT 100',[req.customer.id]);res.json({invoices:q.rows});
