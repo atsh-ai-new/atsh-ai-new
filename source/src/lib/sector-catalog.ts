@@ -28,7 +28,15 @@ export function interactiveDemoSlug(catalogSlug:string, configuredSlug?:string):
   return Object.prototype.hasOwnProperty.call(interactiveDemoPaths,chosen)?chosen:undefined;
 }
 
-/** Uploaded demos are self-contained; no network, forms, or parent-origin access. */
+/** Uploaded demos run with an opaque origin. The policy is inserted before any
+ * user script, without changing the uploaded document's html/head/body structure.
+ * Allow HTTPS static assets (including CDN libraries) but never app cookies,
+ * fetch/XHR, form submission, embedded pages, or same-origin privileges. */
 export function isolatedDemoHtml(html:string):string {
- return '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'; frame-src \'none\'">'+html;
+ const policy='<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src \'unsafe-inline\' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://unpkg.com; img-src data: blob:; font-src https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com data:; media-src data: blob:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'; frame-src \'none\'; object-src \'none\'">';
+ // Use a separate document wrapper only for fragments; do not prepend a second doctype.
+ // Insert immediately after the opening head (before scripts and styles).
+ if(/<head(?:\s[^>]*)?>/i.test(html))return html.replace(/<head(?:\s[^>]*)?>/i,match=>match+policy);
+ if(/<html(?:\s[^>]*)?>/i.test(html))return html.replace(/<html(?:\s[^>]*)?>/i,match=>match+"<head>"+policy+"</head>");
+ return "<!doctype html><html><head>"+policy+"</head><body>"+html.replace(/^\s*<!doctype[^>]*>/i,"")+"</body></html>";
 }

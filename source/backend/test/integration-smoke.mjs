@@ -294,9 +294,25 @@ try{
  assert.equal(existingPages.status,200);
  const oldCatalog=existingPages.result.pages.find(p=>p.slug==="catalog"&&p.locale==="ar");
  const expectedUpdatedAt=oldCatalog?.updated_at??null;
+ // Verify distinct uploaded HTML survives the real admin API and public readback.
+ const catalogHtml='<!doctype html><html><head><title>Gallery CI</title></head><body><button onclick="this.textContent=42">Gallery</button></body></html>';
+ const homeHtml='<!doctype html><html><head><title>Home CI</title></head><body><button onclick="this.textContent=73">Home</button></body></html>';
+ const existingHome=existingPages.result.pages.find(p=>p.slug==="home"&&p.locale==="ar");
+ const homeContent={...(existingHome?.content??{}),featuredSystemSlugs:["eyadaty"],featuredSystemHtml:{eyadaty:{html:homeHtml,name:"home-ci.html"}}};
+ const galleryContent={...oldCatalog.content,items:oldCatalog.content.items.map(x=>x.slug==="eyadaty"?{...x,previewHtml:catalogHtml,previewHtmlName:"gallery-ci.html"}:x)};
+ const galleryWrite=await req("/api/admin/pages/catalog",{method:"PATCH",cookie:adminCookie,body:{locale:"ar",isPublished:true,expectedUpdatedAt,content:galleryContent}});
+ assert.equal(galleryWrite.status,200,JSON.stringify(galleryWrite));
+ const homeWrite=await req("/api/admin/pages/home",{method:"PATCH",cookie:adminCookie,body:{locale:"ar",isPublished:true,content:homeContent}});
+ assert.equal(homeWrite.status,200,JSON.stringify(homeWrite));
+ const galleryPublic=await req("/api/site-content/catalog?locale=ar");
+ const homePublic=await req("/api/site-content/home?locale=ar");
+ assert.equal(galleryPublic.result.page.content.items.find(x=>x.slug==="eyadaty").previewHtml,catalogHtml);
+ assert.equal(homePublic.result.page.content.featuredSystemHtml.eyadaty.html,homeHtml);
+ assert.notEqual(galleryPublic.result.page.content.items.find(x=>x.slug==="eyadaty").previewHtml,homePublic.result.page.content.featuredSystemHtml.eyadaty.html);
+ console.log("PASS: independent homepage and gallery HTML save and public readback");
  const nextCatalog={title:"كتالوج اختبار التكامل",sectors:[],items:[]};
  const firstCatalog=await req("/api/admin/pages/catalog",{method:"PATCH",cookie:adminCookie,
-   body:{locale:"ar",expectedUpdatedAt,isPublished:true,content:nextCatalog}});
+   body:{locale:"ar",expectedUpdatedAt:galleryWrite.result.page.updated_at,isPublished:true,content:nextCatalog}});
  assert.equal(firstCatalog.status,200,JSON.stringify(firstCatalog));
  const staleCatalog=await req("/api/admin/pages/catalog",{method:"PATCH",cookie:adminCookie,
    body:{locale:"ar",expectedUpdatedAt,isPublished:true,content:{...nextCatalog,title:"كتالوج نسخة قديمة"}}});

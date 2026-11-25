@@ -85,6 +85,9 @@ export default function CatalogManager() {
       const response=await fetch("/api/admin/pages/catalog",{method:"PATCH",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({locale:"ar",isPublished:pageWasPublished,expectedUpdatedAt:updatedAt,content:{title:"معرض الأنظمة",items:next,sectors:nextSectors}})});
       const data=await response.json().catch(()=>({}));
       if(!response.ok)throw Error(data.message||data.error||"تعذر الحفظ");
+      const verification=await fetch("/api/admin/pages",{credentials:"include",cache:"no-store"});
+      const verified=verification.ok?(await verification.json()).pages?.find((p:{slug:string;locale:string})=>p.slug==="catalog"&&p.locale==="ar"):null;
+      if(!verified||verified.is_published!==pageWasPublished||!Array.isArray(verified.content?.items)||verified.content.items.length!==next.length||next.some(item=>{const stored=verified.content.items.find((x:CatalogItem)=>x.slug===item.slug);return !stored||String(stored.previewHtml||"")!==String(item.previewHtml||"")||stored.published!==item.published||stored.archived!==item.archived;}))throw Error("تعذر التحقق من حفظ ملفات المعرض. أعد تحميل الصفحة.");
       setItems(next);setSectors(nextSectors);setNotice(message);setUpdatedAt(data?.page?.updated_at?new Date(data.page.updated_at).toISOString():updatedAt);setVersion(v=>v+1);
       return true;
     }catch(e){setError(e instanceof Error?e.message:"فشل الحفظ");return false;}
