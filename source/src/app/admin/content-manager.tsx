@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { siteCopyDefaults } from "@/lib/site-copy";
 import { siteCopyEn } from "@/lib/site-copy-en";
-import { isolatedDemoHtml } from "@/lib/sector-catalog";
+import { isolatedDemoHtml, MAX_DEMO_HTML_BYTES, MAX_DEMO_PAGE_BYTES } from "@/lib/sector-catalog";
 import { createPagePreviewUrl } from "@/lib/page-preview";
 
 type PageRecord = { slug: string; locale: string; content: Record<string, unknown>; is_published: boolean; updated_at?: string };
@@ -89,7 +89,7 @@ export default function ContentManager({ initialSlug = "home", onSaved, logoEdit
     const input=event.currentTarget,file=input.files?.[0];input.value="";
     if(!file)return;
     setError("");setNotice("");
-    if(!/\.html?$/i.test(file.name)||!file.size||file.size>200*1024){setError("اختر ملف HTML مستقلًا حتى 200 كيلوبايت.");return;}
+    if(!/\.html?$/i.test(file.name)||!file.size||file.size>MAX_DEMO_HTML_BYTES){setError("اختر ملف HTML مستقلًا حتى 10 ميجابايت.");return;}
     setBusy(true);
     try{const html=await file.text();if(!html.trim())throw Error("ملف فارغ");
       setDraft(current=>{if(!current)return current;const ids=Array.isArray(current.content.featuredSystemSlugs)?current.content.featuredSystemSlugs:featuredOptions.slice(0,4).map(x=>x.slug);const files=Object.fromEntries(Object.entries(asRecord(current.content.featuredSystemHtml)).filter(([key])=>ids.includes(key)));return {...current,content:{...current.content,featuredSystemHtml:{...files,[slug]:{html,name:file.name.slice(0,255)}}}};});
@@ -100,7 +100,7 @@ export default function ContentManager({ initialSlug = "home", onSaved, logoEdit
   const canonicalContent = (value:unknown):string => JSON.stringify(value,(_key,item)=>item&&typeof item==="object"&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);
   const savePage = async (publish=false) => {
     if (!draft)return;
-    if(draft.slug==="home"&&new Blob([JSON.stringify(draft.content)]).size>900*1024){setError("حجم محتوى الرئيسية تجاوز الحد المسموح؛ استخدم ملفات أصغر.");return;}
+    if(draft.slug==="home"&&new Blob([JSON.stringify(draft.content)]).size>MAX_DEMO_PAGE_BYTES){setError("حجم محتوى الرئيسية تجاوز الحد المسموح؛ استخدم ملفات أصغر.");return;}
     setBusy(true);setError("");setNotice("");
     try {
       if(publish){
