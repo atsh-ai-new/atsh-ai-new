@@ -38,7 +38,24 @@ export async function render(html){
     try{
      const ready=await child.evaluate(()=>!!document.body&&document.readyState!=="loading"&&([...document.body.querySelectorAll("*")].some(el=>{if(["SCRIPT","STYLE","LINK","META","NOSCRIPT"].includes(el.tagName))return false;const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>8&&r.height>8&&s.visibility!=="hidden"&&s.display!=="none"&&(!!el.textContent?.trim()&&el.children.length===0||["IMG","SVG","CANVAS","VIDEO"].includes(el.tagName));})));
      if(ready){
-      await page.waitForTimeout(600);
+      const imagesReady=await child.evaluate(async()=>{
+       const urls=new Set();
+       for(const el of document.querySelectorAll("body,body *")){
+        const r=el.getBoundingClientRect();if(r.width<1||r.height<1||r.bottom<0||r.right<0||r.top>=innerHeight||r.left>=innerWidth)continue;
+        for(const pseudo of [null,"::before","::after"]){
+         const style=getComputedStyle(el,pseudo);if(style.display==="none"||style.visibility==="hidden")continue;
+         for(const match of style.backgroundImage.matchAll(/url\(["']?(.*?)["']?\)/g))urls.add(match[1]);
+        }
+        if(el instanceof HTMLImageElement&&(el.currentSrc||el.src))urls.add(el.currentSrc||el.src);
+       }
+       if([...urls].some(url=>!url.startsWith("data:")&&!url.startsWith("blob:")))return false;
+       const loaded=await Promise.race([Promise.all([...urls].map(async url=>{try{const img=new Image();img.src=url;await img.decode();return img.naturalWidth>0;}catch{return false;}})),new Promise(resolve=>setTimeout(()=>resolve(null),2500))]);
+       if(!loaded||!loaded.every(Boolean))return false;
+       await Promise.race([document.fonts.ready,new Promise(resolve=>setTimeout(resolve,1000))]);
+       await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+       return true;
+      });
+      if(!imagesReady){await page.waitForTimeout(250);continue;}
       {const bytes=await page.screenshot({type:"jpeg",quality:65,timeout:3000,animations:"disabled"});const {default:jpeg}=await import("jpeg-js");const decoded=jpeg.decode(bytes,{useTArray:true,maxMemoryUsageInMB:32});let min=255,max=0,nonwhite=0;for(let i=0;i<decoded.data.length;i+=64){const v=(decoded.data[i]+decoded.data[i+1]+decoded.data[i+2])/3;min=Math.min(min,v);max=Math.max(max,v);if(v<225)nonwhite++;}if(max-min>25&&nonwhite>100)return bytes;}
      }
     }catch{}
