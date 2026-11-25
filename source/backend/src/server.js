@@ -1830,12 +1830,12 @@ async function advancePaidJourneyIfEligible(client,invoiceId){
  const valid=await client.query(`SELECT q.id FROM commercial_quotes q
  JOIN customer_contracts c ON c.quote_id=q.id AND c.status='signed'
  WHERE q.id=$1 AND q.status='accepted'
- AND EXISTS(SELECT 1 FROM commercial_invoices x WHERE x.quote_id=q.id AND x.status='paid')
- AND NOT EXISTS(SELECT 1 FROM commercial_invoices x WHERE x.quote_id=q.id AND x.status<>'paid')`,[quoteId]);
+ AND EXISTS(SELECT 1 FROM commercial_invoices x WHERE x.id=$2 AND x.quote_id=q.id AND x.status='paid' AND x.verified_paid_piasters>=x.amount_piasters AND x.amount_piasters>0 AND x.id=(SELECT min(f.id) FROM commercial_invoices f WHERE f.quote_id=q.id AND f.status<>'void'))
+ AND NOT EXISTS(SELECT 1 FROM commercial_invoice_revision_requests r WHERE r.quote_id=q.id AND r.status='issued')`,[quoteId,invoiceId]);
  if(!valid.rowCount)return null;
  const updated=await transitionJourneyProject(client,{projectId,next:'paid',expectedStatus:'payment_pending',paymentVerified:true,actor:'verified-payment-ledger'});
  if(!updated.ok)return null;
- await queueJourneyEvent(client,"project.payment_confirmed",`project.payment_confirmed:${projectId}`,{projectId,quoteId,verified:true});
+ await queueJourneyEvent(client,"project.payment_confirmed",`project.payment_confirmed:${projectId}`,{projectId,quoteId,verified:true,paymentScope:"first_installment"});
  return projectId;
 }
 // Stage 12: admin-only commercial management. Customer signing/payment verification deliberately NOT exposed.
