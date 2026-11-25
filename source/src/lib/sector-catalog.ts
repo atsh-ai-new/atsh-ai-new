@@ -16,7 +16,7 @@ export function findSector(slug: string): SectorTemplate | undefined {
 
 
 /** Curated, source-controlled interactive demos. CMS entries may select one as
- * their preview engine; arbitrary HTML uploads are never executed in-site. */
+ * their preview engine; uploaded HTML runs only in an opaque sandbox. */
 export const interactiveDemoPaths: Record<string,string> = {
   eyadaty:"/demos/eyadaty.html",
   agzakhana:"/demos/agzakhana.html",
@@ -26,4 +26,9 @@ export const interactiveDemoPaths: Record<string,string> = {
 export function interactiveDemoSlug(catalogSlug:string, configuredSlug?:string):string|undefined {
   const chosen=configuredSlug || catalogSlug;
   return Object.prototype.hasOwnProperty.call(interactiveDemoPaths,chosen)?chosen:undefined;
+}
+
+/** Uploaded demos are self-contained; no network, forms, or parent-origin access. */
+export function isolatedDemoHtml(html:string):string {
+ return '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'; frame-src \'none\'">'+html;
 }
