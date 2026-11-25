@@ -761,7 +761,8 @@ html[dir="ltr"] .atsh-contact-submenu{right:calc(100% + 10px)}
 }
 
 /* Mobile admin: prioritize the customer list; hide public-site floating actions and reduce navigation chrome. */
-body:has(.admin-page) .atsh-floating-actions,body:has(.admin-page) .atsh-global-language{display:none!important}
+/* Keep shared floating contact and assistant controls available in admin and team dashboards. */
+body:has(.admin-page) .atsh-global-language{display:none!important}
 @media(max-width:640px){
  .admin-page,.admin-layout,.admin-main,.admin-sidebar,.admin-content-card{min-width:0;max-width:100%;box-sizing:border-box}
  .admin-page{overflow-x:clip}
