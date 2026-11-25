@@ -25,12 +25,17 @@ export async function GET(request: Request, context: RouteContext) {
   if (!/^[a-z0-9-]{1,100}$/.test(slug)) return NextResponse.json({ message: "اسم الصفحة غير صالح." }, { status: 400 });
 
   const target = new URL(`/api/site-content/${encodeURIComponent(slug)}`, origin);
-  const locale = new URL(request.url).searchParams.get("locale");
+  const query = new URL(request.url).searchParams;
+  const locale = query.get("locale");
+  const demo = query.get("demo");
+  if (demo) {
+    if (!["home","catalog"].includes(slug) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(demo)) return NextResponse.json({message:"Invalid demo"},{status:400});
+    target.pathname += "/demo/"+encodeURIComponent(demo);
+  } else if (query.get("metadata")==="1") target.searchParams.set("metadata","1");
   if (locale) target.searchParams.set("locale", locale);
   try {
     const upstream = await fetch(target, { cache: "no-store", signal: AbortSignal.timeout(["home","catalog"].includes(slug)?120000:12000) });
-    const payload = await upstream.arrayBuffer();
-    return new Response(payload, {
+    return new Response(upstream.body, {
       status: upstream.status,
       headers: {
         "content-type": upstream.headers.get("content-type") ?? "application/json",
