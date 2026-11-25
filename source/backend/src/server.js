@@ -1649,7 +1649,7 @@ app.post("/api/admin/commercial/quotes/:id/revisions",requireAdmin,requireRole("
  if(!q.rowCount||q.rows[0].status!=="accepted"){await c.query("ROLLBACK");return res.status(409).json({error:"Accepted quote required"});}
  const signed=await c.query("SELECT 1 FROM customer_contracts WHERE quote_id=$1 AND status='signed'",[id]);
  if(!signed.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Signed contract required"});}
- const p=await c.query("SELECT COALESCE(sum(p.amount_piasters),0) AS paid FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1",[id]);
+ const p=await c.query("SELECT (SELECT COALESCE(sum(p.amount_piasters),0) FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1)-(SELECT COALESCE(sum(amount_piasters),0) FROM commercial_refund_payments WHERE quote_id=$1) AS paid",[id]);
  const {revisionProposal}=await import("./payment-revision-rules.js");
  let proposal;try{proposal=revisionProposal({items,schedule,reason,paidPiasters:Number(p.rows[0].paid)});}catch(e){await c.query("ROLLBACK");return res.status(422).json({error:e.message});}
  const inserted=await c.query("INSERT INTO commercial_invoice_revision_requests(quote_id,base_revision,proposed_items,proposed_total_piasters,proposed_schedule,reason,proposed_by) VALUES($1,$2,$3::jsonb,$4,$5::jsonb,$6,$7) RETURNING id,status,created_at",[id,q.rows[0].revision,JSON.stringify(proposal.items),proposal.totalPiasters,JSON.stringify(proposal.schedule),proposal.reason,req.admin.email]);
@@ -1679,7 +1679,7 @@ app.post("/api/admin/commercial/revision-pdf",requireAdmin,requireRole("owner","
  const q=await c.query("SELECT q.id,q.revision,q.status FROM commercial_quotes q JOIN commercial_invoice_revision_requests r ON r.quote_id=q.id WHERE r.id=$1 FOR UPDATE OF q",[id]);
  const r=await c.query("SELECT * FROM commercial_invoice_revision_requests WHERE id=$1 FOR UPDATE",[id]);
  if(!q.rowCount||q.rows[0].status!=="accepted"||r.rows[0]?.status!=="draft"||Number(r.rows[0].base_revision)!==Number(q.rows[0].revision)){await c.query("ROLLBACK");return res.status(409).json({error:"Revision unavailable"});}
- const p=await c.query("SELECT COALESCE(sum(p.amount_piasters),0) AS paid FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1",[q.rows[0].id]);
+ const p=await c.query("SELECT (SELECT COALESCE(sum(p.amount_piasters),0) FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1)-(SELECT COALESCE(sum(amount_piasters),0) FROM commercial_refund_payments WHERE quote_id=$1) AS paid",[q.rows[0].id]);
  try{revisionProposal({items:r.rows[0].proposed_items,schedule:r.rows[0].proposed_schedule,reason:r.rows[0].reason,paidPiasters:Number(p.rows[0].paid)});}catch(e){await c.query("ROLLBACK");return res.status(409).json({error:"Balance changed; cancel and prepare a new revision"});}
  await c.query("UPDATE commercial_invoice_revision_requests SET status='issued',issued_at=now(),contract_pdf=$2,contract_sha256=$3 WHERE id=$1",[id,req.body,fingerprint.sha256]);
  await c.query("COMMIT");res.json({id,status:"issued",sha256:fingerprint.sha256});
@@ -1735,6 +1735,30 @@ app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermi
  }catch(e){await client.query('ROLLBACK');if(e.code==='23505')return res.status(409).json({error:'Duplicate payment reference'});throw e}finally{client.release()}
 }));
 // Finance dashboard: server-side totals avoid exposing individual customers to other customers.
+// Refund confirmation records an actual outgoing transfer, never initiates one.
+app.post("/api/admin/commercial/quotes/:id/refunds",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id),{amountPiasters,method,reference,note,confirmed}=req.body||{};
+ if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(amountPiasters)||amountPiasters<1||!["cash","bank_transfer","instapay","wallet_direct"].includes(method)||typeof reference!=="string"||!reference.trim()||reference.length>180||confirmed!==true||(note!==undefined&&(typeof note!=="string"||note.length>2000)))return res.status(400).json({error:"Invalid confirmed refund"});
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const q=await c.query("SELECT total_piasters,status FROM commercial_quotes WHERE id=$1 FOR UPDATE",[id]);
+ if(!q.rowCount||q.rows[0].status!=="accepted"){await c.query("ROLLBACK");return res.status(409).json({error:"Accepted quote required"});}
+ const pending=await c.query("SELECT 1 FROM commercial_invoice_revision_requests WHERE quote_id=$1 AND status='issued'",[id]);
+ if(pending.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Resolve pending revision first"});}
+ const b=await c.query("SELECT (SELECT COALESCE(sum(p.amount_piasters),0) FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1) AS gross,(SELECT COALESCE(sum(amount_piasters),0) FROM commercial_refund_payments WHERE quote_id=$1) AS refunded",[id]);
+ const credit=Number(b.rows[0].gross)-Number(b.rows[0].refunded)-Number(q.rows[0].total_piasters);
+ if(!Number.isSafeInteger(credit)||amountPiasters>credit){await c.query("ROLLBACK");return res.status(409).json({error:"Refund exceeds customer credit"});}
+ const inserted=await c.query("INSERT INTO commercial_refund_payments(quote_id,amount_piasters,method,reference,recorded_by,note) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,amount_piasters,method,reference,recorded_at",[id,amountPiasters,method,reference.trim(),req.admin.email,note||null]);
+ await c.query("COMMIT");res.status(201).json({refund:inserted.rows[0],remainingCreditPiasters:credit-amountPiasters});
+ }catch(e){await c.query("ROLLBACK");if(e.code==="23505")return res.status(409).json({error:"Duplicate refund reference"});throw e;}finally{c.release();}
+}));
+app.get("/api/admin/commercial/quotes/:id/refunds",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"Invalid quote"});
+ const q=await pool.query("SELECT q.total_piasters,(SELECT COALESCE(sum(p.amount_piasters),0) FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=q.id) AS gross,(SELECT COALESCE(sum(amount_piasters),0) FROM commercial_refund_payments WHERE quote_id=q.id) AS refunded FROM commercial_quotes q WHERE q.id=$1",[id]);
+ if(!q.rowCount)return res.status(404).json({error:"Not found"});
+ const refunds=await pool.query("SELECT * FROM commercial_refund_payments WHERE quote_id=$1 ORDER BY id DESC",[id]);
+ const b=q.rows[0],net=Number(b.gross)-Number(b.refunded);
+ res.set("Cache-Control","no-store").json({refunds:refunds.rows,grossPaidPiasters:Number(b.gross),refundedPiasters:Number(b.refunded),netPaidPiasters:net,creditPiasters:Math.max(0,net-Number(b.total_piasters))});
+}));
 app.get('/api/admin/commercial/finance/summary',requireAdmin,requireRole('owner','admin','sales','viewer'),route(async(req,res)=>{
  const totals=await pool.query(`SELECT count(*)::integer AS invoice_count,
  COALESCE(sum(i.amount_piasters),0)::bigint AS invoiced_piasters,
