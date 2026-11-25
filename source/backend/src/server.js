@@ -124,9 +124,9 @@ app.use(/^\/api\/customer\/auth\/project-drafts\/[0-9a-f-]{36}\/logo\/?$/i,expre
 app.use("/api/customer/auth/project-drafts",express.raw({type:["image/png","image/jpeg","image/webp"],limit:"2mb"}));
 app.use("/api/internal/verified-payments",express.raw({type:"application/json",limit:"16kb"}));
 // Allow a wider structured sector catalog while keeping other JSON endpoints tightly bounded.
-app.use("/api/admin/pages/catalog",express.json({limit:"1mb"}));
-app.use(["/api/admin/pages/home","/api/admin/page-drafts/home"],express.json({limit:"1mb"}));
-const validFeaturedHtml=content=>{const files=content?.featuredSystemHtml;if(files===undefined)return true;if(!files||typeof files!=="object"||Array.isArray(files)||Object.keys(files).length>4)return false;return Object.entries(files).every(([slug,entry])=>/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)&&entry&&typeof entry.html==="string"&&Buffer.byteLength(entry.html,"utf8")<=200*1024&&typeof entry.name==="string"&&entry.name.length<=255);};
+app.use("/api/admin/pages/catalog",express.json({limit:"68mb"}));
+app.use(["/api/admin/pages/home","/api/admin/page-drafts/home"],express.json({limit:"68mb"}));
+const validFeaturedHtml=content=>{const files=content?.featuredSystemHtml;if(files===undefined)return true;if(!files||typeof files!=="object"||Array.isArray(files)||Object.keys(files).length>4)return false;return Object.entries(files).every(([slug,entry])=>/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)&&entry&&typeof entry.html==="string"&&Buffer.byteLength(entry.html,"utf8")<=10*1024*1024&&typeof entry.name==="string"&&entry.name.length<=255);};
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 const isolatedCiRate=process.env.ATSH_CI_TEST_RATE_LIMIT==="true"&&process.env.NODE_ENV!=="production";
@@ -1177,7 +1177,7 @@ app.patch("/api/admin/pages/:slug",requireAdmin,requirePermission("content"),rou
   if(!parsed.success)return res.status(400).json({error:"Invalid page content",details:parsed.error.issues});
   if(req.params.slug==="catalog"&&Array.isArray(parsed.data.content.items)){
     for(const item of parsed.data.content.items){
-      if(item?.previewHtml!==undefined&&(typeof item.previewHtml!=="string"||Buffer.byteLength(item.previewHtml,"utf8")>200*1024))return res.status(400).json({error:"Invalid HTML preview or file exceeds 200 KB"});
+      if(item?.previewHtml!==undefined&&(typeof item.previewHtml!=="string"||Buffer.byteLength(item.previewHtml,"utf8")>10*1024*1024))return res.status(400).json({error:"Invalid HTML preview or file exceeds 10 MiB"});
     }
   }
   if(req.params.slug==="home"&&!validFeaturedHtml(parsed.data.content))return res.status(400).json({error:"Invalid featured HTML files"});
