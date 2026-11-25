@@ -25,16 +25,22 @@ test.describe("Arabic device preference",()=>{
  test("manual language survives subsequent visits and explicit URLs override preference",async({page,context})=>{
   await page.goto("/");
   await expect(page.locator("html")).toHaveAttribute("lang","ar");
-  await page.locator(".atsh-fab-language").first().click();
+  await page.locator(".atsh-fab-contact-menu").click();
+  await expect(page.locator("#atsh-contact-submenu .atsh-fab-language")).toBeVisible();
+  await page.locator("#atsh-contact-submenu .atsh-fab-language").click();
   await expect(page).toHaveURL(/\/en$/);
   expect((await context.cookies()).find(c=>c.name==="atsh_locale")?.value).toBe("en");
   await page.goto("/");
   await expect(page).toHaveURL(/\/en$/);
   await page.goto("/ar");
   await expect(page.locator("html")).toHaveAttribute("lang","ar");
-  await page.locator(".atsh-fab-language").first().click();
+  await page.locator(".atsh-fab-contact-menu").click();
+  await expect(page.locator("#atsh-contact-submenu .atsh-fab-language")).toBeVisible();
+  await page.locator("#atsh-contact-submenu .atsh-fab-language").click();
   await expect(page).toHaveURL(/\/en$/);
-  await page.locator(".atsh-fab-language").first().click();
+  await page.locator(".atsh-fab-contact-menu").click();
+  await expect(page.locator("#atsh-contact-submenu .atsh-fab-language")).toBeVisible();
+  await page.locator("#atsh-contact-submenu .atsh-fab-language").click();
   await expect(page).toHaveURL(/\/ar$/);
   await page.goto("/");
   await expect(page).toHaveURL(/\/ar$/);
