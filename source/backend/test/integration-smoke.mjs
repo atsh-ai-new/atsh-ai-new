@@ -295,8 +295,8 @@ try{
  const oldCatalog=existingPages.result.pages.find(p=>p.slug==="catalog"&&p.locale==="ar");
  const expectedUpdatedAt=oldCatalog?.updated_at??null;
  // Verify distinct uploaded HTML survives the real admin API and public readback.
- const catalogHtml='<!doctype html><html><head><title>Gallery CI</title></head><body><button onclick="this.textContent=42">Gallery</button></body></html>';
- const homeHtml='<!doctype html><html><head><title>Home CI</title></head><body><button onclick="this.textContent=73">Home</button></body></html>';
+ const catalogHtml='<!doctype html><html><head><title>Gallery CI</title></head><body><button onclick="this.textContent=42">Gallery</button><!--'+ "x".repeat(6*1024*1024) +'--></body></html>';
+ const homeHtml='<!doctype html><html><head><title>Home CI</title></head><body><button onclick="this.textContent=73">Home</button><!--'+ "y".repeat(1024*1024) +'--></body></html>';
  const existingHome=existingPages.result.pages.find(p=>p.slug==="home"&&p.locale==="ar");
  const homeContent={...(existingHome?.content??{}),featuredSystemSlugs:["eyadaty"],featuredSystemHtml:{eyadaty:{html:homeHtml,name:"home-ci.html"}}};
  const galleryContent={...oldCatalog.content,items:oldCatalog.content.items.map(x=>x.slug==="eyadaty"?{...x,previewHtml:catalogHtml,previewHtmlName:"gallery-ci.html"}:x)};
@@ -309,7 +309,9 @@ try{
  assert.equal(galleryPublic.result.page.content.items.find(x=>x.slug==="eyadaty").previewHtml,catalogHtml);
  assert.equal(homePublic.result.page.content.featuredSystemHtml.eyadaty.html,homeHtml);
  assert.notEqual(galleryPublic.result.page.content.items.find(x=>x.slug==="eyadaty").previewHtml,homePublic.result.page.content.featuredSystemHtml.eyadaty.html);
- console.log("PASS: independent homepage and gallery HTML save and public readback");
+ const oversize=await req("/api/admin/pages/home",{method:"PATCH",cookie:adminCookie,body:{locale:"ar",isPublished:true,content:{...homeContent,featuredSystemHtml:{eyadaty:{html:"z".repeat(10*1024*1024+1),name:"oversize.html"}}}}});
+ assert.equal(oversize.status,400,"Reject HTML above 10 MiB");
+ console.log("PASS: independent large homepage and gallery HTML save and public readback, oversize rejection");
  const nextCatalog={title:"كتالوج اختبار التكامل",sectors:[],items:[]};
  const firstCatalog=await req("/api/admin/pages/catalog",{method:"PATCH",cookie:adminCookie,
    body:{locale:"ar",expectedUpdatedAt:galleryWrite.result.page.updated_at,isPublished:true,content:nextCatalog}});

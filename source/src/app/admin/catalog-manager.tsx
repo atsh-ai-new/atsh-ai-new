@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
-import { isolatedDemoHtml } from "@/lib/sector-catalog";
+import { isolatedDemoHtml, MAX_DEMO_HTML_BYTES, MAX_DEMO_PAGE_BYTES } from "@/lib/sector-catalog";
 import { createPagePreviewUrl } from "@/lib/page-preview";
 import { sectorTemplates, interactiveDemoPaths, type SectorTemplate } from "@/lib/sector-catalog";
 import { normalizeCatalogSectors, defaultCatalogPlacements, resolvePlacement, validCatalogId, canRemoveSector, canRemoveSubcategory, type CatalogSector } from "@/lib/catalog-sectors";
@@ -72,7 +72,7 @@ export default function CatalogManager() {
     const input=event.currentTarget,file=input.files?.[0];input.value="";
     if(!file)return;
     setError("");setNotice("");
-    if(!/\.html?$/i.test(file.name)||file.size===0||file.size>200*1024){setError("اختر ملف HTML مستقلًا بحجم لا يتجاوز 200 كيلوبايت.");return;}
+    if(!/\.html?$/i.test(file.name)||file.size===0||file.size>MAX_DEMO_HTML_BYTES){setError("اختر ملف HTML مستقلًا بحجم لا يتجاوز 10 ميجابايت.");return;}
     setUploading(true);
     try{const html=await file.text();if(!html.trim())throw Error("ملف HTML فارغ.");
       setDraft(d=>({...d,previewHtml:html,previewHtmlName:file.name.slice(0,255)}));setHtmlPreview(false);setPreviewUrlLocal("");
@@ -107,7 +107,7 @@ export default function CatalogManager() {
     if(updated.subcategoryId&&!placement.subcategory){setError("اختر تصنيفًا فرعيًا تابعًا لهذا القطاع.");return;}
     updated.category=placement.subcategory?.name||placement.sector.name;
     const next=originalSlug?items.map(x=>x.slug===originalSlug?updated:x):[...items,updated];
-    if(new Blob([JSON.stringify({items:next,sectors})]).size>900*1024){setError("حجم المعرض تجاوز الحد المسموح. استخدم ملف HTML أصغر.");return;}
+    if(new Blob([JSON.stringify({items:next,sectors})]).size>MAX_DEMO_PAGE_BYTES){setError("حجم المعرض تجاوز الحد المسموح. استخدم ملف HTML أصغر.");return;}
     if(await saveAll(next,"تم حفظ النظام المخصص وتحديث حالته.")){
       setDraft(empty());setOriginalSlug("");setHtmlPreview(false);setPreviewUrlLocal("");
     }
@@ -294,7 +294,7 @@ export default function CatalogManager() {
           {uploading&&<small>جارٍ رفع الصورة…</small>}
           {draft.imageUrl&&<img src={draft.imageUrl} alt="معاينة صورة النظام المخصص" style={{maxWidth:230,maxHeight:155,objectFit:"contain",borderRadius:12}} />}
         </label>
-        <label className="admin-field">رفع أو استبدال ملف HTML للمعاينة (حتى 200 كيلوبايت)
+        <label className="admin-field">رفع أو استبدال ملف HTML للمعاينة (حتى 10 ميجابايت)
           <input type="file" accept=".html,.htm,text/html" disabled={busy||uploading} onChange={e=>void uploadHtml(e)}/>
           <small>{draft.previewHtmlName||"المعاينة المدمجة الحالية ستظل كما هي حتى رفع ملف جديد."}</small>
         </label>
