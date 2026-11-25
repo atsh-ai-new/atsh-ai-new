@@ -1,4 +1,6 @@
 export const siteCopyDefaults: Record<string, string> = {
+  galleryHeading: "معرض أنظمة ATSH AI",
+  galleryDescription: "اختر النظام المناسب، ثم أضف مواصفاتك واحسب السعر.",
   marketingHeroTitle: "برمجة مخصصة بأسعار تنافس المواقع التقليدية.",
   marketingHeroSubtitle: "بدون قيود القوالب الجاهزة، نصمم مشروعك وفق احتياجاتك وميزانيتك.",
   marketingCatalogTitle: "لا تكيّف أعمالك مع نظام جاهز، بل امتلك نظامًا يتكيف مع أعمالك.",
