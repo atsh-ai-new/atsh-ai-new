@@ -37,7 +37,7 @@ export async function POST(request:Request) {
       cache:"no-store",redirect:"manual",signal:AbortSignal.timeout(30000)
     });
     const contentType=upstream.headers.get("content-type");
-    return new Response(await upstream.arrayBuffer(),{
+    return new Response([204,205,304].includes(upstream.status)?null:await upstream.arrayBuffer(),{
       status:upstream.status,
       headers:{"content-type":contentType?.includes("application/json")?"application/json":"application/json","cache-control":"no-store"}
     });
