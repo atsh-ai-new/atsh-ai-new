@@ -205,5 +205,60 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
    res.set('Cache-Control','private, no-store').json({accepted:true,quoteId:id,contractId:signed.rows[0].id,paymentStatus:'pending_gateway',invoiceIds:schedule.invoices.map(invoice=>invoice.id),onlinePaymentEnabled:false});
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
  }));
+ // Customer reviews a revision only within the owning authenticated account.
+ router.get('/quotes/:id/revisions',safe(async(req,res)=>{
+  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
+  const q=await pool.query('SELECT id FROM commercial_quotes WHERE id=$1 AND customer_account_id=$2',[id,req.customer.id]);
+  if(!q.rowCount)return res.status(404).json({error:'Not found'});
+  const r=await pool.query("SELECT id,base_revision,proposed_items,proposed_total_piasters,proposed_schedule,reason,status,issued_at,accepted_at,contract_sha256 FROM commercial_invoice_revision_requests WHERE quote_id=$1 AND status IN ('issued','accepted','rejected') ORDER BY id DESC",[id]);
+  res.set('Cache-Control','private, no-store').json({revisions:r.rows});
+ }));
+ router.get('/revisions/:id/pdf',safe(async(req,res)=>{
+  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
+  const r=await pool.query("SELECT r.contract_pdf FROM commercial_invoice_revision_requests r JOIN commercial_quotes q ON q.id=r.quote_id WHERE r.id=$1 AND q.customer_account_id=$2 AND r.status IN ('issued','accepted','rejected')",[id,req.customer.id]);
+  if(!r.rows[0]?.contract_pdf)return res.status(404).json({error:'Not found'});
+  res.set({'Cache-Control':'private, no-store','Content-Type':'application/pdf','Content-Disposition':'attachment; filename="revision-'+id+'.pdf"','X-Content-Type-Options':'nosniff'}).send(r.rows[0].contract_pdf);
+ }));
+ router.post('/revisions/:id/decision',safe(async(req,res)=>{
+  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(404).json({error:'Not found'});
+  const parsed=z.object({decision:z.enum(['accept','reject']),contractSha256:z.string().regex(/^[a-f0-9]{64}$/),consent:z.boolean()}).strict().safeParse(req.body);
+  if(!parsed.success||parsed.data.decision==='accept'&&!parsed.data.consent)return res.status(400).json({error:'Explicit decision and current PDF required'});
+  const c=await pool.connect();try{await c.query('BEGIN');
+   const q=await c.query("SELECT q.id,q.revision,q.status,q.total_piasters FROM commercial_quotes q JOIN commercial_invoice_revision_requests r ON r.quote_id=q.id WHERE r.id=$1 AND q.customer_account_id=$2 FOR UPDATE OF q",[id,req.customer.id]);
+   if(!q.rowCount){await c.query('ROLLBACK');return res.status(404).json({error:'Not found'});}
+   const r=await c.query('SELECT * FROM commercial_invoice_revision_requests WHERE id=$1 FOR UPDATE',[id]);
+   const rev=r.rows[0],quote=q.rows[0];
+   if(rev.status!=='issued'||quote.status!=='accepted'||Number(rev.base_revision)!==Number(quote.revision)||rev.contract_sha256!==parsed.data.contractSha256){await c.query('ROLLBACK');return res.status(409).json({error:'Revision changed or unavailable'});}
+   if(parsed.data.decision==='reject'){
+    await c.query("UPDATE commercial_invoice_revision_requests SET status='rejected' WHERE id=$1",[id]);
+    await c.query('COMMIT');return res.json({status:'rejected'});
+   }
+   const invoices=await c.query("SELECT id,amount_piasters,verified_paid_piasters,status FROM commercial_invoices WHERE quote_id=$1 ORDER BY id FOR UPDATE",[quote.id]);
+   const paid=await c.query("SELECT COALESCE(sum(p.amount_piasters),0) AS paid FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1",[quote.id]);
+   const paidPiasters=Number(paid.rows[0].paid);
+   const accounted=invoices.rows.reduce((n,x)=>n+Number(x.verified_paid_piasters),0);
+   if(accounted!==paidPiasters){await c.query('ROLLBACK');return res.status(409).json({error:'Existing ledger requires reconciliation'});}
+   const {revisionProposal}=await import('./payment-revision-rules.js');
+   let proposal;try{proposal=revisionProposal({items:rev.proposed_items,schedule:rev.proposed_schedule,reason:rev.reason,paidPiasters});}catch(e){await c.query('ROLLBACK');return res.status(409).json({error:'Payment balance changed; request updated revision'});}
+   if(proposal.totalPiasters!==Number(rev.proposed_total_piasters)||proposal.creditPiasters>0){await c.query('ROLLBACK');return res.status(409).json({error:'Revision requires separate credit or refund reconciliation by finance'});}
+   const evidence={customerId:req.customer.id,email:req.customer.email,contractSha256:rev.contract_sha256,consent:true,previousItems:null,previousInvoices:invoices.rows,previousQuoteRevision:quote.revision};
+   const previous=await c.query('SELECT items FROM commercial_quotes WHERE id=$1',[quote.id]);evidence.previousItems=previous.rows[0].items;
+   for(const invoice of invoices.rows){
+    if(invoice.status==='void'||invoice.status==='paid')continue;
+    if(Number(invoice.verified_paid_piasters)>0){
+     await c.query("UPDATE commercial_invoices SET amount_piasters=verified_paid_piasters,status='paid',release_for_payment=false WHERE id=$1",[invoice.id]);
+    }else{
+     await c.query("UPDATE commercial_invoices SET status='void',release_for_payment=false WHERE id=$1",[invoice.id]);
+    }
+   }
+   for(const part of proposal.schedule){
+    await c.query("INSERT INTO commercial_invoices(quote_id,amount_piasters,milestone,release_for_payment,status) VALUES($1,$2,$3,false,'unpaid')",[quote.id,part.amountPiasters,part.milestone]);
+   }
+   await c.query("INSERT INTO commercial_invoice_adjustment_ledger(revision_request_id,quote_id,previous_total_piasters,revised_total_piasters,paid_snapshot_piasters) VALUES($1,$2,$3,$4,$5)",[id,quote.id,quote.total_piasters,proposal.totalPiasters,paidPiasters]);
+   await c.query("UPDATE commercial_quotes SET revision=revision+1,items=$2::jsonb,total_piasters=$3 WHERE id=$1",[quote.id,JSON.stringify(proposal.items),proposal.totalPiasters]);
+   await c.query("UPDATE commercial_invoice_revision_requests SET status='accepted',accepted_at=now(),acceptance_evidence=$2::jsonb WHERE id=$1",[id,JSON.stringify(evidence)]);
+   await c.query('COMMIT');res.json({status:'accepted',balance:proposal});
+  }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
+ }));
  return router;
 }
