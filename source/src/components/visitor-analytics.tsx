@@ -17,8 +17,15 @@ export default function VisitorAnalytics(){
  const submit=(e:Event)=>{touch();if(e.target instanceof HTMLFormElement)send("submit",classify(e.target));};
  const scroll=()=>{touch();const max=document.documentElement.scrollHeight-innerHeight;if(max>0){const level=Math.min(100,Math.floor(scrollY/max*4)*25);if(level>lastScroll){lastScroll=level;send("scroll",String(level));}}};
  const tick=()=>{const now=Date.now();const seconds=wasVisible&&now-lastActivity<60000?Math.min(15,Math.floor((now-lastTick)/1000)):0;lastTick=now;if(seconds>0)send("activity","",seconds);};
+ const originalFetch=window.fetch;
+ const trackedFetch:typeof window.fetch=async(input,init)=>{
+ const method=(init?.method||(input instanceof Request?input.method:"GET")).toUpperCase();
+ let action="";try{const u=new URL(input instanceof Request?input.url:String(input),location.origin);if(u.origin===location.origin&&method==="POST"){if(u.pathname==="/api/visitor/assistant")action="assistant";else if(/^\/api\/(?:visitor\/)?(?:domain|domains)(?:\/|$)/.test(u.pathname))action="domain";else if(/^\/api\/(?:visitor\/)?(?:orders|order)(?:\/|$)/.test(u.pathname))action="order";}}catch{}
+ try{const response=await originalFetch.call(window,input,init);if(action)send("result",action+"_"+(response.ok?"http_ok":"http_error"));return response;}catch(error){if(action)send("result",action+"_network_error");throw error;}
+ };
+ window.fetch=trackedFetch;
  send("page");const timer=setInterval(tick,15000);
  document.addEventListener("click",click,true);document.addEventListener("submit",submit,true);document.addEventListener("pointerdown",touch);document.addEventListener("keydown",touch);window.addEventListener("scroll",scroll,{passive:true});const visibility=()=>{tick();wasVisible=document.visibilityState==="visible";lastTick=Date.now();};document.addEventListener("visibilitychange",visibility);window.addEventListener("pagehide",tick);
- return()=>{tick();clearInterval(timer);document.removeEventListener("click",click,true);document.removeEventListener("submit",submit,true);document.removeEventListener("pointerdown",touch);document.removeEventListener("keydown",touch);window.removeEventListener("scroll",scroll);document.removeEventListener("visibilitychange",visibility);window.removeEventListener("pagehide",tick);};
+ return()=>{if(window.fetch===trackedFetch)window.fetch=originalFetch;tick();clearInterval(timer);document.removeEventListener("click",click,true);document.removeEventListener("submit",submit,true);document.removeEventListener("pointerdown",touch);document.removeEventListener("keydown",touch);window.removeEventListener("scroll",scroll);document.removeEventListener("visibilitychange",visibility);window.removeEventListener("pagehide",tick);};
  },[path]);return null;
 }
