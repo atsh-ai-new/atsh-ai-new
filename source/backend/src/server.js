@@ -1711,7 +1711,7 @@ app.post("/api/admin/commercial/revision-pdf",requireAdmin,requireRole("owner","
  await c.query("COMMIT");res.json({id,status:"issued",sha256:fingerprint.sha256});
  }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
 }));
-app.post("/api/admin/commercial/invoices/schedule",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+app.post("/api/admin/commercial/invoices/schedule",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
  const {quoteId,parts}=req.body||{};
  if(!Number.isSafeInteger(quoteId)||quoteId<1||!Array.isArray(parts)||parts.length<1||parts.length>24)return res.status(400).json({error:"Invalid schedule"});
  if(parts.some(p=>!Number.isSafeInteger(p.amountPiasters)||p.amountPiasters<1||typeof p.dueAt!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(p.dueAt)||!validCalendarDate(p.dueAt)))return res.status(400).json({error:"Invalid installment"});
@@ -1724,7 +1724,7 @@ app.post("/api/admin/commercial/invoices/schedule",requireAdmin,requirePermissio
  const sum=parts.reduce((a,p)=>a+p.amountPiasters,0);
  if(!Number.isSafeInteger(sum)||sum!==Number(quote.rows[0].total_piasters)){await client.query('ROLLBACK');return res.status(400).json({error:'Installments must equal quote total'});}
  const invoices=[];for(const p of parts){const r=await client.query('INSERT INTO commercial_invoices(quote_id,amount_piasters,due_at) VALUES($1,$2,$3::date) RETURNING *',[quoteId,p.amountPiasters,p.dueAt]);invoices.push(r.rows[0]);}
- await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.schedule.created','commercial_quote',$2,$3::jsonb)",[req.admin.email,String(quoteId),JSON.stringify({count:parts.length,totalPiasters:sum})]);
+ await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.schedule.created','commercial_quote',gen_random_uuid(),$2::jsonb)",[req.admin.email,JSON.stringify({quoteId,count:parts.length,totalPiasters:sum})]);
  await client.query('COMMIT');res.status(201).json({invoices});
  }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
 }));
@@ -1732,7 +1732,7 @@ app.get("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermis
  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Invalid id'});
  const r=await pool.query('SELECT id,invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by,created_at FROM commercial_invoice_payments WHERE invoice_id=$1 ORDER BY paid_at,id',[id]);res.json({payments:r.rows});
 }));
-app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
  const id=Number(req.params.id),{amountPiasters,paidAt,provider,providerReference,paymentMethod,receiptNote}=req.body||{};
  if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(amountPiasters)||amountPiasters<1||typeof provider!=='string'||!['manual_verified','gateway_verified'].includes(provider)||typeof providerReference!=='string'||!providerReference.trim()||providerReference.length>180||typeof paidAt!=='string'||Number.isNaN(Date.parse(paidAt)))return res.status(400).json({error:'Invalid verified payment'});
  // Gateway verification requires a server-side provider callback. Manual entries require owner/admin evidence review.
@@ -1754,7 +1754,7 @@ app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermi
  const payment=await client.query('INSERT INTO commercial_invoice_payments(invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by,payment_method,receipt_note) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[id,amountPiasters,paidAt,provider,providerReference.trim(),req.admin.email,paymentMethod,receiptNote||null]);
  const newPaid=Number(inv.rows[0].verified_paid_piasters)+amountPiasters;
  await client.query('UPDATE commercial_invoices SET verified_paid_piasters=$1,status=$2 WHERE id=$3',[newPaid,newPaid===Number(inv.rows[0].amount_piasters)?'paid':'part_paid',id]);
- await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.payment.manually_verified','commercial_invoice',$2,$3::jsonb)",[req.admin.email,String(id),JSON.stringify({amountPiasters,paymentId:payment.rows[0].id,providerReference:providerReference.trim(),paymentMethod})]);
+ await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.payment.manually_verified','commercial_invoice',gen_random_uuid(),$2::jsonb)",[req.admin.email,JSON.stringify({invoiceId:id,amountPiasters,paymentId:payment.rows[0].id,providerReference:providerReference.trim(),paymentMethod})]);
  await queueJourneyEvent(client,"payment.verified",`payment.verified:${payment.rows[0].id}`,{invoiceId:id,paymentId:payment.rows[0].id,amountPiasters,invoiceStatus:newPaid===Number(inv.rows[0].amount_piasters)?'paid':'part_paid'});
  await advancePaidJourneyIfEligible(client,id);
  await client.query('COMMIT');res.status(201).json({payment:payment.rows[0],remainingPiasters:Number(inv.rows[0].amount_piasters)-newPaid});
@@ -1786,10 +1786,19 @@ app.get("/api/admin/commercial/quotes/:id/refunds",requireAdmin,requireRole("own
  res.set("Cache-Control","no-store").json({refunds:refunds.rows,grossPaidPiasters:Number(b.gross),refundedPiasters:Number(b.refunded),netPaidPiasters:net,creditPiasters:Math.max(0,net-Number(b.total_piasters))});
 }));
 app.get('/api/admin/commercial/finance/summary',requireAdmin,requireRole('owner','admin','sales','viewer'),route(async(req,res)=>{
- const totals=await pool.query(`SELECT count(*)::integer AS invoice_count,
- COALESCE(sum(i.amount_piasters),0)::bigint AS invoiced_piasters,
- COALESCE(sum(i.verified_paid_piasters),0)::bigint AS paid_piasters,
- COALESCE(sum(i.amount_piasters-i.verified_paid_piasters),0)::bigint AS outstanding_piasters,
+ const totals=await pool.query(`WITH balances AS (
+ SELECT q.id,q.total_piasters,COALESCE(p.gross,0) AS gross,COALESCE(r.refunded,0) AS refunded FROM commercial_quotes q
+ LEFT JOIN LATERAL (SELECT sum(p.amount_piasters) AS gross FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=q.id) p ON true
+ LEFT JOIN LATERAL (SELECT sum(amount_piasters) AS refunded FROM commercial_refund_payments WHERE quote_id=q.id) r ON true
+ WHERE q.status='accepted' OR EXISTS(SELECT 1 FROM commercial_invoices i WHERE i.quote_id=q.id AND i.status<>'void') OR COALESCE(p.gross,0)>0
+ ), financial AS (SELECT COALESCE(sum(total_piasters),0)::bigint AS invoiced_piasters,COALESCE(sum(gross),0)::bigint AS gross_paid_piasters,COALESCE(sum(refunded),0)::bigint AS refunded_piasters,COALESCE(sum(gross-refunded),0)::bigint AS paid_piasters,COALESCE(sum(GREATEST(0,total_piasters-gross+refunded)),0)::bigint AS outstanding_piasters,COALESCE(sum(GREATEST(0,gross-refunded-total_piasters)),0)::bigint AS credit_piasters FROM balances)
+ SELECT count(*)::integer AS invoice_count,
+ (SELECT invoiced_piasters FROM financial) AS invoiced_piasters,
+ (SELECT gross_paid_piasters FROM financial) AS gross_paid_piasters,
+ (SELECT refunded_piasters FROM financial) AS refunded_piasters,
+ (SELECT paid_piasters FROM financial) AS paid_piasters,
+ (SELECT outstanding_piasters FROM financial) AS outstanding_piasters,
+ (SELECT credit_piasters FROM financial) AS credit_piasters,
  count(*) FILTER (WHERE i.due_at < CURRENT_DATE AND i.status NOT IN ('void','paid') AND i.verified_paid_piasters<i.amount_piasters)::integer AS overdue_count,
  COALESCE(sum(i.amount_piasters-i.verified_paid_piasters) FILTER (WHERE i.due_at < CURRENT_DATE AND i.status NOT IN ('void','paid')),0)::bigint AS overdue_piasters
  FROM commercial_invoices i WHERE i.status<>'void'`);
@@ -1819,7 +1828,9 @@ app.post("/api/internal/verified-payments",rateLimit({windowMs:60*1000,limit:40,
  const client=await pool.connect();
  try{
   await client.query("BEGIN");
-  const invoice=await client.query("SELECT id,amount_piasters,verified_paid_piasters,status FROM commercial_invoices WHERE id=$1 FOR UPDATE",[invoiceId]);
+  const quote=await client.query("SELECT q.id,q.status FROM commercial_quotes q JOIN commercial_invoices i ON i.quote_id=q.id WHERE i.id=$1 FOR UPDATE OF q",[invoiceId]);
+  if(!quote.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Invoice not available"});}
+  const invoice=await client.query("SELECT id,amount_piasters,verified_paid_piasters,status,release_for_payment FROM commercial_invoices WHERE id=$1 FOR UPDATE",[invoiceId]);
   if(!invoice.rowCount||invoice.rows[0].status==="void"){await client.query("ROLLBACK");return res.status(404).json({error:"Invoice not available"});}
   const existing=await client.query("SELECT id,invoice_id,amount_piasters FROM commercial_invoice_payments WHERE provider='gateway_verified' AND provider_reference=$1 FOR UPDATE",[providerReference]);
   if(existing.rowCount){
@@ -1827,9 +1838,11 @@ app.post("/api/internal/verified-payments",rateLimit({windowMs:60*1000,limit:40,
    if(Number(existing.rows[0].invoice_id)!==invoiceId||Number(existing.rows[0].amount_piasters)!==amountPiasters)return res.status(409).json({error:"Payment reference conflict"});
    return res.json({accepted:true,duplicate:true,paymentId:existing.rows[0].id});
   }
+  const gate=await client.query("SELECT EXISTS(SELECT 1 FROM customer_contracts WHERE quote_id=$1 AND status='signed') AS signed, EXISTS(SELECT 1 FROM commercial_invoice_revision_requests WHERE quote_id=$1 AND status='issued') AS pending, EXISTS(SELECT 1 FROM commercial_payment_preferences WHERE quote_id=$1 AND 'xpay'=ANY(methods)) AS allowed",[quote.rows[0].id]);
+  if(quote.rows[0].status!=="accepted"||!gate.rows[0].signed||gate.rows[0].pending||!gate.rows[0].allowed||!invoice.rows[0].release_for_payment||/^(cs_test_|xpay_test)/i.test(providerReference)){await client.query("ROLLBACK");return res.status(409).json({error:"Payment requires eligible released invoice and verified live settlement; reconcile rejected external settlements separately"});}
   const remaining=Number(invoice.rows[0].amount_piasters)-Number(invoice.rows[0].verified_paid_piasters);
   if(amountPiasters>remaining){await client.query("ROLLBACK");return res.status(409).json({error:"Payment exceeds invoice balance"});}
-  const payment=await client.query("INSERT INTO commercial_invoice_payments(invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by) VALUES($1,$2,$3,'gateway_verified',$4,'trusted_gateway_adapter') RETURNING id",[invoiceId,amountPiasters,paidAt,providerReference]);
+  const payment=await client.query("INSERT INTO commercial_invoice_payments(invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by,payment_method) VALUES($1,$2,$3,'gateway_verified',$4,'trusted_gateway_adapter','xpay') RETURNING id",[invoiceId,amountPiasters,paidAt,providerReference]);
   const totalPaid=Number(invoice.rows[0].verified_paid_piasters)+amountPiasters;
   const status=totalPaid===Number(invoice.rows[0].amount_piasters)?"paid":"part_paid";
   await client.query("UPDATE commercial_invoices SET verified_paid_piasters=$1,status=$2 WHERE id=$3",[totalPaid,status,invoiceId]);
