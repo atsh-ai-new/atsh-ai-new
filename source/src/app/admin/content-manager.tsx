@@ -93,8 +93,10 @@ export default function ContentManager({ initialSlug = "home", onSaved, logoEdit
     setError("");setNotice("");
     if(!/\.html?$/i.test(file.name)||!file.size||file.size>MAX_DEMO_HTML_BYTES){setError("اختر ملف HTML مستقلًا حتى 10 ميجابايت.");return;}
     setBusy(true);
-    try{const html=await file.text();if(!html.trim())throw Error("ملف فارغ");
-      setDraft(current=>{if(!current)return current;const ids=Array.isArray(current.content.featuredSystemSlugs)?current.content.featuredSystemSlugs:featuredOptions.slice(0,4).map(x=>x.slug);const files=Object.fromEntries(Object.entries(asRecord(current.content.featuredSystemHtml)).filter(([key])=>ids.includes(key)));return {...current,content:{...current.content,featuredSystemHtml:{...files,[slug]:{html,name:file.name.slice(0,255)}}}};});
+    try{const result=await adminApi("demo-assets",{method:"POST",body:file,headers:{"Content-Type":"application/octet-stream"}});
+      if(!/^[a-f0-9]{64}$/.test(result.assetId??""))throw Error("تعذر رفع الملف");
+      setLoadedFeatured(null);setFeaturedPreview("");
+      setDraft(current=>{if(!current)return current;const ids=Array.isArray(current.content.featuredSystemSlugs)?current.content.featuredSystemSlugs:featuredOptions.slice(0,4).map(x=>x.slug);const files=Object.fromEntries(Object.entries(asRecord(current.content.featuredSystemHtml)).filter(([key])=>ids.includes(key)));return {...current,content:{...current.content,featuredSystemHtml:{...files,[slug]:{assetId:result.assetId,available:true,name:file.name.slice(0,255)}}}};});
       setNotice("تم تجهيز ملف الرئيسية فقط. اضغط حفظ ونشر بطاقات الرئيسية لتفعيله.");
     }catch(e){setError(e instanceof Error?e.message:"تعذر قراءة الملف");}finally{setBusy(false);}
   };

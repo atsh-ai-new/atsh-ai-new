@@ -5,9 +5,10 @@ import { addonOptions, calculateQuote, formatEgp, identityOptions, packages, typ
 import { siteCopyDefaults } from "@/lib/site-copy";
 import { readPagePreview } from "@/lib/page-preview";
 import { siteCopyEn, englishPackages, englishOptions, englishPrice } from "@/lib/site-copy-en";
-import { isolatedDemoHtml, findSector, interactiveDemoPaths, interactiveDemoSlug } from "@/lib/sector-catalog";
+import { findSector } from "@/lib/sector-catalog";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
 import {normalizeCatalogSectors,resolvePlacement} from "@/lib/catalog-sectors";
+import CatalogCardPreview from "@/components/catalog-card-preview";
 import DomainLookup from "@/components/domain-lookup";
 import HomeCatalogShowcase, {type HomeCatalogItem} from "@/components/home-catalog-showcase";
 import { combinedQuoteSummary } from "@/lib/quote-breakdown";
@@ -28,21 +29,11 @@ const backendPackageIds: Record<string, string> = {
 const obsoleteIdentityOptionCodes = new Set(["logo_design", "visual_identity"]);
 const builtInOptionCodes = new Set(["language", "logo", "brand", "writing", "seo", "booking", "contact", "analytics", "hosting", "domain_com", "domain_eg", "maintenance"]);
 
-function FeaturedLiveDemo({item,base,html,available}:{item:HomeCatalogItem;base:string;html?:string;available?:boolean}){
- const host=useRef<HTMLDivElement>(null),frame=useRef<HTMLIFrameElement>(null);
- const [width,setWidth]=useState(320),[height,setHeight]=useState(800);
- const slug=interactiveDemoSlug(item.slug,item.demoSlug);
- const src=slug?interactiveDemoPaths[slug]:null;
- useEffect(()=>{const el=host.current;if(!el)return;const resize=()=>setWidth(el.clientWidth);resize();const observer=new ResizeObserver(resize);observer.observe(el);return()=>observer.disconnect();},[]);
- useEffect(()=>{const el=frame.current;if(!el||(!src&&!html))return;const receive=(event:MessageEvent)=>{if(event.source!==el.contentWindow||event.origin!=="null"||event.data?.type!=="atsh-featured-demo-height")return;const n=Number(event.data.height);if(Number.isFinite(n)&&n>0)setHeight(Math.min(20000,Math.max(650,n)));};window.addEventListener("message",receive);return()=>window.removeEventListener("message",receive);},[src,html]);
- const [visible,setVisible]=useState(false);
- const [remoteHtml,setRemoteHtml]=useState<string>();
- useEffect(()=>{const el=host.current;if(!el)return;const io=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)){setVisible(true);io.disconnect();}},{rootMargin:"150px"});io.observe(el);return()=>io.disconnect();},[]);
- useEffect(()=>{if(!available||html||!visible)return;const controller=new AbortController();setRemoteHtml(undefined);fetch("/api/site-content/home?demo="+encodeURIComponent(item.slug),{signal:controller.signal,cache:"no-store"}).then(r=>{if(!r.ok)throw Error("Demo unavailable");return r.json()}).then(d=>{if(!controller.signal.aborted&&typeof d.html==="string")setRemoteHtml(d.html)}).catch(()=>{});return()=>controller.abort();},[available,html,visible,item.slug]);
- const demoHtml=html||remoteHtml;
- const documentHtml=useMemo(()=>demoHtml?isolatedDemoHtml(demoHtml):undefined,[demoHtml]);
- const scale=width/1200;
- return <div ref={host} style={{width:"100%",position:"relative",overflow:"hidden",borderRadius:10,background:"#f4f7fa",height:src||html||available?Math.max(180,height*scale):undefined}}>{(src||html||available)?visible&&(!available||demoHtml)?<iframe ref={frame} title={item.name} src={demoHtml?undefined:src?src+"?featured=1":undefined} srcDoc={documentHtml} loading="lazy" referrerPolicy="no-referrer" sandbox={demoHtml?"allow-scripts allow-modals":"allow-scripts allow-forms allow-modals"} scrolling="no" style={{position:"absolute",top:0,left:0,width:1200,height,transform:"scale("+scale+")",transformOrigin:"top left",border:0,display:"block"}}/>:<span style={{display:"block",padding:12}}>{item.name}</span>:<a className="button button-outline" href={base+"/catalog/"+encodeURIComponent(item.slug)+"?fullscreen=1&featuredHome=1"}>{item.name} ↗</a>}</div>;
+function FeaturedLiveDemo({item,base}:{item:HomeCatalogItem;base:string;html?:string;available?:boolean}){
+ const url=item.imageUrl;
+ return <a href={base+"/catalog/"+encodeURIComponent(item.slug)+"?fullscreen=1&featuredHome=1"} style={{display:"block",overflow:"hidden",borderRadius:10}}>
+ {url&&(/^(\/api\/site-media\/[0-9a-f-]{36}$)/i.test(url)||url.startsWith("https://"))?<img src={url} alt={item.name} loading="lazy" style={{width:"100%",height:156,objectFit:"cover"}}/>:<CatalogCardPreview slug={item.slug} name={item.name}/>}
+ </a>;
 }
 export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly=false}:{locale?:"ar"|"en";configuratorOnly?:boolean;pricingOnly?:boolean}) {
   const isEnglish=locale==="en";

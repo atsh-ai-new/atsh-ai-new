@@ -2,6 +2,7 @@ name: Branch validation (no deployment)
 on:
   push:
     branches:
+      - fix/demo-assets-lightweight-20261125
       - fix/unified-data-flows-20261121
       - audit/admin-dashboard-modernization-20261122
       - fix/admin-mobile-project-team-controls-20261122
