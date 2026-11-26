@@ -2,6 +2,7 @@
 import NotificationInbox from "../../components/notification-inbox";
 
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import {addonCategories,categoryFor,groupAddons,type AddonCategoryCode,type AddonCategoryOrder} from "@/lib/addon-categories";
 import { formatEgp } from "@/lib/catalog";
 import { siteCopyDefaults, siteCopyFields } from "@/lib/site-copy";
 import ContentManager from "./content-manager";
@@ -19,7 +20,7 @@ import CommercialManager from "./commercial-manager";
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
 type View = "videos" | "messages" | "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "theme" | "inbox" | "team" | "audit";
 type Package = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
-type Option = { id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
+type Option = { category_code?:AddonCategoryCode;category_sort_order?:number; id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
 type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; linked_project_id?: string | null; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
 type JourneyProject = { id:string; customer_name:string; customer_email:string|null; status:string; created_at:string };
 type Member = { id: string; email: string; display_name: string; role: Exclude<Role, "owner">; is_active: boolean; permission_overrides?: Record<string, boolean> | null; created_at: string };
@@ -30,7 +31,7 @@ type EmailStatus = { configured: boolean; from: string; replyTo: string };
 type PageContent = Record<string, string>;
 type ApiPayload = Record<string, any>;
 type PackageDraft = { name: string; tagline: string; description: string; price: string; features: string; copyFromPackageId: string; isFeatured: boolean; isCustomQuote: boolean; isPublished: boolean };
-type OptionDraft = { packageId: string; code: string; name: string; description: string; price: string; pricingType: Option["pricing_type"]; unitLabel: string; isRequired: boolean; isActive: boolean; visibility: "both" | "packages" | "systems" };
+type OptionDraft = { categoryCode:AddonCategoryCode;sortOrder:number; packageId: string; code: string; name: string; description: string; price: string; pricingType: Option["pricing_type"]; unitLabel: string; isRequired: boolean; isActive: boolean; visibility: "both" | "packages" | "systems" };
 
 const nav: Array<{ id: View; label: string; icon: string }> = [
   { id: "overview", label: "نظرة عامة", icon: "◫" }, { id: "integrations", label: "حالة الربط", icon: "🔌" }, { id:"assistant-knowledge",label:"تعريفات GPT والردود",icon:"✦" }, { id: "content", label: "تعديل المحتوى", icon: "▤" },
@@ -77,9 +78,9 @@ export default function AdminPage() {
   const [offerPreviewUrl,setOfferPreviewUrl]=useState("");
   const [orderPreviewUrl,setOrderPreviewUrl]=useState("");
   const [orderPreviewDevice,setOrderPreviewDevice]=useState<"desktop"|"mobile">("desktop");
-  const previewCustomerOrder=()=>setOrderPreviewUrl(createPagePreviewUrl({slug:"home",locale:"ar",content:{previewOfferings:{packages:packages.map(p=>({...p,is_published:true})),options:packages.flatMap(p=>options.filter(o=>o.is_active).map(o=>({...o,package_id:p.id,visibility:"both"})))}}})+"#packages");
+  const previewCustomerOrder=()=>setOrderPreviewUrl(createPagePreviewUrl({slug:"home",locale:"ar",content:{previewOfferings:{packages:packages.map(p=>({...p,is_published:true})),options:packages.flatMap(p=>options.filter(o=>o.is_active).map(o=>({...o,category_sort_order:categoryOrder.find(c=>c.code===categoryFor(o))?.sort_order,package_id:p.id,visibility:"both"})))}}})+"#packages");
   const [offerPreviewDevice,setOfferPreviewDevice]=useState<"desktop"|"mobile">("desktop");
-  const previewOfferings=()=>{setOfferPreviewUrl(createPagePreviewUrl({slug:"home",locale:"ar",content:{previewOfferings:{packages:packages.map(p=>({...p,is_published:true})),options:packages.flatMap(p=>options.filter(o=>o.is_active).map(o=>({...o,package_id:p.id,visibility:"both"})))}}})+"#packages");setOfferingTab("preview");};
+  const previewOfferings=()=>{setOfferPreviewUrl(createPagePreviewUrl({slug:"home",locale:"ar",content:{previewOfferings:{packages:packages.map(p=>({...p,is_published:true})),options:packages.flatMap(p=>options.filter(o=>o.is_active).map(o=>({...o,category_sort_order:categoryOrder.find(c=>c.code===categoryFor(o))?.sort_order,package_id:p.id,visibility:"both"})))}}})+"#packages");setOfferingTab("preview");};
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
@@ -91,6 +92,8 @@ export default function AdminPage() {
   const [busy, setBusy] = useState(false);
   const [packages, setPackages] = useState<Package[]>([]);
   const [options, setOptions] = useState<Option[]>([]);
+  const [categoryOrder,setCategoryOrder]=useState<AddonCategoryOrder[]>(addonCategories.map((c,i)=>({code:c.code,sort_order:(i+1)*10})));
+  const [addonTab,setAddonTab]=useState<AddonCategoryCode>("foundation");
   const [orders, setOrders] = useState<Order[]>([]);
   const [journeyProjects, setJourneyProjects] = useState<JourneyProject[]>([]);
   const [journeyError, setJourneyError] = useState("");
@@ -106,7 +109,7 @@ export default function AdminPage() {
   const [memberPassword, setMemberPassword] = useState("");
   const [memberPermissions,setMemberPermissions] = useState<Record<string,boolean>>(emptyTeamPermissions);
   const [packageDraft, setPackageDraft] = useState<PackageDraft>({ name: "", tagline: "", description: "", price: "", features: "", copyFromPackageId: "", isFeatured: false, isCustomQuote: false, isPublished: false });
-  const [optionDraft, setOptionDraft] = useState<OptionDraft>({ packageId: "", code: "", name: "", description: "", price: "", pricingType: "fixed", unitLabel: "", isRequired: false, isActive: true, visibility: "both" as const });
+  const [optionDraft, setOptionDraft] = useState<OptionDraft>({ categoryCode:"foundation",sortOrder:10,packageId: "", code: "", name: "", description: "", price: "", pricingType: "fixed", unitLabel: "", isRequired: false, isActive: true, visibility: "both" as const });
 
   const loadData = useCallback(async (role: Role = "viewer") => {
     // Keep independent admin sections usable when one backend endpoint fails.
@@ -131,6 +134,8 @@ export default function AdminPage() {
     if (catalog) {
       setPackages(catalog.packages ?? []);
       setOptions(catalog.sharedOptions ?? []);
+      setOptionDraft(d=>({...d,sortOrder:Math.max(0,...(catalog.sharedOptions??[]).filter((o:Option)=>categoryFor(o)===d.categoryCode).map((o:Option)=>o.sort_order))+10}));
+      if(Array.isArray(catalog.addonCategories)&&catalog.addonCategories.length===addonCategories.length)setCategoryOrder(catalog.addonCategories);
     }
     if (inbox) setOrders(inbox.orders ?? []);
     if (settings) {
@@ -266,7 +271,11 @@ export default function AdminPage() {
     setBusy(true);setError("");setNotice("");
     try { await api(`packages/${item.id}`, {method:"DELETE"}); const verified=await api("packages"); if((verified.packages??[]).some((p:Package)=>p.id===item.id))throw new Error("لم تختف الباقة من قائمة المنتجات"); setPackages(verified.packages??[]);setOptions(verified.sharedOptions??[]);setPackageDraft(p=>p.copyFromPackageId===item.id?{...p,copyFromPackageId:""}:p);setNotice("تم حذف الباقة من المنتجات والموقع."); }catch(e){setError(e instanceof Error?e.message:"تعذر حذف الباقة");}finally{setBusy(false);}
   };
-  const saveOption = (item: Option) => save(() => api(`options/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, description: item.description, price: Number(item.price), pricingType: item.pricing_type, unitLabel: item.unit_label, isRequired: item.is_required, isActive: item.is_active, sortOrder: item.sort_order, visibility: item.visibility ?? "both" }) }), "تم تحديث الإضافة في جميع الباقات والأنظمة المخصصة.");
+  const saveOption = (item: Option) => save(() => api(`options/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, description: item.description, price: Number(item.price), pricingType: item.pricing_type, unitLabel: item.unit_label, isRequired: item.is_required, isActive: item.is_active, sortOrder: item.sort_order, categoryCode:categoryFor(item), visibility: item.visibility ?? "both" }) }), "تم تحديث الإضافة في جميع الباقات والأنظمة المخصصة.");
+  const orderedAddonGroups=groupAddons(options,categoryOrder);
+  const moveCategory=(code:AddonCategoryCode,direction:number)=>setCategoryOrder(old=>{const list=[...old].sort((a,b)=>a.sort_order-b.sort_order);const i=list.findIndex(c=>c.code===code),j=i+direction;if(i<0||j<0||j>=list.length)return old;[list[i],list[j]]=[list[j],list[i]];return list.map((c,k)=>({...c,sort_order:(k+1)*10}));});
+  const saveCategoryOrder=()=>save(()=>api("addon-categories",{method:"PATCH",body:JSON.stringify({codes:[...categoryOrder].sort((a,b)=>a.sort_order-b.sort_order).map(c=>c.code)})}),"تم حفظ ترتيب الأقسام في جميع واجهات التسعير.");
+  const selectAddonTab=(code:AddonCategoryCode)=>{setAddonTab(code);setOptionDraft(d=>({...d,categoryCode:code,sortOrder:Math.max(0,...options.filter(o=>categoryFor(o)===code).map(o=>o.sort_order))+10}));};
   const removeOption = async (item: Option) => {
     if (!window.confirm(`إيقاف الإضافة "${item.name}"؟ ستختفي من الخيارات الجديدة مع الاحتفاظ بسجل الطلبات السابقة.`)) return;
     setBusy(true); setError(""); setNotice("");
@@ -345,8 +354,8 @@ export default function AdminPage() {
     setBusy(true); setError(""); setNotice("");
     try {
       const {packageId: _ignoredPackage, ...sharedDraft}=optionDraft;
-      await api("options", { method: "POST", body: JSON.stringify({ ...sharedDraft, visibility:"both", price: Number(optionDraft.price), sortOrder: options.length * 10 + 10 }) });
-      setOptionDraft((current) => ({ ...current, code: "", name: "", description: "", price: "", unitLabel: "" })); await loadData(); setNotice("تمت إضافة الخيار لجميع الباقات والأنظمة المخصصة.");
+      await api("options", { method: "POST", body: JSON.stringify({ ...sharedDraft, visibility:"both", price: Number(optionDraft.price), sortOrder: optionDraft.sortOrder }) });
+      setOptionDraft((current) => ({ ...current, code: "", name: "", description: "", price: "", unitLabel: "",sortOrder:current.sortOrder+10 })); await loadData(); setNotice("تمت إضافة الخيار لجميع الباقات والأنظمة المخصصة.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذرت إضافة الخيار."); }
     finally { setBusy(false); }
   };
@@ -438,7 +447,11 @@ export default function AdminPage() {
 
         {view === "options" && offeringTab === "addons" && <><section id="unified-package-options" className="admin-content-card">
           <div className="admin-content-title"><div><h2>إدارة الإضافات للباقات والأنظمة المخصصة</h2><p>كل إضافة تُدار مرة واحدة وتظهر تلقائيًا في جميع الباقات والأنظمة الحالية والمستقبلية. تعديل السعر أو الإيقاف يسري على الجميع دون تغيير الطلبات السابقة.</p></div></div>
+          <details><summary>ترتيب عرض الأقسام</summary><p className="field-hint">الدومين يظل أول خطوة مستقلة. غيّر ترتيب الأقسام ثم احفظ.</p><div className="admin-addon-order">{orderedAddonGroups.map((g,i)=><div className="admin-addon-order-row" key={g.code}><span>{i+1}</span><strong>{g.name}</strong><button type="button" className="button button-outline button-small" disabled={busy||i===0} aria-label={`تقديم ${g.name}`} onClick={()=>moveCategory(g.code,-1)}>↑</button><button type="button" className="button button-outline button-small" disabled={busy||i===orderedAddonGroups.length-1} aria-label={`تأخير ${g.name}`} onClick={()=>moveCategory(g.code,1)}>↓</button></div>)}<button type="button" className="button button-small" disabled={busy} onClick={saveCategoryOrder}>حفظ ترتيب الأقسام</button></div></details>
+          <div className="admin-addon-tabs" role="group" aria-label="أقسام الإضافات">{orderedAddonGroups.map(g=><button type="button" key={g.code} aria-pressed={addonTab===g.code} className={addonTab===g.code?"button button-small":"button button-outline button-small"} onClick={()=>selectAddonTab(g.code)}>{g.name} ({g.items.length})</button>)}</div>
+          <h3>{addonCategories.find(c=>c.code===addonTab)?.name}</h3>
           <form className="admin-team-form admin-option-create" onSubmit={addOption}>
+            <label className="admin-field">القسم<select value={optionDraft.categoryCode} onChange={e=>selectAddonTab(e.target.value as AddonCategoryCode)}>{orderedAddonGroups.map(g=><option key={g.code} value={g.code}>{g.name}</option>)}</select></label><label className="admin-field">ترتيب العرض داخل القسم<input type="number" min={-100000} max={100000} step={1} required value={optionDraft.sortOrder} onChange={e=>setOptionDraft(d=>({...d,sortOrder:Number(e.target.value)}))}/></label>
             <label className="admin-field">رمز الربط<input required pattern="[a-z0-9_-]{2,80}" title="استخدم أحرفًا إنجليزية صغيرة وأرقامًا وشرطة فقط" value={optionDraft.code} onChange={(event) => setOptionDraft({ ...optionDraft, code: event.target.value })} /></label>
             <label className="admin-field">اسم الإضافة<input required value={optionDraft.name} onChange={(event) => setOptionDraft({ ...optionDraft, name: event.target.value })} /></label>
             <label className="admin-field">السعر<input required type="number" min="0" step="0.01" value={optionDraft.price} onChange={(event) => setOptionDraft({ ...optionDraft, price: event.target.value })} /></label>
@@ -448,10 +461,10 @@ export default function AdminPage() {
             <label className="check-row"><input type="checkbox" checked={optionDraft.isRequired} onChange={(event) => setOptionDraft({ ...optionDraft, isRequired: event.target.checked })} /> إلزامية</label>
             <button className="button" disabled={busy}>إضافة للجميع</button>
           </form>
-          {options.map((item) => <article className="admin-package-editor" key={item.id}>
+          {(orderedAddonGroups.find(g=>g.code===addonTab)?.items??[]).map((item) => <article className="admin-package-editor" key={item.id}>
             <div className="option-admin-heading"><strong>{item.name}</strong><small>{item.is_active?"متاحة للجميع":"متوقفة"}</small><code>{item.code}</code></div>
             <div className="admin-form-grid">
-              <label className="admin-field">اسم الإضافة<input value={item.name} onChange={(event) => changeOption(item.id, "name", event.target.value)} /></label>
+              <label className="admin-field">القسم<select value={categoryFor(item)} onChange={e=>{const code=e.target.value as AddonCategoryCode;changeOption(item.id,"category_code",code);setAddonTab(code);}}>{orderedAddonGroups.map(g=><option key={g.code} value={g.code}>{g.name}</option>)}</select></label><label className="admin-field">ترتيب العرض داخل القسم<input type="number" min={-100000} max={100000} step={1} value={item.sort_order} onChange={e=>changeOption(item.id,"sort_order",Number(e.target.value))}/></label><label className="admin-field">اسم الإضافة<input value={item.name} onChange={(event) => changeOption(item.id, "name", event.target.value)} /></label>
               <label className="admin-field">السعر<input type="number" min="0" step="0.01" value={item.price} onChange={(event) => changeOption(item.id, "price", Number(event.target.value))} /></label>
               <label className="admin-field">طريقة الحساب<select value={item.pricing_type} onChange={(event) => changeOption(item.id, "pricing_type", event.target.value as Option["pricing_type"])}><option value="fixed">مرة واحدة</option><option value="per_page">لكل صفحة</option><option value="yearly">سنوي</option><option value="monthly">شهري</option></select></label>
               <label className="admin-field">وحدة السعر<input value={item.unit_label} onChange={(event) => changeOption(item.id, "unit_label", event.target.value)} /></label>

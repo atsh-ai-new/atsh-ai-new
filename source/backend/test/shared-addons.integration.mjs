@@ -31,6 +31,17 @@ export async function verifySharedAddons(db){
     assert.equal(inherited.is_active,true);assert.equal(Number(inherited.amount),456);
     const migration=await readFile(new URL("../db/shared_addons_20261126.sql",import.meta.url),"utf8");
     if(typeof db.exec==="function")await db.exec(migration);else await db.query(migration);
+    const categoryMigration=await readFile(new URL("../db/addon_categories_20261126.sql",import.meta.url),"utf8");
+    const runCategoryMigration=()=>typeof db.exec==="function"?db.exec(categoryMigration):db.query(categoryMigration);
+    await runCategoryMigration();
+    await db.query("UPDATE shared_addons SET category_code='marketing',sort_order=73 WHERE id=$1",[shared.id]);
+    await db.query("UPDATE addon_categories SET sort_order=3 WHERE code='marketing'");
+    await runCategoryMigration();
+    const categorized=(await db.query("SELECT a.category_code,a.sort_order,a.price,c.sort_order AS category_sort_order FROM shared_addons a JOIN addon_categories c ON c.code=a.category_code WHERE a.id=$1",[shared.id])).rows[0];
+    assert.equal(categorized.category_code,"marketing");
+    assert.equal(categorized.sort_order,73);
+    assert.equal(categorized.category_sort_order,3);
+    assert.equal(Number(categorized.price),456);
     const after=(await rows()).rows;
     assert.equal(after.length,updated.length+1);
     assert.ok(after.every(r=>Number(r.price)===456&&r.is_active));

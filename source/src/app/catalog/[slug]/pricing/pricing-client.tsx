@@ -1,9 +1,12 @@
 "use client";
 import {useEffect,useMemo,useState} from "react";
 import Link from "next/link";
+import AddonGroups from "@/components/addon-groups";
+import DomainLookup from "@/components/domain-lookup";
+import type {CategorizedAddon} from "@/lib/addon-categories";
 import {loadGuestWorkspace,saveGuestWorkspace} from "@/lib/customer-workspace";
 
-type Addon={required?:boolean;code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"|"per_page"};
+type Addon=CategorizedAddon & {required?:boolean;code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"|"per_page"};
 type Catalog={slug:string;name:string;basePrice:number|null;pricedAddons?:Addon[];published?:boolean;archived?:boolean};
 export default function CatalogPricingClient({slug}:{slug:string}){
  const [catalog,setCatalog]=useState<Catalog|null>(null);
@@ -13,10 +16,12 @@ export default function CatalogPricingClient({slug}:{slug:string}){
  const [pages,setPages]=useState(0);
  const [writingPages,setWritingPages]=useState(1);
  const [details,setDetails]=useState("");
+ const [domainName,setDomainName]=useState("");
  const [locale,setLocale]=useState<"ar"|"en">("ar");
  useEffect(()=>{
   setLocale(window.location.pathname.startsWith("/en/")||new URLSearchParams(window.location.search).get("lang")==="en"?"en":"ar");
   const saved=loadGuestWorkspace();
+  if(saved.sectorSlug===slug)setDomainName(saved.domainName??"");
   if(saved.sectorSlug===slug&&Array.isArray(saved.sectorAddonCodes)){setSelected(saved.sectorAddonCodes.filter(code=>code!=="extra_page"));setPages(saved.sectorAddonCodes.includes("extra_page")?saved.sectorAddonQuantities?.extra_page??1:0);setWritingPages(Object.entries(saved.sectorAddonQuantities??{}).find(([code])=>code!=="extra_page")?.[1]??1);}
   let active=true;
   fetch("/api/site-content/catalog",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();return r.json()}).then(data=>{
@@ -29,8 +34,8 @@ export default function CatalogPricingClient({slug}:{slug:string}){
    if(!active)return;
    const byCode=new Map<string,Addon>();
    for(const option of data?.sharedOptions??data?.options??[]){
-    if(!option?.code||option.visibility==="packages"||!Number.isFinite(Number(option.price))||["logo_design","visual_identity","domain_com","domain_eg"].includes(option.code))continue;
-    if(!byCode.has(option.code))byCode.set(option.code,{required:!!option.is_required,code:option.code,name:option.name,description:option.description??"",price:Number(option.price),pricingType:option.pricing_type==="monthly"?"monthly":option.pricing_type==="yearly"?"yearly":option.pricing_type==="per_page"?"per_page":"fixed"});
+    if(!option?.code||option.visibility==="packages"||!Number.isFinite(Number(option.price))||["logo_design","visual_identity","domain","domain_com","domain_eg"].includes(option.code))continue;
+    if(!byCode.has(option.code))byCode.set(option.code,{required:!!option.is_required,code:option.code,category_code:option.category_code,sort_order:option.sort_order,category_sort_order:option.category_sort_order,name:option.name,description:option.description??"",price:Number(option.price),pricingType:option.pricing_type==="monthly"?"monthly":option.pricing_type==="yearly"?"yearly":option.pricing_type==="per_page"?"per_page":"fixed"});
    }
    setSharedAddons([...byCode.values()]);
    setPages(old=>byCode.has("extra_page")?Math.max(byCode.get("extra_page")?.required?1:0,old):0);
@@ -47,18 +52,16 @@ export default function CatalogPricingClient({slug}:{slug:string}){
  const monthly=addons.filter(a=>selected.includes(a.code)&&a.pricingType==="monthly").reduce((n,a)=>n+Number(a.price),0);
  const yearly=addons.filter(a=>selected.includes(a.code)&&a.pricingType==="yearly").reduce((n,a)=>n+Number(a.price),0);
  const money=(n:number)=>n.toLocaleString(en?"en-EG":"ar-EG",{maximumFractionDigits:2})+" "+t("ج.م","EGP");
- const save=()=>{if(!catalog)return;const items=[{name:catalog.name,amount:base??0,period:"fixed" as const},...addons.filter(a=>a.code!=="extra_page"&&selected.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="per_page"?"fixed" as const:a.pricingType})),...(pages>0&&pageAddon?[{name:`صفحات إضافية × ${pages}`,amount:pages*Number(pageAddon.price),period:"fixed" as const}]:[])];const subtotal=(base??0)+fixed+monthly+yearly;saveGuestWorkspace({sectorSlug:slug,sectorName:catalog.name,sectorAddonCodes:[...selected,...(pages>0&&pageAddon?["extra_page"]:[])],sectorAddonQuantities:Object.fromEntries([...addons.filter(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&selected.includes(a.code)).map(a=>[a.code,writingPages] as const),...(pages>0&&pageAddon?[["extra_page",pages] as const]:[])]),source:"catalog",projectMode:"ready",businessDescription:[pages>0?`${pages} صفحات إضافية`:"",details].filter(Boolean).join(" — "),draftInvoice:{title:catalog.name,items,subtotal,vat:subtotal*.14,total:subtotal*1.14,fixed:(base??0)+fixed,monthly,yearly,currency:"EGP",savedAt:new Date().toISOString()}});};
+ const save=()=>{if(!catalog)return;const items=[{name:catalog.name,amount:base??0,period:"fixed" as const},...addons.filter(a=>a.code!=="extra_page"&&selected.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="per_page"?"fixed" as const:a.pricingType})),...(pages>0&&pageAddon?[{name:`صفحات إضافية × ${pages}`,amount:pages*Number(pageAddon.price),period:"fixed" as const}]:[])];const subtotal=(base??0)+fixed+monthly+yearly;saveGuestWorkspace({domainName,sectorSlug:slug,sectorName:catalog.name,sectorAddonCodes:[...selected,...(pages>0&&pageAddon?["extra_page"]:[])],sectorAddonQuantities:Object.fromEntries([...addons.filter(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&selected.includes(a.code)).map(a=>[a.code,writingPages] as const),...(pages>0&&pageAddon?[["extra_page",pages] as const]:[])]),source:"catalog",projectMode:"ready",businessDescription:[pages>0?`${pages} صفحات إضافية`:"",details].filter(Boolean).join(" — "),draftInvoice:{title:catalog.name,items,subtotal,vat:subtotal*.14,total:subtotal*1.14,fixed:(base??0)+fixed,monthly,yearly,currency:"EGP",savedAt:new Date().toISOString()}});};
  const cardStyle={border:"1px solid #d8e1eb",borderRadius:12,padding:"12px 14px",background:"#fff"} as const;
  return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:780,margin:"0 auto",padding:"18px 14px 70px",color:"#203958"}}>
   <Link href={en?"/en/catalog":"/catalog"} style={{color:"#203958"}}>{t("← العودة","← Back")}</Link>
   {status==="loading"?<p>{t("جارٍ تحميل التسعير...","Loading pricing...")}</p>:status==="missing"?<p role="alert">{t("تعذر تحميل النظام المخصص. حاول مجددًا.","Catalog unavailable. Please try again.")}</p>:<div style={{display:"grid",gap:13,marginTop:20}}>
    <header><small>{t("تخصيص النظام المخصص","Catalog configuration")}</small><h1 style={{fontSize:"clamp(24px,5vw,34px)",margin:"5px 0"}}>{catalog?.name}</h1><p style={{margin:0,color:"#60728a"}}>{t("النظام المخصص جاهز؛ أضف فقط ما تحتاجه دون اختيار باقة موقع جديدة.","Your catalog is already selected. Add only the features you need.")}</p></header>
    <section style={cardStyle}><strong>{t("سعر النظام المخصص الأساسي","Catalog base price")}</strong><p style={{fontSize:24,fontWeight:800,margin:"7px 0"}}>{base===null?t("السعر يحدده المسؤول","Price pending admin setup"):money(base)}</p></section>
+   <section style={cardStyle}><h2 style={{fontSize:18,margin:"0 0 10px"}}>{t("البحث عن الدومين","Search for a domain")}</h2><DomainLookup locale={locale} source="catalog" onDomainChange={setDomainName}/>{domainName&&<p><small>{t("الدومين المختار","Selected domain")}: <b dir="ltr">{domainName}</b></small></p>}</section>
    <section className="catalog-addon-section"><h2 style={{fontSize:19,margin:"4px 0 12px"}}>{t("الإضافات والتكاملات","Add-ons and integrations")}</h2>
-    <div className="option-grid addon-grid catalog-addon-grid">
-    {pageAddon&&<div className={pages>0?"select-card selected":"select-card"} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}><span className="select-card-copy"><strong>{t("صفحات إضافية","Additional pages")}</strong><small>{t("اختر عدد الصفحات الإضافية","Choose additional pages")}</small><b>+{money(Number(pageAddon.price))} {t("/ صفحة","/ page")}</b></span><span className="page-quantity"><button type="button" disabled={pages<=(pageAddon.required?1:0)} onClick={()=>setPages(n=>Math.max(pageAddon.required?1:0,n-1))} aria-label={t("تقليل الصفحات","Remove page")}>−</button><output aria-live="polite">{pages}</output><button type="button" disabled={pages===5} onClick={()=>setPages(n=>Math.min(5,n+1))} aria-label={t("زيادة الصفحات","Add page")}>+</button></span></div>}
-    {addons.filter(a=>a.code!=="extra_page").map(a=><button key={a.code} type="button" disabled={a.required} onClick={()=>setSelected(old=>old.includes(a.code)?old.filter(c=>c!==a.code):[...old,a.code])} aria-pressed={selected.includes(a.code)} className={selected.includes(a.code)?"select-card selected":"select-card"} style={{textAlign:"start",cursor:"pointer"}}><span className="select-mark">{selected.includes(a.code)?"✓":"+"}</span><span className="select-card-copy"><strong>{a.name}</strong>{a.description&&<small>{a.description}</small>}<b>+{money(Number(a.price))} {a.pricingType==="monthly"?t("/ شهريًا","/ month"):a.pricingType==="yearly"?t("/ سنويًا","/ year"):a.pricingType==="per_page"?t("/ صفحة","/ page"):""}</b></span></button>)}
-    </div>
+    <AddonGroups addons={addons} locale={locale} render={a=>a.code==="extra_page"&&pageAddon?<div key={a.code} className={pages>0?"select-card selected":"select-card"} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}><span className="select-card-copy"><strong>{t("صفحات إضافية","Additional pages")}</strong><small>{t("اختر عدد الصفحات الإضافية","Choose additional pages")}</small><b>+{money(Number(pageAddon.price))} {t("/ صفحة","/ page")}</b></span><span className="page-quantity"><button type="button" disabled={pages<=(pageAddon.required?1:0)} onClick={()=>setPages(n=>Math.max(pageAddon.required?1:0,n-1))} aria-label={t("تقليل الصفحات","Remove page")}>−</button><output aria-live="polite">{pages}</output><button type="button" disabled={pages===5} onClick={()=>setPages(n=>Math.min(5,n+1))} aria-label={t("زيادة الصفحات","Add page")}>+</button></span></div>:<button key={a.code} type="button" disabled={a.required} onClick={()=>setSelected(old=>old.includes(a.code)?old.filter(c=>c!==a.code):[...old,a.code])} aria-pressed={selected.includes(a.code)} className={selected.includes(a.code)?"select-card selected":"select-card"} style={{textAlign:"start",cursor:"pointer"}}><span className="select-mark">{selected.includes(a.code)?"✓":"+"}</span><span className="select-card-copy"><strong>{a.name}</strong>{a.description&&<small>{a.description}</small>}<b>+{money(Number(a.price))} {a.pricingType==="monthly"?t("/ شهريًا","/ month"):a.pricingType==="yearly"?t("/ سنويًا","/ year"):a.pricingType==="per_page"?t("/ صفحة","/ page"):""}</b></span></button>}/>
     {addons.some(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&selected.includes(a.code))&&<label style={{display:"grid",gap:6,marginTop:12}}>{t("عدد صفحات المحتوى المطلوب","Number of content pages")}<input type="number" min={1} max={50} value={writingPages} onChange={e=>setWritingPages(Math.max(1,Math.min(50,Math.floor(Number(e.target.value)||1))))}/></label>}
    </section>
    <section style={cardStyle}><label style={{display:"grid",gap:7}}><strong>{t("تفاصيل أو متطلبات أخرى","Other details or requirements")}</strong><textarea rows={3} value={details} onChange={e=>setDetails(e.target.value)} placeholder={t("اكتب تفاصيل الطلب الإضافية","Describe any other requirements")} style={{width:"100%",boxSizing:"border-box",border:"1px solid #cad6e2",borderRadius:8,padding:10}}/></label></section>
