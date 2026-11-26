@@ -90,8 +90,8 @@ export default function CatalogManager() {
       const verification=await fetch("/api/admin/pages",{credentials:"include",cache:"no-store"});
       const verified=verification.ok?(await verification.json()).pages?.find((p:{slug:string;locale:string})=>p.slug==="catalog"&&p.locale==="ar"):null;
       const expectedIds=new Map(await Promise.all(next.map(async item=>[item.slug,item.previewHtml?Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(item.previewHtml)))).map(b=>b.toString(16).padStart(2,"0")).join(""):item.previewHtml===""?undefined:item.previewAssetId] as const)));
-      if(!verified||verified.is_published!==pageWasPublished||!Array.isArray(verified.content?.items)||verified.content.items.length!==next.length||next.some(item=>{const stored=verified.content.items.find((x:CatalogItem)=>x.slug===item.slug);return !stored||stored.previewAssetId!==expectedIds.get(item.slug)||stored.published!==item.published||stored.archived!==item.archived;}))throw Error("تعذر التحقق من حفظ ملفات المعرض. أعد تحميل الصفحة.");
-      setItems(verified.content.items);setSectors(nextSectors);setNotice(message);setUpdatedAt(data?.page?.updated_at?new Date(data.page.updated_at).toISOString():updatedAt);setVersion(v=>v+1);
+      if(!verified||verified.is_published!==pageWasPublished||!Array.isArray(verified.content?.items)||verified.content.items.length!==next.length||next.some(item=>{const stored=verified.content.items.find((x:CatalogItem)=>x.slug===item.slug);return !stored||stored.previewAssetId!==expectedIds.get(item.slug)||stored.published!==item.published||stored.archived!==item.archived||(stored.imageUrl??"")!==(item.imageUrl??"");}))throw Error("تعذر التحقق من حفظ ملفات المعرض. أعد تحميل الصفحة.");
+      setItems(normalize(verified.content.items));setSectors(nextSectors);setNotice(message);setUpdatedAt(data?.page?.updated_at?new Date(data.page.updated_at).toISOString():updatedAt);setVersion(v=>v+1);
       return true;
     }catch(e){setError(e instanceof Error?e.message:"فشل الحفظ");return false;}
     finally{setBusy(false);}
@@ -133,6 +133,16 @@ export default function CatalogManager() {
   const archive=async(item:CatalogItem)=>{
     if(!window.confirm("سيُخفى النظام المخصص من المعرض دون حذف بياناته. متابعة؟"))return;
     await toggle(item,{archived:true,published:false});
+  };
+  const deleteItem=async(item:CatalogItem)=>{
+    if(!window.confirm(`حذف «${item.name}» نهائيًا من قائمة الأنظمة المخصصة والمعرض؟ لا يمكن استعادته من هذه القائمة. لن تُحذف طلبات العملاء السابقة أو ملفات الوسائط المشتركة.`))return;
+    if(await saveAll(items.filter(x=>x.slug!==item.slug),"تم حذف النظام المخصص من المعرض.")){
+      if(originalSlug===item.slug){setDraft(empty());setOriginalSlug("");setHtmlPreview(false);setPreviewUrlLocal("");}
+    }
+  };
+  const editCover=(item:CatalogItem)=>{
+    edit(item);
+    requestAnimationFrame(()=>{const field=document.getElementById("catalog-cover-editor");field?.scrollIntoView({block:"center"});field?.focus({preventScroll:true});});
   };
   const saveSector=async(e:FormEvent)=>{
     e.preventDefault();
@@ -204,7 +214,7 @@ export default function CatalogManager() {
   const field=(label:string,value:string,onChange:(value:string)=>void,area=false)=> <label className="admin-field">{label}{area?<textarea value={value} onChange={e=>onChange(e.target.value)} rows={3}/>:<input value={value} onChange={e=>onChange(e.target.value)} maxLength={2000}/>}</label>;
 
   return <div className="cms-workspace">
-    <section className="admin-content-card"><div className="admin-content-title"><div><h2>إدارة الأنظمة المخصصة ومعاينات القطاعات</h2><p>إضافة وتعديل وإخفاء وأرشفة الأنظمة المخصصة. تُحفظ التغييرات على خادم المنصة عبر صلاحيات الإدارة، وليس داخل المتصفح.</p></div></div>
+    <section className="admin-content-card"><div className="admin-content-title"><div><h2>إدارة الأنظمة المخصصة ومعاينات القطاعات</h2><p>إضافة وتعديل وحذف وإخفاء وأرشفة الأنظمة المخصصة. تُحفظ التغييرات على خادم المنصة عبر صلاحيات الإدارة، وليس داخل المتصفح.</p></div></div>
       {notice&&<p role="status" className="success-message">{notice}</p>}{error&&<p role="alert" className="error-message">{error}</p>}
       {!ready?<p>جارٍ تحميل الأنظمة المخصصة…</p>:<>
         <div className="admin-actions">
@@ -219,9 +229,11 @@ export default function CatalogManager() {
         {!pageWasPublished&&<p className="api-notice">المعرض مخفي من الواجهة العامة حتى تنشر الصفحة بالكامل، حتى لو كانت بطاقات النماذج منشورة.</p>}
         <div className="admin-team-list">{items.map(item=><article className="admin-team-row" key={item.slug} style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
           <strong>{item.icon} {item.name}</strong><span>{item.category}</span><span>{item.archived?"مؤرشف":item.published?"منشور":"مسودة"}</span>
-          <button type="button" className="inline-add" disabled={busy} onClick={()=>edit(item)}>تعديل</button>
+          <button type="button" className="inline-add" disabled={busy||uploading} onClick={()=>edit(item)}>تعديل</button>
+          <button type="button" className="inline-add" disabled={busy||uploading} onClick={()=>editCover(item)}>تغيير الغلاف</button>
           {item.published&&!item.archived&&<a className="inline-add" href={`/catalog/${encodeURIComponent(item.slug)}`} target="_blank" rel="noopener noreferrer">معاينة العميل ↗</a>}
           <button type="button" className="inline-add" disabled={busy||item.archived} onClick={()=>void toggle(item,{published:!item.published})}>{item.published?"إخفاء":"نشر"}</button>
+          <button type="button" className="inline-add" style={{color:"#b42318"}} disabled={busy||uploading} onClick={()=>void deleteItem(item)}>حذف نهائي</button>
           {item.archived?<button type="button" className="inline-add" disabled={busy} onClick={()=>void toggle(item,{archived:false})}>استعادة</button>:<button type="button" className="inline-add" disabled={busy} onClick={()=>void archive(item)}>أرشفة</button>}
         </article>)}</div>
       </>}
@@ -291,12 +303,20 @@ export default function CatalogManager() {
           </select>
           <small>يمكن استخدام المحرك نفسه لأكثر من نظام مخصص بهوية ومزايا وسعر مختلف. محرك المعاينة يعرض بيانات تجريبية منفصلة عن قاعدة بيانات العملاء.</small>
         </label>
+        <div id="catalog-cover-editor" tabIndex={-1} style={{gridColumn:"1 / -1",display:"grid",gap:10,padding:14,border:"1px solid #d9e2ec",borderRadius:12}}>
+        <h3 style={{margin:0}}>غلاف بطاقة النظام في المعرض</h3>
+        <p style={{margin:0}}>{draft.imageUrl?"الغلاف الحالي: صورة مخصصة":"الغلاف الحالي: معاينة تلقائية من واجهة النظام"}</p>
         {field("رابط الصورة HTTPS أو ملف مرفوع",draft.imageUrl,v=>update("imageUrl",v))}
-        <label className="admin-field">رفع صورة البطاقة مباشرة (PNG أو JPG أو WebP، 5 ميجابايت)
+        <label className="admin-field">رفع أو استبدال صورة البطاقة (PNG أو JPG أو WebP، 5 ميجابايت)
           <input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy||uploading} onChange={e=>void uploadImage(e)} />
           {uploading&&<small>جارٍ رفع الصورة…</small>}
           {draft.imageUrl&&<img src={draft.imageUrl} alt="معاينة صورة النظام المخصص" style={{maxWidth:230,maxHeight:155,objectFit:"contain",borderRadius:12}} />}
         </label>
+        <div className="admin-actions">
+          <button type="button" className="button button-outline" disabled={busy||uploading||!draft.imageUrl} onClick={()=>{update("imageUrl","");setNotice("تمت إزالة الغلاف المخصص. احفظ النظام لتطبيق المعاينة التلقائية.");}}>إزالة الصورة واستخدام واجهة HTML</button>
+        </div>
+        <small>عند إزالة الصورة، تعرض البطاقة لقطة تلقائية من ملف HTML المرفوع (أو المعاينة المدمجة إن لم يوجد ملف). يفتح الضغط عليها المعاينة التفاعلية الكاملة. اضغط حفظ النظام المخصص لتطبيق التغييرات.</small>
+        </div>
         <label className="admin-field">رفع أو استبدال ملف HTML للمعاينة (حتى 10 ميجابايت)
           <input type="file" accept=".html,.htm,text/html" disabled={busy||uploading} onChange={e=>void uploadHtml(e)}/>
           <small>{draft.previewHtmlName||"المعاينة المدمجة الحالية ستظل كما هي حتى رفع ملف جديد."}</small>
@@ -310,7 +330,7 @@ export default function CatalogManager() {
         <label className="check-row"><input type="checkbox" checked={draft.published} onChange={e=>update("published",e.target.checked)}/> منشور في المعرض</label>
         <div className="admin-actions"><button type="submit" className="button" disabled={busy||uploading}>{busy?"جارٍ الحفظ…":"حفظ النظام المخصص"}</button></div>
       </form>
-      <p className="field-hint">لا يتم حذف النظام المخصص نهائيًا حتى لا تتأثر روابط العملاء وطلباتهم السابقة. الصور تُرفع عبر خدمة الوسائط المحمية في الخادم. الفيديوهات تُدرج كرابط بعد التحقق من صلاحياتها.</p>
+      <p className="field-hint">الحذف النهائي يزيل النظام من قائمة المعرض بعد التأكيد؛ لا يحذف طلبات العملاء السابقة أو الملفات المشتركة. الصور تُرفع عبر خدمة الوسائط المحمية في الخادم. الفيديوهات تُدرج كرابط بعد التحقق من صلاحياتها.</p>
     </section>}
   </div>;
 }
