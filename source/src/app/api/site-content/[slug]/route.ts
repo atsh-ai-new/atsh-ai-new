@@ -44,7 +44,7 @@ export async function GET(request: Request, context: RouteContext) {
       const payload=await upstream.json();
       if(typeof payload.html!=="string" || Buffer.byteLength(payload.html,"utf8")>10*1024*1024)return new Response("Invalid demo",{status:400});
       const policy="sandbox allow-scripts allow-modals; default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://unpkg.com; img-src https: data: blob:; font-src https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com data:; media-src https: data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; object-src 'none'; frame-ancestors 'self'";
-      return new Response(withDemoStorage(payload.html),{headers:{"content-type":"text/html; charset=utf-8","content-security-policy":policy,"cache-control":"no-store","x-content-type-options":"nosniff","referrer-policy":"no-referrer"}});
+      return new Response(withDemoStorage(payload.html),{headers:{"content-type":"text/html; charset=utf-8","content-security-policy":policy,"cache-control":"no-store","x-content-type-options":"nosniff","referrer-policy":"no-referrer","x-robots-tag":"noindex"}});
     }
     return new Response(upstream.body, {
       status: upstream.status,

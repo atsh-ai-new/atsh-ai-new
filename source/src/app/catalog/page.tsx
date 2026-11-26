@@ -1,2 +1,5 @@
 import CatalogPage from "../catalog-client";
-export default function ArabicCatalog(){return <CatalogPage locale="ar"/>;}
+import {catalogMetadata} from "@/lib/seo";
+import {publicCatalog} from "@/lib/public-seo-data";
+export const metadata=catalogMetadata("ar");
+export default async function Page(){return <CatalogPage locale="ar" initialCatalog={await publicCatalog("ar")??undefined}/>;}

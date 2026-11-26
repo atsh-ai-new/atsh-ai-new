@@ -1,2 +1,10 @@
 import ManagedPage from "../../managed-client";
-export default function EnglishManagedPage(){return <ManagedPage locale="en"/>;}
+import {managedMetadata,publicPage,publicPages} from "@/lib/public-seo-data";
+import {validPublicSlug} from "@/lib/seo";
+type Props={params:Promise<{slug:string}>};
+export async function generateMetadata({params}:Props){return managedMetadata((await params).slug,"en");}
+export default async function Page({params}:Props){
+ const {slug}=await params;
+ const [payload,links]=await Promise.all([validPublicSlug(slug)?publicPage(slug,"en"):Promise.resolve(null),publicPages("en")]);
+ return <ManagedPage locale="en" initialPayload={payload?.page?{...payload,page:{slug,content:payload.page.content??{}}}:undefined} initialLinks={links}/>;
+}

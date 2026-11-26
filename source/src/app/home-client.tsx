@@ -37,7 +37,7 @@ function FeaturedLiveDemo({item,base,assetId}:{item:HomeCatalogItem;base:string;
  <SystemThumbnail slug={item.slug} name={item.name} assetId={assetId||item.previewAssetId} imageUrl={item.imageUrl}/>
  </a>;
 }
-export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly=false}:{locale?:"ar"|"en";configuratorOnly?:boolean;pricingOnly?:boolean}) {
+export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly=false,initialConfig,initialPages,initialArabicReference}:{initialConfig?:SiteConfig;initialPages?:PageLink[];initialArabicReference?:Record<string,unknown>;locale?:"ar"|"en";configuratorOnly?:boolean;pricingOnly?:boolean}) {
   const isEnglish=locale==="en";
   const groupedPricing=pricingOnly||!configuratorOnly;
   const money=(value:number)=>isEnglish?englishPrice(value):formatEgp(value);
@@ -77,12 +77,12 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [apiCatalog, setApiCatalog] = useState<BackendCatalog>({ packages: [], options: [] });
   const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready" | "unavailable">("loading");
-  const [siteConfig, setSiteConfig] = useState<SiteConfig>({});
+  const [siteConfig, setSiteConfig] = useState<SiteConfig>(initialConfig??{});
   // Arabic published content is the visibility reference for the English homepage.
-  const [arabicReference, setArabicReference] = useState<Record<string, unknown> | null>(null);
+  const [arabicReference, setArabicReference] = useState<Record<string, unknown> | null>(initialArabicReference??null);
   const [featuredSystems,setFeaturedSystems]=useState<HomeCatalogItem[]>([]);
   useEffect(()=>{let live=true;void Promise.all([fetch("/api/site-content/catalog?locale=ar&metadata=1",{cache:"no-store"}).then(r=>r.ok?r.json():null),isEnglish?fetch("/api/site-content/catalog?locale=en&metadata=1",{cache:"no-store"}).then(r=>r.ok?r.json():null).catch(()=>null):Promise.resolve(null)]).then(([ar,en])=>{if(!live)return;const content=ar?.page?.content;const sectors=normalizeCatalogSectors(content?.sectors);const translated=new Map<string,HomeCatalogItem>((en?.page?.content?.items??[]).map((x:HomeCatalogItem)=>[x.slug,x]));setFeaturedSystems((Array.isArray(content?.items)?content.items:[]).filter((x:HomeCatalogItem)=>{if(!x||!x.slug||x.published===false||x.archived)return false;const p=resolvePlacement(x,sectors);return p.sector?.isPublished&&p.subcategory?.isPublished!==false;}).map((x:HomeCatalogItem)=>({...x,name:translated.get(x.slug)?.name||x.name,description:translated.get(x.slug)?.description||x.description})));}).catch(()=>{});return()=>{live=false;};},[isEnglish]);
-  const [pageLinks, setPageLinks] = useState<PageLink[]>([]);
+  const [pageLinks, setPageLinks] = useState<PageLink[]>(initialPages??[]);
   const [selectedSector, setSelectedSector] = useState<{ slug: string; name: string } | null>(null);
   const [sectorPricedAddons,setSectorPricedAddons]=useState<Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>>([]);
   const [sectorAddonCodes,setSectorAddonCodes]=useState<string[]>([]);

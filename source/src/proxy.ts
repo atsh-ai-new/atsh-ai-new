@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import {privatePath} from "./lib/seo";
 import {LOCALE_COOKIE,LOCALE_DEVICE_COOKIE,selectBrowserLocale} from "./lib/browser-locale";
 
 export function proxy(request: NextRequest) {
@@ -28,7 +29,9 @@ export function proxy(request: NextRequest) {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
   requestHeaders.set("x-atsh-locale", pathname === "/en" || pathname.startsWith("/en/") ? "en" : "ar");
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  const response=NextResponse.next({ request: { headers: requestHeaders } });
+  if(privatePath(pathname)) response.headers.set("X-Robots-Tag","noindex, follow");
+  return response;
 }
 
 export const config = { matcher: ["/((?!_next|api|favicon.ico|images).*)"] };
