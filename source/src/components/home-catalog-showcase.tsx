@@ -93,7 +93,7 @@ export default function HomeCatalogShowcase({selectedSlug,selectedAddons,onSelec
      <small style={{color:"#3d6897",fontWeight:700}}>{place.sector?.name} / {place.subcategory?.name||t("عام","General")}</small>
      <h4 style={{margin:0,color:"#203958",fontSize:20}}>{item.icon} {en?englishTemplateLabel(item.slug,item.name):item.name}</h4>
      <p style={{margin:0,color:"#66788b",lineHeight:1.7,flex:1}}>{en?englishTemplateLabel(item.slug,item.description,"description"):item.description}</p>
-     <p style={{margin:0,fontSize:13,color:"#66788b"}}>{(en?englishTemplateFeatures(item.slug,item.features||[]):item.features||[]).slice(0,3).join(" · ")}</p>
+     <p style={{margin:0,fontSize:14,fontWeight:600,color:"#66788b"}}>{(en?englishTemplateFeatures(item.slug,item.features||[]):item.features||[]).slice(0,3).join(" · ")}</p>
      <small style={{fontWeight:800,color:"#203958"}}>{price===null?t("التكلفة وفق عرض سعر مخصص","Custom quote required"):(en?`From ${amount(price)} before add-ons and tax`:`من ${amount(price)} قبل الإضافات والضرائب`)}{addons.length?` · ${addons.length} ${t("إضافات","add-ons")}`:""}</small>
      <div className="hc-actions"><Link href={`${base}/catalog/${encodeURIComponent(item.slug)}`}>{t("جرّب النموذج ↗","Try this demo ↗")}</Link><button type="button" onClick={()=>choose(item)}>{t("اختيار وإضافة تفاصيل ←","Choose & customize →")}</button></div>
     </article>;

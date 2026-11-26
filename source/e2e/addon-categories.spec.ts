@@ -60,6 +60,7 @@ test("central add-on categories reorder, move and appear in both pricing flows",
   await expect(group).toBeVisible();
   await expect(publicPage.locator("body")).toHaveCSS("font-weight","500");
   await expect(group.locator(".select-card-copy strong").first()).toHaveCSS("font-size","14px");
+  await expect(group.locator(".select-card-copy b").first()).toHaveCSS("font-size","14px");
 
   await expect(group.locator(".select-card").first()).toContainText("الدفع الإلكتروني");
   await expect(publicPage.locator('[data-addon-category="foundation"]')).toContainText("اللغة الإضافية");

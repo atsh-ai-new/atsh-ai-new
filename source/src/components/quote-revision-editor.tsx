@@ -15,7 +15,7 @@ export default function QuoteRevisionEditor({quote,onSave}:Props){
  return <div style={{marginTop:9}}>
   <button type="button" onClick={()=>setOpen(v=>!v)}>{open?"إغلاق تعديل العرض":"إصدار نسخة معدّلة من البنود"}</button>
   {open&&<div style={{border:"1px solid #d7e0eb",background:"#f5f8fc",padding:14,borderRadius:12,marginTop:10}}>
-   <p style={{fontSize:13}}>ينشئ التعديل عرضًا جديدًا ويُبطل العقد السابق غير الموقّع ورابط مراجعته. لا يمكن تعديل عقد موقّع.</p>
+   <p style={{fontSize:14,fontWeight:600}}>ينشئ التعديل عرضًا جديدًا ويُبطل العقد السابق غير الموقّع ورابط مراجعته. لا يمكن تعديل عقد موقّع.</p>
    <div style={{overflowX:"auto"}}><table style={{width:"100%"}}><thead><tr><th>البند</th><th>الكمية</th><th>سعر الوحدة بالجنيه</th><th>الإجراء</th></tr></thead><tbody>
     {rows.map((row,i)=><tr key={i}>
       <td><input aria-label={`وصف البند ${i+1}`} value={row.label} maxLength={250} onChange={e=>edit(i,"label",e.target.value)} style={{width:"100%",minWidth:110}}/></td>
