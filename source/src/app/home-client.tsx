@@ -17,7 +17,7 @@ import HomeCatalogShowcase, {type HomeCatalogItem} from "@/components/home-catal
 import { combinedQuoteSummary } from "@/lib/quote-breakdown";
 
 type Customer = { name: string; company: string; email: string; phone: string; details: string; compliance: string };
-type BackendPackage = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean };
+type BackendPackage = { list_price?:number|string;discount_percent?:number|string; id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean };
 type BackendOption = CategorizedAddon & {list_price?:number|string;discount_percent?:number|string; id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: string; unit_label: string; is_required: boolean; visibility?: "both" | "packages" | "systems" };
 type BackendCatalog = { packages: BackendPackage[]; options: BackendOption[] };
 type SiteConfig = { page?: { content?: Record<string, unknown> } | null; theme?: { navy: string; blue: string; gold: string; page: string; logoUrl?: string; heroImageUrl?: string; backgroundImageUrl?: string; fontFamily?: string; cardRadius?: number } | null; vatRate?: number };
@@ -111,7 +111,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
       const offerings=preview?.content?.previewOfferings as BackendCatalog|undefined;
       const visible=offerings&&Array.isArray(offerings.packages)&&Array.isArray(offerings.options)?offerings:catalog;
       setApiCatalog(visible);
-      setCatalogStatus(visible.packages.length ? "ready" : "unavailable");
+      setCatalogStatus("ready");
     }).catch(() => { if (active) setCatalogStatus("unavailable"); });
     if (isEnglish) fetch("/api/site-content/home?locale=ar&metadata=1", { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as SiteConfig : null).then((config)=>{if(active && config?.page?.content)setArabicReference(config.page.content);}).catch(()=>undefined);
     fetch(`/api/site-content/home?locale=${locale}&metadata=1`, { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as SiteConfig : null)
@@ -254,7 +254,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   const localPackageFor = (backendId: string) => packages.find((item) => backendPackageIds[item.id] === backendId);
   const apiOverrides = apiCatalog.packages.map((backend) => {
     const local = localPackageFor(backend.id);
-    return { id: local?.id ?? backend.id, name: localizePackage(local?.id ?? backend.id,backend.name,"name"), price: backend.is_custom_quote || local?.price === null ? null : Number(backend.price), description: localizePackage(local?.id ?? backend.id,backend.description,"description") };
+    return { id: local?.id ?? backend.id, name: localizePackage(local?.id ?? backend.id,backend.name,"name"), price: backend.is_custom_quote ? null : Number(backend.price), description: localizePackage(local?.id ?? backend.id,backend.description,"description") };
   });
   const visiblePackages = catalogStatus === "ready" ? apiCatalog.packages.map((backend) => {
     const local = localPackageFor(backend.id);
@@ -263,12 +263,13 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
       name: localizePackage(local?.id ?? backend.id,backend.name,"name"),
       short: localizePackage(local?.id ?? backend.id,backend.tagline || local?.short || "ATSH AI","short"),
       description: localizePackage(local?.id ?? backend.id,backend.description,"description"),
-      price: backend.is_custom_quote || local?.price === null ? null : Number(backend.price),
+      price: backend.is_custom_quote ? null : Number(backend.price),
+      list_price:backend.list_price,discount_percent:backend.discount_percent,
       includedPages: local?.includedPages ?? null,
       features: isEnglish ? (englishPackages[local?.id ?? backend.id]?.features ?? backend.features ?? local?.features ?? []) : (backend.features ?? local?.features ?? []),
       recommended: backend.is_featured || (local?.recommended ?? false)
     };
-  }) : (isEnglish ? packages.map(item=>({...item,...englishPackages[item.id],features:englishPackages[item.id]?.features || []})) : packages);
+  }) : [];
   const selectedBackendPackageId = packageId ? backendPackageIds[packageId] ?? packageId : undefined;
   const selectedServerPackage = selectedBackendPackageId ? apiCatalog.packages.find((item) => item.id === selectedBackendPackageId) : undefined;
   const serverOptions = apiCatalog.options.filter((option) => option.package_id === selectedServerPackage?.id && option.visibility !== "systems");
@@ -568,11 +569,11 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
       <section className="packages-section" id="packages">
         <div className="section-heading"><div><span className="section-kicker">{copy("packagesKicker")}</span><h2>{copy("packagesTitle")}</h2></div><p>{copy("packagesDescription")}</p></div>
         <div className="package-grid">
-          {visiblePackages.map((item) => <article key={item.id} className={item.recommended ? "package-card package-recommended" : "package-card"}>
+          {!visiblePackages.length&&<p>{catalogStatus==="ready"?t("لا توجد باقات متاحة حاليًا.","No packages are currently available."):catalogStatus==="loading"?copy("loadingCatalogMessage"):copy("unavailableCatalogMessage")}</p>}{visiblePackages.map((item) => <article key={item.id} className={item.recommended ? "package-card package-recommended" : "package-card"}>
             {item.recommended && <span className="popular-badge">{copy("featuredBadge")}</span>}
             <span className="package-kicker">{item.short}</span><h3>{item.name}</h3><p>{item.description}</p>
             <ul>{item.features.map((feature) => <li key={feature}><span>✓</span>{feature}</li>)}</ul>
-            <div className="package-price">{item.price === null ? <><strong>{copy("customQuoteLabel")}</strong><small>{copy("customQuoteDescription")}</small></> : <><strong>{copy("packagePricePrefix")} {money(item.price)}</strong><small>{copy("packagePriceFootnote")}</small></>}</div>
+            <div className="package-price">{item.price === null ? <><strong>{copy("customQuoteLabel")}</strong><small>{copy("customQuoteDescription")}</small></> : <><strong>{copy("packagePricePrefix")} <AddonPrice item={{price:item.price,list_price:item.list_price,discount_percent:item.discount_percent}} locale={locale}/></strong><small>{copy("packagePriceFootnote")}</small></>}</div>
             <a className={item.recommended ? "button package-cta" : "button button-outline package-cta"} href={`${isEnglish?"/en":""}/configure?package=${encodeURIComponent(item.id)}`} onClick={(event)=>{if(readPagePreview("home",locale)){event.preventDefault();setPackageId(item.id);setPages(item.includedPages??1);setShowConfigurator(true);setStep(1);window.location.hash="configurator";}}}>{t("تخصيص الباقة وحساب السعر","Customize package and calculate price")} ←</a>
           </article>)}
         </div>
@@ -595,13 +596,13 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
 
               {step === 0 && <div className="option-grid package-option-grid">
                 {visiblePackages.map((item) => <button type="button" key={item.id} className={packageId === item.id ? "select-card selected" : "select-card"} onClick={() => { setPackageId(item.id); setPages(item.includedPages ?? 5); setSelectedExtraOptionIds([]); }}>
-                  <span className="select-mark">{packageId === item.id ? "✓" : "+"}</span><span className="select-card-copy"><strong>{item.name}</strong><small>{item.description}</small><b>{item.price === null ? copy("packageReviewPrice") : `${copy("packageStartPrice")} ${money(item.price)}`}</b></span><span className="included-chip">{copy("packageIncludedBenefits")}</span>
+                  <span className="select-mark">{packageId === item.id ? "✓" : "+"}</span><span className="select-card-copy"><strong>{item.name}</strong><small>{item.description}</small>{item.price===null?<b>{copy("packageReviewPrice")}</b>:<span>{copy("packageStartPrice")} <AddonPrice item={{price:item.price,list_price:item.list_price,discount_percent:item.discount_percent}} locale={locale}/></span>}</span><span className="included-chip">{copy("packageIncludedBenefits")}</span>
                 </button>)}
               </div>}
 
               {groupedPricing&&step>0&&step<5&&<div className="form-stack">
                 <section className="addon-category-panel"><div className="addon-category-heading"><span className="addon-category-index">◎</span><div><h3>{t("البحث الحي عن الدومين","Live domain availability search")}</h3><p>{t("ابدأ باختيار عنوان مشروعك؛ السعر والحجز بعد التأكيد.","Choose your project address; price and reservation are confirmed separately.")}</p></div></div><DomainLookup locale={locale} onDomainChange={value=>{setRequestedDomainName(value);const suffix=value.trim().toLowerCase();setDomain(suffix.endsWith(".com")?"com":suffix.endsWith(".eg")?"eg":"none");}}/></section>
-                <AddonGroups locale={locale} addons={serverOptions.filter(o=>!obsoleteIdentityOptionCodes.has(o.code)&&!["domain","domain_com","domain_eg"].includes(o.code))} render={option=>{
+                <AddonGroups locale={locale} isSelected={o=>o.code==="extra_page"?pages>includedPages||o.is_required:o.is_required||customerSelectedOptionCodes.includes(o.code)||selectedExtraOptionIds.includes(o.id)} addons={serverOptions.filter(o=>!obsoleteIdentityOptionCodes.has(o.code)&&!["domain","domain_com","domain_eg"].includes(o.code))} render={option=>{
                   const code=option.code;
                   if(code==="extra_page")return <div key={option.id} className={pages>includedPages?"select-card selected":"select-card"} style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}><span className="select-card-copy"><strong>{localizeOption(code,option.name)}</strong><small>{t("حتى خمس صفحات فوق الباقة","Up to five pages beyond the package")}</small><AddonPrice item={option} locale={locale} prefix="+" suffix={t(" / صفحة"," / page")}/></span><span className="page-quantity" aria-label={t("عدد الصفحات الإضافية","Additional page count")}><button type="button" disabled={pages<=includedPages+(option.is_required?1:0)} onClick={()=>setPages(n=>Math.max(includedPages,n-1))} aria-label={t("تقليل الصفحات","Remove a page")}>−</button><output aria-live="polite">{Math.max(0,pages-includedPages)}</output><button type="button" disabled={pages-includedPages>=5} onClick={()=>setPages(n=>Math.max(includedPages,n)+1)} aria-label={t("زيادة الصفحات","Add a page")}>+</button></span></div>;
                   const selected=option.is_required||customerSelectedOptionCodes.includes(code)||selectedExtraOptionIds.includes(option.id);
