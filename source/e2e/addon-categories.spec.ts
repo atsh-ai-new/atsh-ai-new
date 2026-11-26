@@ -28,12 +28,15 @@ test("central add-on categories reorder, move and appear in both pricing flows",
  await nav.getByRole("button",{name:"المنتجات",exact:true}).click();
  await page.getByRole("tab",{name:"الإضافات",exact:true}).click();
  // Readable text throughout the administration shell and the add-on editor.
- await expect(nav.getByRole("button",{name:"المنتجات",exact:true})).toHaveCSS("font-size","14px");
+ await expect(nav.getByRole("button",{name:"المنتجات",exact:true})).toHaveCSS("font-size","15px");
+ await expect(nav.getByRole("button",{name:"المنتجات",exact:true})).toHaveCSS("font-weight","600");
  await expect(page.locator(".admin-content-title h2").first()).toHaveCSS("font-size",page.viewportSize()!.width<=767?"18px":"20px");
  const field=page.locator(".admin-option-create .admin-field").first();
- await expect(field).toHaveCSS("font-size","13px");
- await expect(page.locator(".admin-option-create input").first()).toHaveCSS("font-size",page.viewportSize()!.width<=767?"16px":"14px");
- await expect(page.locator(".admin-option-create .button").first()).toHaveCSS("font-size","14px");
+ await expect(field).toHaveCSS("font-size","14px");
+ await expect(field).toHaveCSS("font-weight","600");
+ await expect(page.locator(".admin-option-create input").first()).toHaveCSS("font-size",page.viewportSize()!.width<=767?"16px":"15px");
+ await expect(page.locator(".admin-option-create .button").first()).toHaveCSS("font-size","15px");
+ await expect(page.locator(".admin-option-create .button").first()).toHaveCSS("font-weight","600");
 
  await page.getByText("ترتيب عرض الأقسام",{exact:true}).click();
  await page.getByRole("button",{name:"تقديم البرمجة والأنظمة والتكاملات",exact:true}).click();
