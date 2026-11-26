@@ -34,3 +34,15 @@ test("shared required and per-page add-ons use authoritative quantities",()=>{
  assert.equal(result.subtotal,8600);assert.equal(result.yearly,600);
  assert.throws(()=>priceSectorSelection(items,"clinic",["extra_page"],{extra_page:6}),/quantity/);
 });
+
+test("45 sector add-ons are all priced; future selection bound and duplicate check remain enforced",()=>{
+ const extras=Array.from({length:100},(_,n)=>({code:"extra_"+n,name:"Extra "+n,price:10,pricingType:"fixed"}));
+ const items=[{...catalog[0],pricedAddons:extras}];
+ const selected=extras.slice(0,45).map(x=>x.code);
+ const price=priceSectorSelection(items,"clinic",selected);
+ assert.equal(price.items.length,46);
+ assert.equal(price.subtotal,5450);
+ assert.equal(priceSectorSelection(items,"clinic",extras.map(x=>x.code)).items.length,101);
+ assert.throws(()=>priceSectorSelection(items,"clinic",[...extras.map(x=>x.code),"extra_100"]),/Invalid sector extras/);
+ assert.throws(()=>priceSectorSelection(items,"clinic",[...selected,selected[0]]),/Invalid sector extras/);
+});

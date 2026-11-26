@@ -1,3 +1,4 @@
+import {MAX_ADDONS_PER_SELECTION,MAX_ADDON_INVOICE_LINES} from "./addon-limits.js";
 import { registerStudioAssetRoutes } from "./content-studio-assets.js";
 import { contentVideoTimeoutMinutes } from "./content-video-timeout.js";
 import {publishedThumbnail,startThumbnailWorker} from "./demo-thumbnail.js";
@@ -137,6 +138,12 @@ app.use("/api/internal/verified-payments",express.raw({type:"application/json",l
 app.use("/api/admin/pages/catalog",express.json({limit:"68mb"}));
 app.use(["/api/admin/pages/home","/api/admin/page-drafts/home","/api/admin/home-featured"],express.json({limit:"68mb"}));
 const validFeaturedHtml=content=>{const files=content?.featuredSystemHtml;if(files===undefined)return true;if(!files||typeof files!=="object"||Array.isArray(files)||Object.keys(files).length>4)return false;return Object.entries(files).every(([slug,entry])=>/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)&&entry&&((typeof entry.html==="string"&&Buffer.byteLength(entry.html,"utf8")<=10*1024*1024)||(typeof entry.assetId==="string"&&/^[a-f0-9]{64}$/.test(entry.assetId)))&&typeof entry.name==="string"&&entry.name.length<=255);};
+// Large add-on selections and their invoice snapshots need room without relaxing
+// the default limit on unrelated endpoints.
+app.use(["/api/orders","/api/customer/auth/workspace",/^\/api\/customer\/auth\/project-drafts(?:\/[0-9a-f-]{36})?\/?$/i,"/api/admin/packages","/api/admin/commercial/quotes",/^\/api\/admin\/commercial\/project-drafts\/[0-9a-f-]{36}\/quote\/?$/i], (req,res,next)=>{
+  if (["POST","PATCH"].includes(req.method)) return express.json({limit:"256kb"})(req,res,next);
+  next();
+});
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 const isolatedCiRate=process.env.ATSH_CI_TEST_RATE_LIMIT==="true"&&process.env.NODE_ENV!=="production";
@@ -396,8 +403,8 @@ app.patch("/api/admin/journey/projects/:id/tasks/:taskId",requireAdmin,requirePe
 // Stage 4: authoritative catalog guidance and audited, restricted lifecycle transitions.
 app.get("/api/admin/journey/catalog",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
  const [packages,options]=await Promise.all([
-  pool.query("SELECT id,name,description,price,currency,is_custom_quote FROM packages WHERE is_published=true ORDER BY sort_order LIMIT 100"),
-  pool.query("SELECT id,package_id,code,name,description,price,pricing_type,is_required FROM package_options WHERE is_active=true ORDER BY sort_order LIMIT 300")
+  pool.query("SELECT id,name,description,price,currency,is_custom_quote FROM packages WHERE is_published=true ORDER BY sort_order,id LIMIT 100"),
+  pool.query("SELECT id,package_id,code,name,description,price,pricing_type,is_required FROM package_options WHERE is_active=true AND package_id IN (SELECT id FROM packages WHERE is_published=true ORDER BY sort_order,id LIMIT 100) ORDER BY sort_order,id")
  ]);
  res.json({packages:packages.rows,options:options.rows,authoritative:true,note:"Final totals must be calculated by the existing order pricing endpoint."});
 }));
@@ -675,10 +682,10 @@ app.get("/api/sector-price",route(async(req,res)=>{
 
 const orderSchema = z.object({
   packageId:z.string().uuid(),
-  optionIds:z.array(z.string().uuid()).max(30).default([]),
+  optionIds:z.array(z.string().uuid()).max(MAX_ADDONS_PER_SELECTION).default([]),
   optionQuantities:z.record(z.string().uuid(),z.number().int().min(1).max(50)).default({}),
   sectorSlug:z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100).optional(),
-  sectorAddonCodes:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).max(30).default([]),
+  sectorAddonCodes:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).max(MAX_ADDONS_PER_SELECTION).default([]),
   sectorAddonQuantities:z.record(z.string().regex(/^[a-z0-9_-]{1,80}$/),z.number().int().min(1).max(50)).default({}),
   projectDraftId:z.string().uuid().optional(),
   customerName:z.string().trim().min(2).max(120),
@@ -990,7 +997,7 @@ const optionSchema=z.object({
   sortOrder:z.number().int().min(-100000).max(100000).default(0)
 });
 const packageCreateSchema=packageSchema.extend({
-  options:z.array(optionSchema.omit({packageId:true}).strict()).max(30).default([])
+  options:z.array(optionSchema.omit({packageId:true}).strict()).max(MAX_ADDONS_PER_SELECTION).default([])
 }).strict();
 const reservedAddonCodes=new Set(["domain_com","domain_eg","domain","logo_design","visual_identity"]);
 const addonLock=client=>client.query("SELECT pg_advisory_xact_lock(20261126,13)");
@@ -1616,7 +1623,7 @@ app.post("/api/admin/commercial/quotes/:id/issue",requireAdmin,requirePermission
 app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!validCommercialId(req.params.id))return res.status(400).json({error:"Invalid quote"});
  const {items,validUntil}=req.body||{};let total;try{total=quoteTotal(items)}catch(e){return res.status(400).json({error:e.message})}
- if(JSON.stringify(items).length>16000)return res.status(400).json({error:"Quote too large"});
+ if(items.length>MAX_ADDON_INVOICE_LINES||Buffer.byteLength(JSON.stringify(items),"utf8")>192*1024)return res.status(400).json({error:"Quote too large"});
  const client=await pool.connect();try{await client.query("BEGIN");const old=await client.query("SELECT * FROM commercial_quotes WHERE id=$1 FOR UPDATE",[req.params.id]);
  if(!old.rowCount||!["draft","issued"].includes(old.rows[0].status)){await client.query("ROLLBACK");return res.status(409).json({error:"Cannot revise quote"})}
  const x=old.rows[0];
@@ -1856,12 +1863,12 @@ app.get("/api/admin/commercial/project-drafts/eligible",requireAdmin,requirePerm
 const customQuoteInput=z.object({items:z.array(z.object({
  label:z.string().trim().min(3).max(250),quantity:z.number().int().min(1).max(100),
  unitPricePiasters:z.number().int().min(0).max(100000000000),period:z.enum(["fixed","monthly","yearly"]).optional()
-}).strict()).min(1).max(60),validUntil:z.string().datetime({offset:true}).optional()}).strict();
+}).strict()).min(1).max(MAX_ADDON_INVOICE_LINES),validUntil:z.string().datetime({offset:true}).optional()}).strict();
 app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid draft id"});
  const parsed=customQuoteInput.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid priced line items"});
- if(JSON.stringify(parsed.data.items).length>16000)return res.status(400).json({error:"Quote too large"});
+ if(Buffer.byteLength(JSON.stringify(parsed.data.items),"utf8")>192*1024)return res.status(400).json({error:"Quote too large"});
  let total;try{total=quoteTotal(parsed.data.items);}catch(e){return res.status(422).json({error:e.message});}
  if(total<1)return res.status(422).json({error:"Custom projects require a reviewed nonzero price"});
  if(parsed.data.validUntil&&new Date(parsed.data.validUntil).getTime()<=Date.now())return res.status(400).json({error:"Quote validity must be in the future"});
@@ -1951,7 +1958,7 @@ app.post("/api/admin/commercial/quotes",requireAdmin,requirePermission("customer
  const {customerEmail,items,validUntil}=req.body||{};
  if(typeof customerEmail!=="string"||!/^\S+@\S+\.\S+$/.test(customerEmail))return res.status(400).json({error:"Invalid customer email"});
  let total;try{total=quoteTotal(items)}catch(e){return res.status(400).json({error:e.message})}
- if(JSON.stringify(items).length>16000)return res.status(400).json({error:"Quote too large"});
+ if(items.length>MAX_ADDON_INVOICE_LINES||Buffer.byteLength(JSON.stringify(items),"utf8")>192*1024)return res.status(400).json({error:"Quote too large"});
  const q=await pool.query("INSERT INTO commercial_quotes(customer_email,items,total_piasters,valid_until) VALUES($1,$2::jsonb,$3,$4) RETURNING *",[customerEmail.trim().toLowerCase(),JSON.stringify(items),total,validUntil||null]);res.status(201).json({quote:q.rows[0]});
 }));
 app.get("/api/admin/commercial/quotes",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{

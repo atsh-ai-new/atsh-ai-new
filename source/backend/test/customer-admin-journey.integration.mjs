@@ -26,6 +26,16 @@ test("real customer login, concurrent submission and admin parity", {timeout:120
   const draft={sectorSlug:"websites",sectorName:"مواقع",packageId:"test-package",businessName:"Test Business",requirements:"A complete test website",pages:7,bilingual:true,identity:"custom",contentMode:"writing",hosting:true,domainChoice:"new",maintenance:true,startWindow:"next month",contactWindow:"evening",stylePreference:"minimal",inspirationLinks:["https://example.test/reference"],compliance:"test requirements",logoName:"brand.svg",customerName:"Journey Test",customerEmail:email,customerPhone:"01012345678",optionQuantities:{page:7}};
   const created=await api("/api/customer/auth/project-drafts","POST",{title:"Journey Test Project",draft},login.cookie);assert.equal(created.status,201,JSON.stringify(created.data));
   const draftId=created.data.projectDraft.id;
+  const options=Array.from({length:45},()=>randomUUID());
+  const sectorAddonCodes=Array.from({length:45},(_,i)=>"test_extra_"+i);
+  const invoiceItems=Array.from({length:91},(_,i)=>({name:"Line "+i,amount:10,period:"fixed"}));
+  const patch={options,sectorAddonCodes,draftInvoice:{title:"Large draft",items:invoiceItems,subtotal:910,vat:0,total:910,fixed:910,monthly:0,yearly:0,currency:"EGP",savedAt:new Date().toISOString()}};
+  const patched=await api("/api/customer/auth/project-drafts/"+draftId,"PATCH",{expectedRevision:Number(created.data.projectDraft.revision),patch},login.cookie);
+  assert.equal(patched.status,200,JSON.stringify(patched.data));
+  Object.assign(draft,patch);
+  const restored=await api("/api/customer/auth/project-drafts/"+draftId,"GET",undefined,login.cookie);
+  assert.equal(restored.status,200,JSON.stringify(restored.data));
+  assert.deepEqual(restored.data.projectDraft.draft,draft);
   const submissions=await Promise.all(Array.from({length:8},()=>api("/api/customer/auth/project-drafts/"+draftId+"/submit","POST",undefined,login.cookie)));
   assert.equal(submissions.filter(x=>x.status===201).length,1,JSON.stringify(submissions));
   assert.equal(submissions.filter(x=>x.status===200).length,7,JSON.stringify(submissions));

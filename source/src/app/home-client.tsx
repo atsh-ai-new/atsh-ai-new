@@ -135,6 +135,11 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
       }).catch(() => undefined);
   }, []);
 
+  const restoreAddonChoices=(options:unknown)=>{
+    if(!Array.isArray(options))return;
+    setAddons(addonOptions.filter(option=>options.includes(option.id)).map(option=>option.id));
+    setSelectedExtraOptionIds([...new Set(options.filter((option):option is string=>typeof option==="string"))]);
+  };
   useEffect(() => {
     let active=true;
     const guest=loadGuestWorkspace();
@@ -143,6 +148,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     const requestedPackage=new URLSearchParams(window.location.search).get("package");
     if(configuratorOnly&&requestedPackage){setPackageId(requestedPackage);setPages(packages.find(item=>item.id===requestedPackage)?.includedPages??1);}
     else if(guest.packageId)setPackageId(guest.packageId);
+    if(!requestedPackage||guest.packageId===requestedPackage)restoreAddonChoices(guest.options);
     if(Array.isArray(guest.sectorAddonCodes)&&(!slug||guest.sectorSlug===slug)){setSectorAddonCodes(guest.sectorAddonCodes);setSectorAddonQuantities(guest.sectorAddonQuantities??{});}
     // Account-owned draft is only read after authentication; never silently merge guest data into another account.
     if(!guest.sectorSlug&&!guest.packageId&&!slug){
@@ -150,6 +156,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         if(!active||!account)return;
         if(account.sectorSlug&&account.sectorName)setSelectedSector({slug:account.sectorSlug,name:account.sectorName});
         if(account.packageId)setPackageId(account.packageId);
+        restoreAddonChoices(account.options);
         if(Array.isArray(account.sectorAddonCodes)){setSectorAddonCodes(account.sectorAddonCodes);setSectorAddonQuantities(account.sectorAddonQuantities??{});}
       }).catch(()=>undefined);
     }
@@ -232,6 +239,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         setShowConfigurator(true);
         if(draft.sectorSlug&&draft.sectorName)setSelectedSector({slug:draft.sectorSlug,name:draft.sectorName});
         if(draft.packageId)setPackageId(draft.packageId);
+        restoreAddonChoices(draft.options??[]);
         setSectorAddonCodes(Array.isArray(draft.sectorAddonCodes)?draft.sectorAddonCodes:[]);
         setSectorAddonQuantities(draft.sectorAddonQuantities??{});
         if(draft.domainName)setRequestedDomainName(draft.domainName);
@@ -331,7 +339,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
        const chosenPackage=packageId||savedDraft.packageId;
        const customRequirements=(customer.details||savedDraft.requirements||"").trim();
        if(!chosenSector&&!chosenPackage&&!(savedDraft.projectMode==="custom"&&customRequirements))throw Error(t("لم يتم تحديد نوع المشروع في المسودة. ارجع لاختيار باقة أو مشروع من النظام المخصص، ثم أكمل الإضافات.","No project type is selected in this draft. Choose a package or catalog project, then continue with add-ons."));
-       const patch={draftInvoice:currentDraftInvoice(),...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes,sectorAddonQuantities,source:"catalog" as const}:{}),...(packageId?{packageId,source:"configurator" as const}:{}),options:[...enabledAddons,...selectedExtraOptions.map(option=>option.id)].slice(0,30),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||savedDraft.businessName||"",requirements:customRequirements,
+       const patch={draftInvoice:currentDraftInvoice(),...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes,sectorAddonQuantities,source:"catalog" as const}:{}),...(packageId?{packageId,source:"configurator" as const}:{}),options:[...new Set([...enabledAddons,...selectedExtraOptions.map(option=>option.id)])],...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||savedDraft.businessName||"",requirements:customRequirements,
         pages:enabledPages,bilingual:enabledBilingual,identity:enabledIdentity,contentMode:enabledContent==="writing"?"writing" as const:"provided" as const,
         hosting:enabledHosting,domainChoice:domain,maintenance:enabledMaintenance,startWindow:startWindowLabel,contactWindow:contactWindowLabel,
         stylePreference,inspirationLinks:inspirationLinks.filter(Boolean).slice(0,20),
@@ -492,7 +500,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     saveGuestWorkspace({
       packageId:packageId??undefined,domainName:requestedDomainName,
       sectorSlug:selectedSector?.slug,sectorName:selectedSector?.name,
-      sectorAddonCodes,sectorAddonQuantities,draftInvoice:currentDraftInvoice(),source:"configurator"
+      sectorAddonCodes,sectorAddonQuantities,options:[...new Set([...enabledAddons,...selectedExtraOptions.map(option=>option.id)])],draftInvoice:currentDraftInvoice(),source:"configurator"
     });
     window.location.assign(isEnglish
       ?(customerSignedIn?"/en/account/dashboard":"/en/account/register")

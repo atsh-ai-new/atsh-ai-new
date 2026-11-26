@@ -6,7 +6,7 @@ const server=readFileSync(new URL("../src/server.js",import.meta.url),"utf8");
 const schema=readFileSync(new URL("../db/schema.sql",import.meta.url),"utf8");
 test("permission guard is installed on sensitive team, catalog and customer endpoints",()=>{
  for(const [path,key] of [["/api/admin/team","team"],["/api/admin/orders","customers"],["/api/admin/packages","products"],["/api/admin/pages","content"],["/api/admin/settings","settings"],["/api/admin/audit","audit"]]){
-  const routes=server.split("\n").filter(line=>line.startsWith("app.")&&line.includes('"'+path+'"'));
+  const routes=server.split("\n").filter(line=>/^app\.(get|post|patch|put|delete)\(/.test(line)&&line.includes('"'+path+'"'));
   assert.ok(routes.length>0,path);
   assert.ok(routes.every(line=>line.includes('requirePermission("'+key+'")')),path);
  }

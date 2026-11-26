@@ -1,3 +1,4 @@
+import {MAX_ADDONS_PER_SELECTION,MAX_ADDON_INVOICE_LINES} from "./addon-limits.js";
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -123,7 +124,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  // A draft invoice is an indicative client-side estimate, not an authoritative quote.
  const draftInvoiceSchema=z.object({
   title:z.string().max(120),
-  items:z.array(z.object({name:z.string().max(200),amount:z.number().finite(),period:z.enum(['fixed','monthly','yearly'])}).strict()).max(100),
+  items:z.array(z.object({name:z.string().max(200),amount:z.number().finite(),period:z.enum(['fixed','monthly','yearly'])}).strict()).max(MAX_ADDON_INVOICE_LINES),
   subtotal:z.number().finite(),vat:z.number().finite(),total:z.number().finite(),
   fixed:z.number().finite(),monthly:z.number().finite(),yearly:z.number().finite(),
   currency:z.literal('EGP'),savedAt:z.string().max(64)
@@ -137,8 +138,8 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   businessDescription:z.string().max(500).optional(),
   domainName:z.string().trim().toLowerCase().max(253).optional(),
   brandColor:z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  options:z.array(z.string().max(100)).max(30).optional(),
-  sectorAddonCodes:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).max(30).optional(),
+  options:z.array(z.string().max(100)).max(MAX_ADDONS_PER_SELECTION).optional(),
+  sectorAddonCodes:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).max(MAX_ADDONS_PER_SELECTION).optional(),
   sectorAddonQuantities:z.record(z.string().regex(/^[a-z0-9_-]{1,80}$/),z.number().int().min(1).max(50)).optional(),
   projectMode:z.enum(['ready','custom']).optional(),
   solutionType:z.enum(['website','store','mobile','management','ai','other']).optional(),
