@@ -35,12 +35,12 @@ type OptionDraft = { packageId: string; code: string; name: string; description:
 const nav: Array<{ id: View; label: string; icon: string }> = [
   { id: "overview", label: "نظرة عامة", icon: "◫" }, { id: "integrations", label: "حالة الربط", icon: "🔌" }, { id:"assistant-knowledge",label:"تعريفات GPT والردود",icon:"✦" }, { id: "content", label: "تعديل المحتوى", icon: "▤" },
   { id: "pages", label: "صفحات المنصة", icon: "▧" }, { id: "works", label: "سجل الأعمال السابقة", icon: "▣" },
+  { id: "options", label: "المنتجات", icon: "▦" },
   { id: "content-studio", label: "منشئ المحتوى", icon: "✦" },
   { id: "videos", label: "إدارة الفيديوهات", icon: "▶" },
   { id: "messages", label: "مركز المراسلات", icon: "✉" },
   { id: "journey", label: "المشاريع", icon: "◎" },
   { id: "commercial", label: "العروض والعقود", icon: "▤" },
-  { id: "options", label: "المنتجات", icon: "▦" },
   { id: "theme", label: "تصميم المنصة", icon: "◉" }, { id: "inbox", label: "طلبات العملاء", icon: "✉" },
   { id: "team", label: "إدارة الفريق", icon: "♙" }, { id: "audit", label: "سجل التغييرات", icon: "≡" }
 ];
@@ -48,7 +48,7 @@ const adminGroups: Array<{label:string;views:View[];showChildren?:boolean}>= [
  {label:"نظرة عامة",views:["overview"]},
  {label:"المراسلات",views:["messages"]},
  {label:"العملاء",views:["inbox","journey"]},
- {label:"محتوى المنصة",views:["pages","content-studio","videos","options"],showChildren:true},
+ {label:"محتوى المنصة",views:["pages","options","content-studio","videos"],showChildren:true},
  {label:"الفريق",views:["team"]},
  {label:"المساعد الذكي",views:["assistant-knowledge"]}
 ];
