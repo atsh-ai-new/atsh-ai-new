@@ -1,4 +1,5 @@
 "use client";
+import AddonPrice from "@/components/addon-price";
 import NotificationInbox from "../../components/notification-inbox";
 
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
@@ -20,7 +21,7 @@ import CommercialManager from "./commercial-manager";
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
 type View = "videos" | "messages" | "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "theme" | "inbox" | "team" | "audit";
 type Package = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
-type Option = { category_code?:AddonCategoryCode;category_sort_order?:number; id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
+type Option = { list_price?:number|string;discount_percent?:number|string;initial_price?:number|string;initial_pricing_type?:Option["pricing_type"];initial_unit_label?:string;category_code?:AddonCategoryCode;category_sort_order?:number; id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
 type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; linked_project_id?: string | null; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
 type JourneyProject = { id:string; customer_name:string; customer_email:string|null; status:string; created_at:string };
 type Member = { id: string; email: string; display_name: string; role: Exclude<Role, "owner">; is_active: boolean; permission_overrides?: Record<string, boolean> | null; created_at: string };
@@ -92,6 +93,7 @@ export default function AdminPage() {
   const [busy, setBusy] = useState(false);
   const [packages, setPackages] = useState<Package[]>([]);
   const [options, setOptions] = useState<Option[]>([]);
+  const [bulkAddonDiscount,setBulkAddonDiscount]=useState("0");
   const [categoryOrder,setCategoryOrder]=useState<AddonCategoryOrder[]>(addonCategories.map((c,i)=>({code:c.code,sort_order:(i+1)*10})));
   const [addonTab,setAddonTab]=useState<AddonCategoryCode>("foundation");
   const [orders, setOrders] = useState<Order[]>([]);
@@ -264,14 +266,32 @@ export default function AdminPage() {
   };
 
   const changePackage = <K extends keyof Package,>(id: string, key: K, value: Package[K]) => setPackages((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
-  const changeOption = <K extends keyof Option,>(id: string, key: K, value: Option[K]) => setOptions((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
+  const changeOption = <K extends keyof Option,>(id: string, key: K, value: Option[K]) => setOptions(current=>current.map(item=>{
+    if(item.id!==id)return item;
+    const next={...item,[key]:value};
+    if(key==="list_price"||key==="discount_percent"){
+      next.list_price=next.list_price??item.price;
+      next.price=Math.round(Number(next.list_price)*(100-Number(next.discount_percent??0)))/100;
+    }
+    return next;
+  }));
   const savePackage = (item: Package) => save(() => api(`packages/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, tagline: item.tagline, description: item.description, price: item.is_custom_quote ? 0 : Number(item.price), currency: "EGP", features: item.features, isFeatured: item.is_featured, isCustomQuote: item.is_custom_quote, isPublished: item.is_published, sortOrder: item.sort_order }) }), "تم حفظ البطاقة وتحديثها للعملاء.");
   const removePackage = async (item: Package) => {
     if (!window.confirm(`حذف الباقة "${item.name}" من المنتجات والموقع؟ ستظل الطلبات السابقة محفوظة.`)) return;
     setBusy(true);setError("");setNotice("");
     try { await api(`packages/${item.id}`, {method:"DELETE"}); const verified=await api("packages"); if((verified.packages??[]).some((p:Package)=>p.id===item.id))throw new Error("لم تختف الباقة من قائمة المنتجات"); setPackages(verified.packages??[]);setOptions(verified.sharedOptions??[]);setPackageDraft(p=>p.copyFromPackageId===item.id?{...p,copyFromPackageId:""}:p);setNotice("تم حذف الباقة من المنتجات والموقع."); }catch(e){setError(e instanceof Error?e.message:"تعذر حذف الباقة");}finally{setBusy(false);}
   };
-  const saveOption = (item: Option) => save(() => api(`options/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, description: item.description, price: Number(item.price), pricingType: item.pricing_type, unitLabel: item.unit_label, isRequired: item.is_required, isActive: item.is_active, sortOrder: item.sort_order, categoryCode:categoryFor(item), visibility: item.visibility ?? "both" }) }), "تم تحديث الإضافة في جميع الباقات والأنظمة المخصصة.");
+  const saveOption = (item: Option) => save(() => api(`options/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, description: item.description, price: Number(item.list_price??item.price), discountPercent:Number(item.discount_percent??0), pricingType: item.pricing_type, unitLabel: item.unit_label, isRequired: item.is_required, isActive: item.is_active, sortOrder: item.sort_order, categoryCode:categoryFor(item), visibility: item.visibility ?? "both" }) }), "تم تحديث الإضافة في جميع الباقات والأنظمة المخصصة.");
+  const applyBulkAddonDiscount=()=>{
+    const value=Number(bulkAddonDiscount);
+    if(!bulkAddonDiscount.trim()||!Number.isFinite(value)||value<0||value>100){setError("أدخل نسبة خصم من 0 إلى 100.");return;}
+    if(!window.confirm(`تطبيق خصم ${value}% على كل الإضافات دون تغيير حالة التفعيل؟`))return;
+    void save(()=>api("options/discount",{method:"POST",body:JSON.stringify({discountPercent:value})}),"تم تطبيق الخصم على جميع الإضافات.");
+  };
+  const resetAddonPrices=(item?:Option)=>{
+    if(!window.confirm(item?`إعادة ضبط سعر "${item.name}" ووحدة حسابه للسعر الأساسي المعتمد؟`:"إعادة ضبط جميع أسعار الإضافات ووحدات الحساب للأسعار الأساسية المعتمدة؟ لن تتغير حالات التفعيل أو الطلبات السابقة."))return;
+    void save(()=>api("options/reset-prices",{method:"POST",body:JSON.stringify(item?{id:item.id}:{})}),item?"تمت إعادة ضبط سعر الإضافة.":"تمت إعادة ضبط جميع أسعار الإضافات.");
+  };
   const orderedAddonGroups=groupAddons(options,categoryOrder);
   const moveCategory=(code:AddonCategoryCode,direction:number)=>setCategoryOrder(old=>{const list=[...old].sort((a,b)=>a.sort_order-b.sort_order);const i=list.findIndex(c=>c.code===code),j=i+direction;if(i<0||j<0||j>=list.length)return old;[list[i],list[j]]=[list[j],list[i]];return list.map((c,k)=>({...c,sort_order:(k+1)*10}));});
   const saveCategoryOrder=()=>save(()=>api("addon-categories",{method:"PATCH",body:JSON.stringify({codes:[...categoryOrder].sort((a,b)=>a.sort_order-b.sort_order).map(c=>c.code)})}),"تم حفظ ترتيب الأقسام في جميع واجهات التسعير.");
@@ -447,6 +467,8 @@ export default function AdminPage() {
 
         {view === "options" && offeringTab === "addons" && <><section id="unified-package-options" className="admin-content-card">
           <div className="admin-content-title"><div><h2>إدارة الإضافات للباقات والأنظمة المخصصة</h2><p>كل إضافة تُدار مرة واحدة وتظهر تلقائيًا في جميع الباقات والأنظمة الحالية والمستقبلية. تعديل السعر أو الإيقاف يسري على الجميع دون تغيير الطلبات السابقة.</p></div></div>
+          <div className="admin-actions"><button type="button" className="button button-outline button-small" disabled={busy||!options.length} onClick={()=>resetAddonPrices()}>إعادة ضبط جميع أسعار الإضافات</button><p className="field-hint">تعود الأسعار ووحدات الحساب للقيم الأساسية المعتمدة وتُلغى الخصومات، دون تغيير التفعيل أو الترتيب.</p></div>
+          <div className="admin-actions"><label className="admin-field">خصم جميع الإضافات (%)<input type="number" min={0} max={100} step="0.01" value={bulkAddonDiscount} onChange={e=>setBulkAddonDiscount(e.target.value)}/></label><button type="button" className="button button-small" disabled={busy} onClick={applyBulkAddonDiscount}>تطبيق الخصم على الكل</button><button type="button" className="button button-outline button-small" disabled={busy} onClick={()=>{if(window.confirm("إلغاء الخصومات من كل الإضافات؟"))void save(()=>api("options/discount",{method:"POST",body:JSON.stringify({discountPercent:0})}),"تم إلغاء الخصومات.");}}>إلغاء الخصومات</button></div>
           <details><summary>ترتيب عرض الأقسام</summary><p className="field-hint">الدومين يظل أول خطوة مستقلة. غيّر ترتيب الأقسام ثم احفظ.</p><div className="admin-addon-order">{orderedAddonGroups.map((g,i)=><div className="admin-addon-order-row" key={g.code}><span>{i+1}</span><strong>{g.name}</strong><button type="button" className="button button-outline button-small" disabled={busy||i===0} aria-label={`تقديم ${g.name}`} onClick={()=>moveCategory(g.code,-1)}>↑</button><button type="button" className="button button-outline button-small" disabled={busy||i===orderedAddonGroups.length-1} aria-label={`تأخير ${g.name}`} onClick={()=>moveCategory(g.code,1)}>↓</button></div>)}<button type="button" className="button button-small" disabled={busy} onClick={saveCategoryOrder}>حفظ ترتيب الأقسام</button></div></details>
           <div className="admin-addon-tabs" role="group" aria-label="أقسام الإضافات">{orderedAddonGroups.map(g=><button type="button" key={g.code} aria-pressed={addonTab===g.code} className={addonTab===g.code?"button button-small":"button button-outline button-small"} onClick={()=>selectAddonTab(g.code)}>{g.name} ({g.items.length})</button>)}</div>
           <h3>{addonCategories.find(c=>c.code===addonTab)?.name}</h3>
@@ -462,15 +484,17 @@ export default function AdminPage() {
             <button className="button" disabled={busy}>إضافة للجميع</button>
           </form>
           {(orderedAddonGroups.find(g=>g.code===addonTab)?.items??[]).map((item) => <article className="admin-package-editor" key={item.id}>
-            <div className="option-admin-heading"><strong>{item.name}</strong><small>{item.is_active?"متاحة للجميع":"متوقفة"}</small><code>{item.code}</code></div>
+            <div className="option-admin-heading"><strong>{item.name}</strong><small>{item.is_active?"متاحة للجميع":"متوقفة"}</small><code>{item.code}</code>{item.initial_price!=null&&<small>السعر الأساسي: {formatEgp(Number(item.initial_price))}</small>}</div>
             <div className="admin-form-grid">
               <label className="admin-field">القسم<select aria-label="القسم" value={categoryFor(item)} onChange={e=>{const code=e.target.value as AddonCategoryCode;changeOption(item.id,"category_code",code);selectAddonTab(code);}}>{orderedAddonGroups.map(g=><option key={g.code} value={g.code}>{g.name}</option>)}</select></label><label className="admin-field">ترتيب العرض داخل القسم<input type="number" min={-100000} max={100000} step={1} value={item.sort_order} onChange={e=>changeOption(item.id,"sort_order",Number(e.target.value))}/></label><label className="admin-field">اسم الإضافة<input value={item.name} onChange={(event) => changeOption(item.id, "name", event.target.value)} /></label>
-              <label className="admin-field">السعر<input type="number" min="0" step="0.01" value={item.price} onChange={(event) => changeOption(item.id, "price", Number(event.target.value))} /></label>
+              <label className="admin-field">السعر قبل الخصم<input aria-label="السعر" type="number" min="0" step="0.01" value={item.list_price??item.price} onChange={event=>changeOption(item.id,"list_price",Number(event.target.value))}/></label>
+              <label className="admin-field">نسبة الخصم (%)<input type="number" min={0} max={100} step="0.01" value={item.discount_percent??0} onChange={event=>changeOption(item.id,"discount_percent",Math.min(100,Math.max(0,Number(event.target.value))))}/></label>
+              <div className="admin-field">السعر بعد الخصم<AddonPrice item={{price:Math.round(Number(item.list_price??item.price)*(100-Number(item.discount_percent??0)))/100,list_price:item.list_price??item.price,discount_percent:item.discount_percent}}/></div>
               <label className="admin-field">طريقة الحساب<select value={item.pricing_type} onChange={(event) => changeOption(item.id, "pricing_type", event.target.value as Option["pricing_type"])}><option value="fixed">مرة واحدة</option><option value="per_page">لكل صفحة</option><option value="yearly">سنوي</option><option value="monthly">شهري</option></select></label>
               <label className="admin-field">وحدة السعر<input value={item.unit_label} onChange={(event) => changeOption(item.id, "unit_label", event.target.value)} /></label>
               <label className="admin-field" style={{ gridColumn: "1 / -1" }}>الوصف<input value={item.description} onChange={(event) => changeOption(item.id, "description", event.target.value)} /></label>
             </div>
-            <div className="admin-package-controls"><label className="check-row"><input type="checkbox" checked={item.is_required} onChange={(event) => changeOption(item.id, "is_required", event.target.checked)} /> إلزامية</label><label className="check-row"><input type="checkbox" checked={item.is_active} onChange={(event) => changeOption(item.id, "is_active", event.target.checked)} /> متاحة للعملاء</label><button className="button button-small" disabled={busy} onClick={() => saveOption(item)}>حفظ التعديلات</button><button type="button" className="button button-outline button-small" disabled={busy || !item.is_active} onClick={() => void removeOption(item)}>حذف من العرض</button></div>
+            <div className="admin-package-controls"><label className="check-row"><input type="checkbox" checked={item.is_required} onChange={(event) => changeOption(item.id, "is_required", event.target.checked)} /> إلزامية</label><label className="check-row"><input type="checkbox" checked={item.is_active} onChange={(event) => changeOption(item.id, "is_active", event.target.checked)} /> متاحة للعملاء</label><button className="button button-small" disabled={busy} onClick={() => saveOption(item)}>حفظ التعديلات</button><button type="button" className="button button-outline button-small" disabled={busy||item.initial_price==null} onClick={()=>resetAddonPrices(item)}>إعادة ضبط السعر</button><button type="button" className="button button-outline button-small" disabled={busy || !item.is_active} onClick={() => void removeOption(item)}>حذف من العرض</button></div>
           </article>)}
         </section><section id="unified-vat" className="admin-content-card"><h2>ضريبة القيمة المضافة</h2><p>نسبة الضريبة المستخدمة في ملخص التسعير.</p><label className="admin-field">الضريبة %<input type="number" min="0" max="100" step="0.01" value={vatRate} onChange={(event)=>setVatRate(Number(event.target.value))}/></label><div className="admin-actions"><button type="button" className="button" disabled={busy} onClick={saveTheme}>حفظ نسبة الضريبة</button></div></section></>}
         {view === "options" && offeringTab === "systems" && <div id="unified-catalog-pricing">{canEditCatalog && <CatalogManager />}</div>}

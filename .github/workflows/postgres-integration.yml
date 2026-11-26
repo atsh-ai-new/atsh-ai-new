@@ -102,6 +102,7 @@ jobs:
           } finally { await db.end(); }
           NODE
 
+          node test/approved-addon-prices.integration.mjs
           node test/integration-smoke.mjs
           node test/persistence-restart.mjs
           node test/shared-addons.integration.mjs

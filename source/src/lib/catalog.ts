@@ -100,13 +100,13 @@ export function calculateQuote(input: {
     if (option) items.push({ id, label: optionLabel(id, option.name), amount: optionPrice(id, option.price) });
   }
 
-  if (input.hosting) items.push({ id: "hosting", label: optionLabel("hosting", "استضافة مُدارة وحماية"), amount: optionPrice("hosting", hostingPrice), period: "سنوي" });
+  if (input.hosting) items.push({ id: "hosting", label: optionLabel("hosting", "استضافة مُدارة وحماية"), amount: optionPrice("hosting", hostingPrice), period: optionType("hosting")==="monthly"?"شهري":optionType("hosting")==="fixed"?undefined:"سنوي" });
   if (input.domain !== "none" && !input.hosting) needsCustomQuote = true;
   if (input.domain !== "none" && input.hosting) {
     const code = `domain_${input.domain}`;
     items.push({ id: "domain", label: optionLabel(code, `نطاق .${input.domain} (السنة الأولى)`), amount: optionPrice(code, 0), period: "سنوي" });
   }
-  if (input.maintenance) items.push({ id: "maintenance", label: optionLabel("maintenance", "صيانة ودعم"), amount: optionPrice("maintenance", maintenancePrice), period: "سنوي" });
+  if (input.maintenance) items.push({ id: "maintenance", label: optionLabel("maintenance", "صيانة ودعم"), amount: optionPrice("maintenance", maintenancePrice), period: optionType("maintenance")==="monthly"?"شهري":optionType("maintenance")==="fixed"?undefined:"سنوي" });
 
   for (const option of extraOptions) {
     const amount = option.pricingType === "per_page" ? option.price * input.pages : option.price;

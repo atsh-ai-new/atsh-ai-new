@@ -2,13 +2,14 @@
 import {useEffect,useMemo,useState} from "react";
 import {useParams} from "next/navigation";
 import Link from "next/link";
+import AddonPrice from "@/components/addon-price";
 import AddonGroups from "@/components/addon-groups";
 import type {CategorizedAddon} from "@/lib/addon-categories";
 import DomainLookup from "@/components/domain-lookup";
 import {saveGuestWorkspace} from "@/lib/customer-workspace";
 
 type Package={id:string;name:string;description:string;price:number|string;is_custom_quote:boolean;features?:string[]};
-type Option=CategorizedAddon & {id:string;package_id:string;code:string;name:string;description:string;price:number|string;pricing_type:string;unit_label?:string;is_required:boolean};
+type Option=CategorizedAddon & {list_price?:number|string;discount_percent?:number|string;id:string;package_id:string;code:string;name:string;description:string;price:number|string;pricing_type:string;unit_label?:string;is_required:boolean};
 const aliases:Record<string,string>={landing:"11111111-1111-4111-8111-111111111111",multi:"22222222-2222-4222-8222-222222222222",dynamic:"33333333-3333-4333-8333-333333333333",enterprise:"44444444-4444-4444-8444-444444444444"};
 const round=(n:number)=>Math.round(n*100)/100;
 export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
@@ -59,7 +60,7 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
      <AddonGroups addons={options} locale={locale} grid={false} render={o=>{const checked=o.is_required||selected.includes(o.id);const perPage=o.pricing_type==="per_page";return <div key={o.id} style={{padding:"15px 0",borderBottom:"1px solid #e4e9ef"}}>
       <label style={{display:"flex",gap:12,alignItems:"flex-start",cursor:o.is_required?"default":"pointer"}}>
        <input type="checkbox" checked={checked} disabled={o.is_required} onChange={()=>toggle(o.id)} style={{width:20,height:20,marginTop:3}}/>
-       <span style={{flex:1}}><strong>{o.name}</strong>{o.is_required&&<small> ({t("إلزامية","required")})</small>}<small style={{display:"block",marginTop:4,color:"#64748b"}}>{o.description}</small><b style={{display:"block",marginTop:5}}>{money(Number(o.price))} {o.pricing_type==="monthly"?t("/ شهر","/ month"):o.pricing_type==="yearly"?t("/ سنة","/ year"):perPage?t("/ وحدة","/ unit"):""}</b></span>
+       <span style={{flex:1}}><strong>{o.name}</strong>{o.is_required&&<small> ({t("إلزامية","required")})</small>}<small style={{display:"block",marginTop:4,color:"#64748b"}}>{o.description}</small><AddonPrice item={o} locale={locale} suffix={o.pricing_type==="monthly"?t(" / شهر"," / month"):o.pricing_type==="yearly"?t(" / سنة"," / year"):perPage?t(" / وحدة"," / unit"):""}/></span>
       </label>
       {checked&&perPage&&<label style={{display:"flex",gap:10,alignItems:"center",marginTop:10}}>{t("الكمية","Quantity")}<input type="number" min={1} max={50} value={quantities[o.id]??1} onChange={e=>setQuantities(q=>({...q,[o.id]:Math.max(1,Math.min(50,Number(e.target.value)||1))}))} style={{width:80,padding:7,border:"1px solid #ccd5e1",borderRadius:8}}/></label>}
      </div>}}/>
