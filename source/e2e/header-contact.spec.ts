@@ -9,7 +9,9 @@ for (const locale of ["ar","en"]) {
   await expect(contact).toHaveAttribute("href","tel:+201007735321");
   await expect(contact).toBeVisible();
   await expect(page.locator("body")).toHaveCSS("font-weight","500");
-  await expect(header.locator(".platform-brand small")).toHaveCSS("font-size","12px");
+  await expect(header.locator(".platform-brand small")).toHaveCSS("font-size",page.viewportSize()!.width<=767?"13px":"14px");
+  await expect(header.locator(".platform-brand small")).toHaveCSS("font-weight","600");
+  await expect(contact).toHaveCSS("font-weight","600");
 
   const geometry=await contact.evaluate(el=>{
    const link=el.getBoundingClientRect();
@@ -27,6 +29,8 @@ test("news ticker stays immediately below the homepage header rather than coveri
  const header=page.locator(".platform-header");
  const ticker=page.locator(".platform-header + .atsh-news-slot .atsh-news-ticker");
  await expect(ticker).toBeVisible();
+ await expect(ticker).toHaveCSS("font-size","14px");
+ await expect(ticker).toHaveCSS("font-weight","600");
  const initial=await ticker.boundingBox(),headerBounds=await header.boundingBox();
  expect(Math.abs(initial!.y-(headerBounds!.y+headerBounds!.height))).toBeLessThan(2);
  await page.evaluate(()=>window.scrollBy(0,500));

@@ -52,9 +52,9 @@ export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){cons
   </header>
   <section style={{borderRadius:17,background:"linear-gradient(115deg,#203958,#315c88)",padding:"23px 20px",color:"white"}}>
    <small>{t("رحلة العميل · مراجعة المستندات المالية","Customer journey · Financial document review")}</small><h1 style={{margin:"7px 0"}}>عرض السعر رقم #{quote.id}</h1><p style={{margin:"5px 0"}}>الإصدار {quote.revision} · الحالة: {status(quote.status)}</p>
-   <p style={{fontSize:13,opacity:.9}}>الصلاحية: {quote.valid_until?new Date(quote.valid_until).toLocaleDateString(en?"en-EG":"ar-EG"):"وفق شروط العرض"}</p>
+   <p style={{fontSize:14,fontWeight:600,opacity:.9}}>الصلاحية: {quote.valid_until?new Date(quote.valid_until).toLocaleDateString(en?"en-EG":"ar-EG"):"وفق شروط العرض"}</p>
   </section>
-  <div style={{display:"flex",flexWrap:"wrap",gap:8,margin:"14px 0",fontSize:12}}>
+  <div style={{display:"flex",flexWrap:"wrap",gap:8,margin:"14px 0",fontSize:14,fontWeight:600}}>
    {["مراجعة نطاق العمل","اعتماد العرض والعقد","الفاتورة والدفع","التنفيذ والتسليم"].map((x,i)=><span key={x} style={{padding:"10px 12px",border:"1px solid #d6e1ed",borderRadius:12,background:i===0?"#e2f0e9":"white"}}>{i+1}. {x}</span>)}
   </div>
   <section style={{background:"white",padding:"clamp(14px,3vw,23px)",border:"1px solid #dce5ed",borderRadius:16,marginBottom:14}}>
@@ -70,7 +70,7 @@ export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){cons
    <h2 style={{marginTop:0,fontSize:22}}>{t("العقد وشروط الخدمة والتسليم","Contract, service and delivery terms")}</h2>
    {contract?<><p>رقم العقد: #{contract.id} — {status(contract.status)} — إصدار القالب {contract.template_revision||"—"}</p>
     <details open={quote.status==="issued"||undefined} style={{border:"1px solid #dbe4ee",borderRadius:12,padding:13,background:"#fbfcfe"}}><summary style={{cursor:"pointer",fontWeight:700}}>{t("اقرأ النص الكامل للعقد","Read the full contract")}</summary><div style={{whiteSpace:"pre-wrap",lineHeight:2,marginTop:14,overflowWrap:"anywhere"}}>{contract.body_snapshot}</div></details>
-    <p style={{fontSize:12,color:"#6b768a",lineHeight:1.7}}>{t("سيُسجل إقرارك إلكترونيًا مع نسخة المستند وبصمتها ووقت الموافقة. هذا لا يُعد توقيعًا إلكترونيًا مؤهلًا من مزود معتمد؛ يلزم تقييم المتطلبات القانونية قبل الاعتماد النهائي.","Your acceptance will be recorded with a copy and timestamp. This is not a qualified electronic signature; relevant legal requirements must be evaluated before final approval.")}</p>
+    <p style={{fontSize:14,fontWeight:600,color:"#6b768a",lineHeight:1.7}}>{t("سيُسجل إقرارك إلكترونيًا مع نسخة المستند وبصمتها ووقت الموافقة. هذا لا يُعد توقيعًا إلكترونيًا مؤهلًا من مزود معتمد؛ يلزم تقييم المتطلبات القانونية قبل الاعتماد النهائي.","Your acceptance will be recorded with a copy and timestamp. This is not a qualified electronic signature; relevant legal requirements must be evaluated before final approval.")}</p>
    </>:<p>{t("لم تصدر الإدارة عقدًا صالحًا لهذا العرض بعد. لا يمكن تسجيل الموافقة قبل إصداره.","A valid contract has not yet been issued for this quote. Approval is unavailable until one is issued.")}</p>}
    {quote.status==="issued"&&<div style={{background:"#f5f8fc",borderRadius:12,padding:14,marginTop:14}}>
     {pending?<p role="status">{t("لديك طلب تعديل مفتوح؛ يجب مراجعته من الإدارة قبل قبول العرض.","You have an open revision request that must be reviewed before approval.")}</p>:<p>{t("إذا كانت المواصفات والرسوم وشروط الملكية مناسبة، يمكنك تسجيل موافقتك على إصدار العرض والعقد الحاليين.","If the scope, fees and ownership terms meet your expectations, you can approve the current quote and contract versions.")}</p>}

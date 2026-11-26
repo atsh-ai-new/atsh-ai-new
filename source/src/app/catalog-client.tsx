@@ -58,7 +58,7 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
   <section style={{padding:"12px 0 8px"}}>
    {marketingCopy("galleryHeading").trim()&&<h1 style={{color:"#4c78ae",fontWeight:700,fontSize:20,margin:0}}>{marketingCopy("galleryHeading")}</h1>}
    {marketingCopy("galleryDescription").trim()&&<p style={{lineHeight:1.9,maxWidth:730,color:"#64748b"}}>{marketingCopy("galleryDescription")}</p>}
-   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,145px),1fr))",gap:8,margin:"14px 0"}}>{Array.from({length:6},(_,i)=>marketingCopy("marketingCatalogBenefit"+(i+1))).filter(Boolean).map(label=><span key={label} style={{fontSize:13,fontWeight:600,color:"#203958"}}>✓ {label}</span>)}</div>
+   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,145px),1fr))",gap:8,margin:"14px 0"}}>{Array.from({length:6},(_,i)=>marketingCopy("marketingCatalogBenefit"+(i+1))).filter(Boolean).map(label=><span key={label} style={{fontSize:14,fontWeight:600,color:"#203958"}}>✓ {label}</span>)}</div>
    {notice&&<small role="status" style={{color:"#99660b"}}>{notice}</small>}
   </section>
   <nav aria-label={t("القطاعات الرئيسية","Industry sectors")} style={{display:"flex",gap:9,overflowX:"auto",padding:"0 0 14px",marginBottom:14}}>
@@ -78,7 +78,7 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
    <h2 id={`sector-${sector.id}`} style={{fontSize:"clamp(22px,3vw,30px)",color:"#203958",margin:"0 0 7px"}}>{sector.icon} {sector.name}</h2>
    <p style={{color:"#64748b",lineHeight:1.7}}>{sector.description}</p>
    <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"0 0 15px"}}>
-    {sector.subcategories.filter(c=>c.isPublished&&records.some(i=>resolvePlacement(i,sectors).subcategory?.id===c.id)).sort((a,b)=>a.sortOrder-b.sortOrder).map(c=><span key={c.id} style={{padding:"6px 11px",borderRadius:99,background:"#e9f0f8",color:"#203958",fontSize:12}}>{c.name}</span>)}
+    {sector.subcategories.filter(c=>c.isPublished&&records.some(i=>resolvePlacement(i,sectors).subcategory?.id===c.id)).sort((a,b)=>a.sortOrder-b.sortOrder).map(c=><span key={c.id} style={{padding:"6px 11px",borderRadius:99,background:"#e9f0f8",color:"#203958",fontSize:14,fontWeight:600}}>{c.name}</span>)}
    </div>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,245px),1fr))",gap:15}}>
     {records.map(item=>{const place=resolvePlacement(item,sectors);return <article key={item.slug} style={{background:"white",padding:12,borderRadius:16,border:"1px solid #e2e8f0",display:"flex",flexDirection:"column",gap:10,minWidth:0}}>
@@ -87,9 +87,9 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
      <Link prefetch={false} onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("جرّب النظام بملء الشاشة ←","Try full-screen demo →")}</Link>
      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",borderTop:"1px solid #e2e8f0",paddingTop:12}}>
       <span style={{fontWeight:800,color:"#203958"}}>{typeof item.basePrice==="number"&&Number.isFinite(item.basePrice)&&item.basePrice>=0? t("السعر الأساسي: ","Base price: ")+item.basePrice.toLocaleString(en?"en-EG":"ar-EG")+t(" ج.م"," EGP"):t("السعر يُحدد من لوحة الإدارة","Price pending admin setup")}</span>
-      <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}/pricing`} style={{fontSize:13,color:"#203958",textDecoration:"underline",fontWeight:700}}>{t("أضف المواصفات واحسب الإجمالي ←","Add options & calculate total →")}</Link>
+      <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}/pricing`} style={{fontSize:14,color:"#203958",textDecoration:"underline",fontWeight:700}}>{t("أضف المواصفات واحسب الإجمالي ←","Add options & calculate total →")}</Link>
      </div>
-     {item.previewUrl?.startsWith("https://")&&<a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{textAlign:"center",fontSize:13,color:"#1e749b"}}>{t("افتح نسخة تجريبية منشورة خارجيًا ↗","Open external demo ↗")}</a>}
+     {item.previewUrl?.startsWith("https://")&&<a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{textAlign:"center",fontSize:14,fontWeight:600,color:"#1e749b"}}>{t("افتح نسخة تجريبية منشورة خارجيًا ↗","Open external demo ↗")}</a>}
     </article>})}
    </div>
   </section>)}

@@ -98,6 +98,6 @@ export default function NotificationInbox({customer=false}:{customer?:boolean}){
     </article>)}
    </section>
   </details>
-  <button type="button" onClick={toggleSound} aria-pressed={soundOn} title={soundOn?"كتم صوت الإشعارات":"تشغيل صوت الإشعارات"} style={{cursor:"pointer",border:"1px solid #d8dde5",borderRadius:8,padding:"6px 8px",background:"transparent",whiteSpace:"nowrap"}}>{soundOn?"🔊":"🔇"}<span style={{fontSize:12,marginInlineStart:4}}>{soundOn?"كتم":"صوت"}</span></button>
+  <button type="button" onClick={toggleSound} aria-pressed={soundOn} title={soundOn?"كتم صوت الإشعارات":"تشغيل صوت الإشعارات"} style={{cursor:"pointer",border:"1px solid #d8dde5",borderRadius:8,padding:"6px 8px",background:"transparent",whiteSpace:"nowrap"}}>{soundOn?"🔊":"🔇"}<span style={{fontSize:14,fontWeight:600,marginInlineStart:4}}>{soundOn?"كتم":"صوت"}</span></button>
  </div>;
 }

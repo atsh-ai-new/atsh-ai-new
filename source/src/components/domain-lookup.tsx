@@ -100,7 +100,7 @@ export default function DomainLookup({onDomainChange,locale="ar",source="configu
  return <section dir={en?"ltr":"rtl"} aria-label={t("بحث حقيقي عن الدومين","Live domain search")}
   style={{padding:"clamp(12px,3vw,16px)",margin:"12px 0",border:"1px solid #d9e2ed",borderRadius:14,background:"white"}}>
   <h3 style={{margin:"0 0 7px",color:"#203958",fontSize:18}}>{t("ابحث عن الدومين الذي تريده","Find your domain")}</h3>
-  <p style={{fontSize:13,color:"#64748b",lineHeight:1.7,margin:"0 0 12px"}}>
+  <p style={{fontSize:14,fontWeight:600,color:"#64748b",lineHeight:1.7,margin:"0 0 12px"}}>
    {t("اكتب الاسم فقط مثل atsh للبحث في عدة امتدادات، أو اكتب الدومين كاملًا مثل atsh.com.",
     "Enter a name like atsh to check several extensions, or a complete domain like atsh.com.")}
   </p>
@@ -113,24 +113,24 @@ export default function DomainLookup({onDomainChange,locale="ar",source="configu
     {checking?t("جارٍ البحث…","Searching…"):t("ابحث","Search")}
    </button>
   </div>
-  {checking&&<p role="status" style={{fontSize:12,color:"#64748b"}}>{t("جارٍ فحص الامتدادات المتاحة تباعًا…","Checking available extensions progressively…")}</p>}
-  {message&&<p role="status" style={{color:"#875b14",fontSize:13,lineHeight:1.6,margin:"10px 0 0"}}>{message}</p>}
+  {checking&&<p role="status" style={{fontSize:14,fontWeight:600,color:"#64748b"}}>{t("جارٍ فحص الامتدادات المتاحة تباعًا…","Checking available extensions progressively…")}</p>}
+  {message&&<p role="status" style={{color:"#875b14",fontSize:14,fontWeight:600,lineHeight:1.6,margin:"10px 0 0"}}>{message}</p>}
   {results.length>0&&<div aria-live="polite" aria-busy={checking} className="domain-results-grid">
    {results.map(item=><div key={item.domain} className="domain-result-card">
     <div style={{minWidth:0,width:"100%"}}>
-     <strong dir="ltr" style={{display:"block",textAlign:"center",overflowWrap:"anywhere",color:"#203958",fontSize:12,lineHeight:1.3}}>{item.domain}</strong>
-     <small style={{display:"block",lineHeight:1.3,fontSize:13,textAlign:"center",color:item.error?"#a16207":item.lookup?.status==="registered"||item.lookup?.available===false?"#8f3030":"#386375"}}>
+     <strong dir="ltr" style={{display:"block",textAlign:"center",overflowWrap:"anywhere",color:"#203958",fontSize:14,fontWeight:600,lineHeight:1.3}}>{item.domain}</strong>
+     <small style={{display:"block",lineHeight:1.3,fontSize:14,fontWeight:600,textAlign:"center",color:item.error?"#a16207":item.lookup?.status==="registered"||item.lookup?.available===false?"#8f3030":"#386375"}}>
       {item.error|| (item.lookup?resultLabel(item.lookup):t("لم يتم التحقق","Not verified"))}
      </small>
      {item.lookup?.premium&&<small style={{display:"block"}}>{t("دومين مميز — السعر يحتاج تأكيدًا","Premium domain — price needs confirmation")}</small>}
     </div>
     {item.lookup&&selectable(item.lookup)&&<button type="button" onClick={()=>select(item.domain)}
-     style={{background:selectedDomain===item.domain?"#e1ecf7":"#fff",color:"#203958",border:"1px solid #9db4cb",borderRadius:8,padding:"5px 4px",fontSize:13,cursor:"pointer",width:"100%"}}>
+     style={{background:selectedDomain===item.domain?"#e1ecf7":"#fff",color:"#203958",border:"1px solid #9db4cb",borderRadius:8,padding:"5px 4px",fontSize:14,fontWeight:600,cursor:"pointer",width:"100%"}}>
      {selectedDomain===item.domain?t("محدد ✓","Selected ✓"):t("اختيار مبدئي","Select")}
     </button>}
    </div>)}
   </div>}
-  <p style={{fontSize:12,color:"#68798b",lineHeight:1.7,margin:"12px 0 0"}}>
+  <p style={{fontSize:14,fontWeight:600,color:"#68798b",lineHeight:1.7,margin:"12px 0 0"}}>
    {t("نتائج RDAP تعني وجود تسجيل أو عدمه فقط؛ لا تؤكد إمكانية الشراء أو السعر. لن يُحجز أي دومين قبل موافقتك وتأكيد شركة التسجيل.",
     "RDAP checks registration records only, not purchase eligibility or price. Nothing is reserved without your approval and registrar confirmation.")}
   </p>

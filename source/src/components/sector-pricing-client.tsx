@@ -64,7 +64,7 @@ export default function SectorPricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  <p>{t("اشتراكات شهرية","Monthly")}: <b>{money(Number(quote.monthly))}</b></p>
  <p>{t("اشتراكات سنوية","Yearly")}: <b>{money(Number(quote.yearly))}</b></p>
  {quote.needsCustomQuote&&<p>{t("يتطلب النظام عرض سعر نهائيًا بعد مراجعة المتطلبات.","Final price requires scope review.")}</p>}
- <p style={{fontSize:12}}>{t("الأسعار تقديرية، والضريبة إن وجدت تحدد عند اعتماد الطلب.","Indicative prices; applicable taxes are confirmed before approval.")}</p>
+ <p style={{fontSize:14,fontWeight:600}}>{t("الأسعار تقديرية، والضريبة إن وجدت تحدد عند اعتماد الطلب.","Indicative prices; applicable taxes are confirmed before approval.")}</p>
  <button type="button" onClick={save} style={{width:"100%",padding:14,background:"#203958",color:"white",border:0,borderRadius:9,cursor:"pointer"}}>{t("حفظ الإضافات والمتطلبات وإنشاء حساب","Save selections and create account")}</button>
  </>}
  </aside></div>}

@@ -74,7 +74,7 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
      <p>{t("اشتراكات سنوية","Yearly recurring")}: <strong>{money(yearly)}</strong></p>
      <p>{t("ضريبة التنفيذ","One-time VAT")}: <strong>{tax===null?t("تحدد لاحقًا","To be confirmed"):money(tax)}</strong></p>
      <h3>{t("إجمالي التنفيذ شامل الضريبة","One-time total incl. VAT")}: {total===null?t("بانتظار تحديد الضريبة","Pending tax rate"):money(total)}</h3>
-     <p style={{fontSize:13,color:"#52667b"}}>{t("الإجمالي أعلاه يخص التنفيذ لمرة واحدة فقط؛ الاشتراكات الشهرية والسنوية منفصلة ولا تُجمع معًا.","The total above covers one-time charges only. Monthly and yearly subscriptions are separate and are not added together.")}</p>
+     <p style={{fontSize:14,fontWeight:600,color:"#52667b"}}>{t("الإجمالي أعلاه يخص التنفيذ لمرة واحدة فقط؛ الاشتراكات الشهرية والسنوية منفصلة ولا تُجمع معًا.","The total above covers one-time charges only. Monthly and yearly subscriptions are separate and are not added together.")}</p>
      {pkg.is_custom_quote&&<p>{t("الباقة تتطلب عرض سعر مخصصًا.","This package requires a custom quote.")}</p>}
      <form onSubmit={submit} style={{marginTop:20,display:"grid",gap:10}}><h3>{t("احفظ اختياراتك وأنشئ حسابك","Save your selections and create an account")}</h3>{pkg.is_custom_quote?<p>{t("هذه الباقة تحتاج عرض سعر معتمد. تواصل مع المبيعات للحصول على عرض معتمد.","This package requires an approved custom quote. Contact sales for an approved quote.")}</p>:<><button type="submit" disabled={invalid||vat===null} style={{padding:12,borderRadius:8,border:0,background:"#203958",color:"white"}}>{t("حفظ المتطلبات وإنشاء حساب","Save requirements and create account")}</button></>}{submission&&<p role="status">{submission}</p>}</form>
     </aside>
