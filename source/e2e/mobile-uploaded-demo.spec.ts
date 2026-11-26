@@ -3,11 +3,14 @@ test("uploaded standalone demo stays interactive inside catalog",async({page})=>
  const html='<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><button id="go" onclick="document.getElementById(\'result\').textContent=\'Entered\'">Enter demo</button><div id="result"></div></body></html>';
  await page.route("**/api/site-content/catalog?metadata=1",route=>route.fulfill({json:{page:{content:{items:[{slug:"avocato",name:"Avocato",published:true,hasPreviewHtml:true,modules:["Cases"],features:[],sampleRows:[],sampleStats:[]}]}}}}));
  await page.route("**/api/site-content/catalog?demo=avocato&document=1",route=>route.fulfill({contentType:"text/html",body:html}));
+ await page.route("**/api/site-content/home?locale=*",route=>route.fulfill({json:{page:{content:{newsTicker:{enabled:true,text:"Test news",speed:25,background:"#fff",color:"#14243C",url:""}}}}}));
  await page.goto("/catalog/avocato?fullscreen=1");
  const frame=page.frameLocator('iframe[title*="معاينة"]');
  await expect(page.locator("main[data-catalog-immersive=true]")).toBeVisible();
  await frame.getByRole("button",{name:"Enter demo"}).click();
  await expect(frame.getByText("Entered")).toBeVisible();
+ await expect(page.locator(".atsh-news-ticker")).toHaveCount(0);
+ await expect(page.locator(".atsh-news-slot")).toHaveCount(0);
  await page.setViewportSize({width:390,height:700});
  await expect(frame.getByText("Entered")).toBeVisible();
  const bounds=await page.locator("main[data-catalog-immersive=true]").boundingBox();
