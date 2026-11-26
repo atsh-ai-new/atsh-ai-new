@@ -17,3 +17,24 @@ for (const locale of ["ar","en"]) {
   expect(geometry).toEqual({inside:true,above:true,nowrap:true,small:true});
  });
 }
+
+test("news ticker stays immediately below the homepage header rather than covering the viewport",async({page})=>{
+ await page.route("**/api/site-content/home?locale=*",route=>route.fulfill({json:{page:{content:{newsTicker:{enabled:true,text:"Test news",speed:25,background:"#fff",color:"#14243C",url:""}}}}}));
+ await page.goto("/ar");
+ const header=page.locator(".platform-header");
+ const ticker=page.locator(".platform-header + .atsh-news-slot .atsh-news-ticker");
+ await expect(ticker).toBeVisible();
+ const initial=await ticker.boundingBox(),headerBounds=await header.boundingBox();
+ expect(Math.abs(initial!.y-(headerBounds!.y+headerBounds!.height))).toBeLessThan(2);
+ await page.evaluate(()=>window.scrollBy(0,500));
+ await expect.poll(async()=>ticker.evaluate(el=>el.getBoundingClientRect().bottom)).toBeLessThan(0);
+});
+
+test("localized administration links resolve to their existing canonical pages",async({request})=>{
+ for(const path of ["/admin","/admin/builder","/admin/deliverables"]){
+  const response=await request.get("/en"+path+"?test=1",{maxRedirects:0});
+  expect(response.status()).toBe(307);
+  expect(new URL(response.headers()["location"]).pathname).toBe(path);
+  expect(new URL(response.headers()["location"]).search).toBe("?test=1");
+ }
+});
