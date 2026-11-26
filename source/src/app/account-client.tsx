@@ -184,7 +184,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    const guest=loadGuestWorkspace();
    // Only send fields explicitly supported by the backend's strict draft schema.
    // Account workspace may contain historical/extra properties that trigger HTTP 400.
-   const allowedDraftKeys=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","domainName","brandColor","options","sectorAddonCodes","projectMode","solutionType","requirements","pages","bilingual","identity","contentMode","hosting","domainChoice","maintenance","startWindow","contactWindow","stylePreference","inspirationLinks","compliance","logoName","customerName","customerEmail","customerPhone","optionQuantities","deliveryMethod","assistantMessages","source"]);
+   const allowedDraftKeys=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","domainName","brandColor","options","sectorAddonCodes","sectorAddonQuantities","projectMode","solutionType","requirements","pages","bilingual","identity","contentMode","hosting","domainChoice","maintenance","startWindow","contactWindow","stylePreference","inspirationLinks","compliance","logoName","customerName","customerEmail","customerPhone","optionQuantities","deliveryMethod","assistantMessages","source"]);
    const selections=Object.fromEntries(Object.entries({...guest,...workspace}).filter(([key,value])=>allowedDraftKeys.has(key)&&value!==undefined));
    // Persist the client-visible estimate with the submitted project for admin review.
    // This remains indicative and must not be treated as an approved commercial quote.

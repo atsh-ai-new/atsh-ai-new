@@ -5,7 +5,7 @@ import SectorPreview from "@/components/sector-preview";
 import Link from "next/link";
 import {englishTemplateLabel} from "@/lib/sector-en";
 import { readPagePreview } from "@/lib/page-preview";
-type Item=SectorTemplate & {published?:boolean;archived?:boolean;previewUrl?:string;previewHtml?:string;demoDocumentUrl?:string;hasPreviewHtml?:boolean;demoSlug?:string;pricedAddons?:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>;basePrice?:number|null};
+type Item=SectorTemplate & {published?:boolean;archived?:boolean;previewUrl?:string;previewHtml?:string;demoDocumentUrl?:string;hasPreviewHtml?:boolean;demoSlug?:string;pricedAddons?:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"|"per_page";isRequired?:boolean}>;basePrice?:number|null};
 export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;locale?:"ar"|"en"}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
  const [item,setItem]=useState<Item|undefined>(undefined);
  const [ready,setReady]=useState(false);

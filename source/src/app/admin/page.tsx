@@ -77,9 +77,9 @@ export default function AdminPage() {
   const [offerPreviewUrl,setOfferPreviewUrl]=useState("");
   const [orderPreviewUrl,setOrderPreviewUrl]=useState("");
   const [orderPreviewDevice,setOrderPreviewDevice]=useState<"desktop"|"mobile">("desktop");
-  const previewCustomerOrder=()=>setOrderPreviewUrl(createPagePreviewUrl({slug:"home",locale:"ar",content:{previewOfferings:{packages:packages.map(p=>({...p,is_published:true})),options}}})+"#packages");
+  const previewCustomerOrder=()=>setOrderPreviewUrl(createPagePreviewUrl({slug:"home",locale:"ar",content:{previewOfferings:{packages:packages.map(p=>({...p,is_published:true})),options:packages.flatMap(p=>options.filter(o=>o.is_active).map(o=>({...o,package_id:p.id,visibility:"both"})))}}})+"#packages");
   const [offerPreviewDevice,setOfferPreviewDevice]=useState<"desktop"|"mobile">("desktop");
-  const previewOfferings=()=>{setOfferPreviewUrl(createPagePreviewUrl({slug:"home",locale:"ar",content:{previewOfferings:{packages:packages.map(p=>({...p,is_published:true})),options}}})+"#packages");setOfferingTab("preview");};
+  const previewOfferings=()=>{setOfferPreviewUrl(createPagePreviewUrl({slug:"home",locale:"ar",content:{previewOfferings:{packages:packages.map(p=>({...p,is_published:true})),options:packages.flatMap(p=>options.filter(o=>o.is_active).map(o=>({...o,package_id:p.id,visibility:"both"})))}}})+"#packages");setOfferingTab("preview");};
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
@@ -130,7 +130,7 @@ export default function AdminPage() {
 
     if (catalog) {
       setPackages(catalog.packages ?? []);
-      setOptions((catalog.options ?? []).filter((option: Option) => !["logo_design", "visual_identity"].includes(option.code)));
+      setOptions(catalog.sharedOptions ?? []);
     }
     if (inbox) setOrders(inbox.orders ?? []);
     if (settings) {
@@ -264,9 +264,9 @@ export default function AdminPage() {
   const removePackage = async (item: Package) => {
     if (!window.confirm(`حذف الباقة "${item.name}" من المنتجات والموقع؟ ستظل الطلبات السابقة محفوظة.`)) return;
     setBusy(true);setError("");setNotice("");
-    try { await api(`packages/${item.id}`, {method:"DELETE"}); const verified=await api("packages"); if((verified.packages??[]).some((p:Package)=>p.id===item.id))throw new Error("لم تختف الباقة من قائمة المنتجات"); setPackages(verified.packages??[]);setOptions((verified.options??[]).filter((o:Option)=>o.is_active));setPackageDraft(p=>p.copyFromPackageId===item.id?{...p,copyFromPackageId:""}:p);setNotice("تم حذف الباقة من المنتجات والموقع."); }catch(e){setError(e instanceof Error?e.message:"تعذر حذف الباقة");}finally{setBusy(false);}
+    try { await api(`packages/${item.id}`, {method:"DELETE"}); const verified=await api("packages"); if((verified.packages??[]).some((p:Package)=>p.id===item.id))throw new Error("لم تختف الباقة من قائمة المنتجات"); setPackages(verified.packages??[]);setOptions(verified.sharedOptions??[]);setPackageDraft(p=>p.copyFromPackageId===item.id?{...p,copyFromPackageId:""}:p);setNotice("تم حذف الباقة من المنتجات والموقع."); }catch(e){setError(e instanceof Error?e.message:"تعذر حذف الباقة");}finally{setBusy(false);}
   };
-  const saveOption = (item: Option) => save(() => api(`options/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, description: item.description, price: Number(item.price), pricingType: item.pricing_type, unitLabel: item.unit_label, isRequired: item.is_required, isActive: item.is_active, sortOrder: item.sort_order, visibility: item.visibility ?? "both" }) }), "تم حفظ الإضافة في قاعدة البيانات.");
+  const saveOption = (item: Option) => save(() => api(`options/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, description: item.description, price: Number(item.price), pricingType: item.pricing_type, unitLabel: item.unit_label, isRequired: item.is_required, isActive: item.is_active, sortOrder: item.sort_order, visibility: item.visibility ?? "both" }) }), "تم تحديث الإضافة في جميع الباقات والأنظمة المخصصة.");
   const removeOption = async (item: Option) => {
     if (!window.confirm(`إيقاف الإضافة "${item.name}"؟ ستختفي من الخيارات الجديدة مع الاحتفاظ بسجل الطلبات السابقة.`)) return;
     setBusy(true); setError(""); setNotice("");
@@ -274,9 +274,9 @@ export default function AdminPage() {
       await api(`options/${item.id}`, { method: "DELETE" });
       // Verify persisted catalog state before reporting that the option is disabled.
       const verified = await api("packages");
-      const remaining = (verified.options ?? []).find((option: Option) => option.id === item.id);
+      const remaining = (verified.sharedOptions ?? []).find((option: Option) => option.id === item.id);
       if (remaining?.is_active) throw new Error("استقبلنا طلب إيقاف الإضافة، لكن الخادم ما زال يعرضها نشطة. راجع حالة الحفظ قبل إعادة المحاولة.");
-      setOptions((verified.options ?? []).filter((option: Option) => option.is_active));
+      setOptions(verified.sharedOptions ?? []);
       setNotice("تم التحقق من إيقاف الإضافة للطلبات الجديدة مع الاحتفاظ بسجل الطلبات السابقة.");
       // Other dashboard sections are secondary to the verified catalog mutation.
       try { await loadData(); } catch { setNotice("تم إيقاف الإضافة والتحقق من ذلك، لكن تعذر تحديث بعض أقسام اللوحة."); }
@@ -332,20 +332,21 @@ export default function AdminPage() {
   const addPackage = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
-      const copiedOptions = options.filter((item) => item.package_id === packageDraft.copyFromPackageId).map((item) => ({ code: item.code, name: item.name, description: item.description, price: Number(item.price), pricingType: item.pricing_type, unitLabel: item.unit_label, isRequired: item.is_required, isActive: item.is_active, sortOrder: item.sort_order }));
-      await api("packages", { method: "POST", body: JSON.stringify({ name: packageDraft.name, tagline: packageDraft.tagline, description: packageDraft.description, price: packageDraft.isCustomQuote ? 0 : Number(packageDraft.price), currency: "EGP", features: packageDraft.features.split("\n").map((feature) => feature.trim()).filter(Boolean), isFeatured: packageDraft.isFeatured, isCustomQuote: packageDraft.isCustomQuote, isPublished: packageDraft.isPublished, sortOrder: packages.length * 10 + 10, options: copiedOptions }) });
-      setPackageDraft({ name: "", tagline: "", description: "", price: "", features: "", copyFromPackageId: "", isFeatured: false, isCustomQuote: false, isPublished: false }); await loadData(); setNotice("تم إنشاء البطاقة وخياراتها المنسوخة في قاعدة البيانات.");
+
+      await api("packages", { method: "POST", body: JSON.stringify({ name: packageDraft.name, tagline: packageDraft.tagline, description: packageDraft.description, price: packageDraft.isCustomQuote ? 0 : Number(packageDraft.price), currency: "EGP", features: packageDraft.features.split("\n").map((feature) => feature.trim()).filter(Boolean), isFeatured: packageDraft.isFeatured, isCustomQuote: packageDraft.isCustomQuote, isPublished: packageDraft.isPublished, sortOrder: packages.length * 10 + 10, options: [] }) });
+      setPackageDraft({ name: "", tagline: "", description: "", price: "", features: "", copyFromPackageId: "", isFeatured: false, isCustomQuote: false, isPublished: false }); await loadData(); setNotice("تم إنشاء الباقة وربط جميع الإضافات المشتركة تلقائيًا.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر إنشاء الباقة."); }
     finally { setBusy(false); }
   };
 
   const addOption = async (event: FormEvent) => {
     event.preventDefault();
-    if (["logo_design", "visual_identity"].includes(optionDraft.code.trim())) { setError("هذا الرمز قديم ومكرر. استخدم خيارات الشعار والهوية الموجودة في خطوة الشعار والهوية."); return; }
+    if (["logo_design", "visual_identity", "domain", "domain_com", "domain_eg"].includes(optionDraft.code.trim())) { setError("هذا الرمز قديم ومكرر. استخدم خيارات الشعار والهوية الموجودة في خطوة الشعار والهوية."); return; }
     setBusy(true); setError(""); setNotice("");
     try {
-      await api("options", { method: "POST", body: JSON.stringify({ ...optionDraft, price: Number(optionDraft.price), sortOrder: options.filter((item) => item.package_id === optionDraft.packageId).length * 10 + 10 }) });
-      setOptionDraft((current) => ({ ...current, code: "", name: "", description: "", price: "", unitLabel: "" })); await loadData(); setNotice("تمت إضافة الخيار للباقة.");
+      const {packageId: _ignoredPackage, ...sharedDraft}=optionDraft;
+      await api("options", { method: "POST", body: JSON.stringify({ ...sharedDraft, visibility:"both", price: Number(optionDraft.price), sortOrder: options.length * 10 + 10 }) });
+      setOptionDraft((current) => ({ ...current, code: "", name: "", description: "", price: "", unitLabel: "" })); await loadData(); setNotice("تمت إضافة الخيار لجميع الباقات والأنظمة المخصصة.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذرت إضافة الخيار."); }
     finally { setBusy(false); }
   };
@@ -394,7 +395,6 @@ export default function AdminPage() {
             <label className="admin-field">اسم الباقة<input required maxLength={160} value={packageDraft.name} onChange={(event) => setPackageDraft({ ...packageDraft, name: event.target.value })} /></label>
             <label className="admin-field">شارة البطاقة<input maxLength={160} placeholder="مثال: صفحة هبوط" value={packageDraft.tagline} onChange={(event) => setPackageDraft({ ...packageDraft, tagline: event.target.value })} /></label>
             <label className="admin-field">السعر بالجنيه<input required={!packageDraft.isCustomQuote} disabled={packageDraft.isCustomQuote} type="number" min="0" step="0.01" placeholder={packageDraft.isCustomQuote ? "يحدده الفريق بعد المراجعة" : ""} value={packageDraft.price} onChange={(event) => setPackageDraft({ ...packageDraft, price: event.target.value })} /></label>
-            <label className="admin-field">نسخ الإضافات من<select value={packageDraft.copyFromPackageId} onChange={(event) => setPackageDraft({ ...packageDraft, copyFromPackageId: event.target.value })}><option value="">بدون إضافات</option>{packages.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label className="admin-field">وصف البطاقة<input value={packageDraft.description} onChange={(event) => setPackageDraft({ ...packageDraft, description: event.target.value })} /></label>
             <label className="admin-field" style={{ gridColumn: "1 / -1" }}>مزايا البطاقة (ميزة في كل سطر)<textarea rows={3} value={packageDraft.features} onChange={(event) => setPackageDraft({ ...packageDraft, features: event.target.value })} /></label>
             <label className="check-row"><input type="checkbox" checked={packageDraft.isFeatured} onChange={(event) => setPackageDraft({ ...packageDraft, isFeatured: event.target.checked })} /> تمييز البطاقة كموصى بها</label>
@@ -437,26 +437,23 @@ export default function AdminPage() {
         </section>}
 
         {view === "options" && offeringTab === "addons" && <><section id="unified-package-options" className="admin-content-card">
-          <div className="admin-content-title"><div><h2>إدارة الإضافات للباقات والأنظمة المخصصة</h2><p>أنشئ الإضافات وعدّل أسعارها وحالتها. الإضافات النشطة تظهر أيضًا في الأنظمة المخصصة، ويمكن إيقافها دون حذف الطلبات القديمة. رمز الربط ثابت بعد الإنشاء.</p></div></div>
+          <div className="admin-content-title"><div><h2>إدارة الإضافات للباقات والأنظمة المخصصة</h2><p>كل إضافة تُدار مرة واحدة وتظهر تلقائيًا في جميع الباقات والأنظمة الحالية والمستقبلية. تعديل السعر أو الإيقاف يسري على الجميع دون تغيير الطلبات السابقة.</p></div></div>
           <form className="admin-team-form admin-option-create" onSubmit={addOption}>
-            <label className="admin-field">الباقة<select required value={optionDraft.packageId} onChange={(event) => setOptionDraft({ ...optionDraft, packageId: event.target.value })}><option value="">اختر باقة</option>{packages.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label className="admin-field">رمز الربط<input required pattern="[a-z0-9_-]{2,80}" title="استخدم أحرفًا إنجليزية صغيرة وأرقامًا وشرطة فقط" value={optionDraft.code} onChange={(event) => setOptionDraft({ ...optionDraft, code: event.target.value })} /></label>
             <label className="admin-field">اسم الإضافة<input required value={optionDraft.name} onChange={(event) => setOptionDraft({ ...optionDraft, name: event.target.value })} /></label>
             <label className="admin-field">السعر<input required type="number" min="0" step="0.01" value={optionDraft.price} onChange={(event) => setOptionDraft({ ...optionDraft, price: event.target.value })} /></label>
             <label className="admin-field">طريقة الحساب<select value={optionDraft.pricingType} onChange={(event) => setOptionDraft({ ...optionDraft, pricingType: event.target.value as Option["pricing_type"] })}><option value="fixed">مرة واحدة</option><option value="per_page">لكل صفحة</option><option value="yearly">سنوي</option><option value="monthly">شهري</option></select></label>
-            <label className="admin-field">تظهر في<select value={optionDraft.visibility} onChange={(event)=>setOptionDraft({...optionDraft,visibility:event.target.value as "both"|"packages"|"systems"})}><option value="both">الباقات والأنظمة المخصصة</option><option value="packages">الباقات فقط</option><option value="systems">الأنظمة المخصصة فقط</option></select></label>
             <label className="admin-field">وحدة السعر<input maxLength={40} placeholder="مثل: صفحة" value={optionDraft.unitLabel} onChange={(event) => setOptionDraft({ ...optionDraft, unitLabel: event.target.value })} /></label>
             <label className="admin-field" style={{ gridColumn: "1 / -1" }}>الوصف<input value={optionDraft.description} onChange={(event) => setOptionDraft({ ...optionDraft, description: event.target.value })} /></label>
             <label className="check-row"><input type="checkbox" checked={optionDraft.isRequired} onChange={(event) => setOptionDraft({ ...optionDraft, isRequired: event.target.checked })} /> إلزامية</label>
-            <button className="button" disabled={busy}>إضافة الخيار</button>
+            <button className="button" disabled={busy}>إضافة للجميع</button>
           </form>
           {options.map((item) => <article className="admin-package-editor" key={item.id}>
-            <div className="option-admin-heading"><strong>{packages.find((pkg) => pkg.id === item.package_id)?.name ?? "باقة غير معروفة"}</strong><code>{item.code}</code></div>
+            <div className="option-admin-heading"><strong>{item.name}</strong><small>{item.is_active?"متاحة للجميع":"متوقفة"}</small><code>{item.code}</code></div>
             <div className="admin-form-grid">
               <label className="admin-field">اسم الإضافة<input value={item.name} onChange={(event) => changeOption(item.id, "name", event.target.value)} /></label>
               <label className="admin-field">السعر<input type="number" min="0" step="0.01" value={item.price} onChange={(event) => changeOption(item.id, "price", Number(event.target.value))} /></label>
               <label className="admin-field">طريقة الحساب<select value={item.pricing_type} onChange={(event) => changeOption(item.id, "pricing_type", event.target.value as Option["pricing_type"])}><option value="fixed">مرة واحدة</option><option value="per_page">لكل صفحة</option><option value="yearly">سنوي</option><option value="monthly">شهري</option></select></label>
-              <label className="admin-field">تظهر في<select value={item.visibility??"both"} onChange={(event)=>changeOption(item.id,"visibility",event.target.value as Option["visibility"])}><option value="both">الباقات والأنظمة المخصصة</option><option value="packages">الباقات فقط</option><option value="systems">الأنظمة المخصصة فقط</option></select></label>
               <label className="admin-field">وحدة السعر<input value={item.unit_label} onChange={(event) => changeOption(item.id, "unit_label", event.target.value)} /></label>
               <label className="admin-field" style={{ gridColumn: "1 / -1" }}>الوصف<input value={item.description} onChange={(event) => changeOption(item.id, "description", event.target.value)} /></label>
             </div>
