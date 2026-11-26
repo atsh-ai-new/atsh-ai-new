@@ -95,11 +95,11 @@ export default function JourneyManager({canManageTasks=false,canArchive=false,ca
 .atsh-chat{min-width:0;display:flex;flex-direction:column;height:min(680px,75vh);border:1px solid #d4e2ef;border-radius:16px;overflow:hidden;background:#edf2f7}
 .atsh-chat-header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#203958;color:white;flex:none}
 .atsh-chat-header button{border:0;border-radius:8px;background:#ffffff20;color:white;padding:8px 12px;font-size:14px;cursor:pointer}
-.atsh-chat-person{flex:1;min-width:0;display:grid;gap:2px}.atsh-chat-person strong,.atsh-chat-person small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:white}.atsh-chat-person small{font-size:11px;opacity:.85}
+.atsh-chat-person{flex:1;min-width:0;display:grid;gap:2px}.atsh-chat-person strong,.atsh-chat-person small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:white}.atsh-chat-person small{font-size:13px;opacity:.85}
 .atsh-chat-stream{flex:1;min-height:0;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:7px}
 .atsh-chat .atsh-bubble{width:fit-content;max-width:82%;padding:6px 10px;margin:0;border-radius:12px;background:white;box-shadow:0 1px 2px #0001;font-size:14px;line-height:1.45;overflow-wrap:anywhere}
 .atsh-chat .atsh-bubble.incoming{align-self:flex-start}.atsh-chat .atsh-bubble.outgoing{align-self:flex-end;background:#d9eaff}
-.atsh-chat .atsh-bubble span{font-size:10px;color:#52657c}.atsh-chat .atsh-bubble p{margin:2px 0;white-space:pre-wrap;font-size:14px;line-height:1.45}.atsh-chat .atsh-bubble small{display:block;text-align:end;font-size:10px;color:#52657c}
+.atsh-chat .atsh-bubble span{font-size:13px;color:#52657c}.atsh-chat .atsh-bubble p{margin:2px 0;white-space:pre-wrap;font-size:14px;line-height:1.45}.atsh-chat .atsh-bubble small{display:block;text-align:end;font-size:13px;color:#52657c}
 .atsh-chat-compose{display:flex;align-items:center;gap:8px;padding:9px;background:white;flex:none;margin:0;padding-bottom:max(9px,env(safe-area-inset-bottom))}
 .atsh-chat .atsh-chat-compose textarea{flex:1;min-width:0;width:auto;resize:none;border:1px solid #cbd5e1;border-radius:24px;padding:10px 14px;min-height:42px;max-height:90px;font-size:16px;margin:0}
 .atsh-chat .atsh-chat-compose button{border:0;border-radius:50%;width:44px;height:44px;flex:none;background:#203958;color:white;font-size:20px;display:grid;place-items:center;padding:0}.atsh-chat-compose button:disabled{opacity:.45}

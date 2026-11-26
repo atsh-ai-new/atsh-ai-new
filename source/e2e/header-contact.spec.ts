@@ -8,6 +8,9 @@ for (const locale of ["ar","en"]) {
   await expect(contact).toHaveText("شارع النقطة القديمة منيل شيحة أبو النمرس الجيزة 01007735321");
   await expect(contact).toHaveAttribute("href","tel:+201007735321");
   await expect(contact).toBeVisible();
+  await expect(page.locator("body")).toHaveCSS("font-weight","500");
+  await expect(header.locator(".platform-brand small")).toHaveCSS("font-size","12px");
+
   const geometry=await contact.evaluate(el=>{
    const link=el.getBoundingClientRect();
    const logo=el.parentElement!.querySelector(".platform-brand")!.getBoundingClientRect();
