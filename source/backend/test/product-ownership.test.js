@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {initialOwnership,effectiveOwnership,resolveOwnership,ownershipConflicts,ensureOwnership,sectorTariff,resetOwnership,ownershipModes} from '../src/product-ownership.js';
+import {initialOwnership,effectiveOwnership,resolveOwnership,ensureOwnership,sectorTariff,resetOwnership,ownershipModes} from '../src/product-ownership.js';
 import {priceSectorSelection} from '../src/sector-pricing.js';
 import {calculateUnifiedPricing} from '../src/pricing-engine.js';
 import {deriveQuoteFromOrder} from '../src/order-quote.js';
@@ -25,14 +25,17 @@ test('existing edited prices are not overwritten by initial defaults',async()=>{
  assert.deepEqual(await ensureOwnership(db,'package','id','name',1),prices);
  assert.equal(calls,1);
 });
-test('system with rental does not charge included hosting and keeps addon period',()=>{
+test('system rental bills required or selected hosting separately exactly once',()=>{
  const catalog=[{slug:'test',name:'عيادتي',published:true,basePrice:2490,ownershipPrices:prices,pricedAddons:[{code:'hosting',name:'Hosting',price:225,pricingType:'yearly',isRequired:true},{code:'extra_page',name:'Page',price:100,pricingType:'per_page'}]}];
  const rental=priceSectorSelection(catalog,'test',['extra_page'],{extra_page:2},'rent');
- assert.equal(rental.yearly,1341);assert.equal(rental.subtotal,1541);
- assert.throws(()=>priceSectorSelection(catalog,'test',['hosting'],{},'rent'));
+ assert.equal(rental.yearly,1566);assert.equal(rental.subtotal,1766);
+ const withHost=priceSectorSelection(catalog,'test',['hosting'],{},'rent');
+ assert.equal(withHost.yearly,1566);assert.equal(withHost.items.filter(x=>x.code==='hosting').length,1);
+ const optional=[{...catalog[0],pricedAddons:catalog[0].pricedAddons.map(a=>({...a,isRequired:false}))}];
+ assert.equal(priceSectorSelection(optional,'test',[],{},'rent').yearly,1341);
+ assert.equal(priceSectorSelection(optional,'test',['hosting'],{},'rent').yearly,1566);
  const copy=priceSectorSelection(catalog,'test',[],{},'copy');
  assert.equal(copy.subtotal,2715);assert.equal(copy.yearly,225);
- assert.equal(ownershipConflicts('code','hosting'),false);
 });
 test('package rental period reaches billing and contractual quote',()=>{
  const priced=calculateUnifiedPricing({packagePrice:1341,packagePeriod:'yearly',packageOptions:[{code:'payment',name:'Payment',lineTotal:100,pricing_type:'fixed'}],vatRate:14});
@@ -50,11 +53,15 @@ test('all 28 registry keys use independent defaults and ten-month annual pricing
  assert.equal(sectorTariff('toString'),null);
  assert.equal(initialOwnership('sector','unknown',null),null);
 });
-test('monthly rent excludes hosting and is billed monthly, not yearly or fixed',()=>{
+test('monthly rent preserves separate annual hosting and the right billing periods',()=>{
  const catalog=[{slug:'test',name:'System',published:true,basePrice:2490,ownershipPrices:prices,pricedAddons:[{code:'hosting',name:'Hosting',price:225,pricingType:'yearly',isRequired:true}]}];
  const rental=priceSectorSelection(catalog,'test',[],{},'rent_monthly');
- assert.equal(rental.subtotal,149);assert.equal(rental.monthly,149);assert.equal(rental.yearly,0);
- assert.throws(()=>priceSectorSelection(catalog,'test',['hosting'],{},'rent_monthly'));
+ assert.equal(rental.subtotal,374);assert.equal(rental.monthly,149);assert.equal(rental.yearly,225);
+ const withHost=priceSectorSelection(catalog,'test',['hosting'],{},'rent_monthly');
+ assert.equal(withHost.items.filter(x=>x.code==='hosting').length,1);
+ const optional=[{...catalog[0],pricedAddons:catalog[0].pricedAddons.map(a=>({...a,isRequired:false}))}];
+ assert.equal(priceSectorSelection(optional,'test',[],{},'rent_monthly').yearly,0);
+ assert.equal(priceSectorSelection(optional,'test',['hosting'],{},'rent_monthly').yearly,225);
  const priced=calculateUnifiedPricing({packagePrice:149,packagePeriod:'monthly',vatRate:14});
  assert.deepEqual(priced.billing,{fixed:0,yearly:0,monthly:149});
  const quote=deriveQuoteFromOrder({total:priced.total,snapshot:{package:{name:'Package',price:149,pricingPeriod:'monthly'},options:[],vatAmount:priced.vatAmount,vatRate:14,total:priced.total}});

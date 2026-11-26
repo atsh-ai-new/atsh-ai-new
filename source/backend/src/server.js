@@ -27,7 +27,7 @@ import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
 import { buildVisitorInstructions } from "./visitor-assistant.js";
 import { priceSectorSelection } from "./sector-pricing.js";
-import { ensureOwnership,resolveOwnership,ownershipModes,ownershipLabels,ownershipConflicts,sectorTariff,resetOwnership } from "./product-ownership.js";
+import { ensureOwnership,resolveOwnership,ownershipModes,ownershipLabels,sectorTariff,resetOwnership } from "./product-ownership.js";
 import { calculateUnifiedPricing } from "./pricing-engine.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
@@ -694,7 +694,7 @@ async function priceOwnershipDraft(db,draft){
   const requested=new Set(draft.options??[]);
   const found=await db.query("SELECT id,code,name,price,pricing_type,is_required FROM package_options WHERE package_id=$1 AND is_active=true",[pkg.id]);
   if([...requested].some(id=>!found.rows.some(x=>x.id===id)))throw Error("Addon unavailable");
-  const options=found.rows.filter(x=>(requested.has(x.id)||x.is_required)&&!ownershipConflicts(mode,x.code)).map(x=>{
+  const options=found.rows.filter(x=>requested.has(x.id)||x.is_required).map(x=>{
    const q=x.pricing_type==="per_page"?Number(draft.optionQuantities?.[x.id]??1):1;
    if(!Number.isInteger(q)||q<1||q>50||(x.code==="extra_page"&&q>5))throw Error("Invalid quantity");
    return {...x,lineTotal:Math.round(Number(x.price)*q*100)/100};
@@ -789,7 +789,6 @@ app.post("/api/orders", route(async (req,res) => {
     if(o.rows.length!==input.optionIds.length){await client.query("ROLLBACK");return res.status(400).json({error:"One or more options are unavailable"});}
     const selected = new Set(o.rows.map(x=>x.id));
     if(required.rows.some(x=>!selected.has(x.id))){await client.query("ROLLBACK");return res.status(400).json({error:"All required package options must be selected"});}
-    if(input.ownershipMode&&o.rows.some(x=>ownershipConflicts(input.ownershipMode,x.code))){await client.query("ROLLBACK");return res.status(400).json({error:"Hosting already included in rental"});}
     const pricedOptions=o.rows.map(x=>{const quantity=x.pricing_type==="per_page"?Number(input.optionQuantities[x.id]||1):1;return {...x,quantity,lineTotal:Number(x.price)*quantity};});
     if(!input.sectorSlug && input.sectorAddonCodes.length){await client.query("ROLLBACK");return res.status(400).json({error:"Sector addons require a sector"});}
     let sectorPrice=null;
