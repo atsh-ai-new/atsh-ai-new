@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ChangeEvent } from "react";
+import CartoonStudio from "./cartoon-studio";
 
 type Scene = {
   seconds: number;
@@ -31,7 +32,7 @@ type ProductionPlan = {
   productionChecklist: string[];
 };
 
-type DraftSummary = { id: string; title: string; source_filename: string; status: string; updated_at: string; video_generated_at: string | null; has_video: boolean };
+type DraftSummary = { is_cartoon?:boolean; id: string; title: string; source_filename: string; status: string; updated_at: string; video_generated_at: string | null; has_video: boolean };
 type Draft = DraftSummary & { brief_markdown: string; production_plan: ProductionPlan; video_size: number | null };
 type ServiceStatus = { aiConfigured: boolean; aiModel: string | null; workflowConfigured: boolean };
 type ApiResult = Record<string, any>;
@@ -75,7 +76,7 @@ function safeFilename(value: string) {
   return value.trim().replace(/[^\p{L}\p{N}._ -]+/gu, "-").replace(/\s+/g, "-").slice(0, 80) || "ATSH-AI-ad-brief";
 }
 
-export default function ContentStudio() {
+function LegacyContentStudio() {
   const [service, setService] = useState<ServiceStatus>({ aiConfigured: false, aiModel: null, workflowConfigured: false });
   const [items, setItems] = useState<DraftSummary[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -99,7 +100,7 @@ export default function ContentStudio() {
     Promise.all([requestJson<ServiceStatus>("/status"), requestJson<{ drafts: DraftSummary[] }>("")]).then(async ([status, list]) => {
       if (!active) return;
       setService(status);
-      const nextItems = list.drafts ?? [];
+      const nextItems = (list.drafts ?? []).filter(d=>!d.is_cartoon&&d.source_filename!=="cartoon-manual.txt");
       setItems(nextItems);
       if (nextItems[0]) await loadDraft(nextItems[0].id, () => active);
     }).catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "تعذر تحميل منشئ المحتوى."); });
@@ -119,7 +120,7 @@ export default function ContentStudio() {
 
   async function refreshList() {
     const [status, result] = await Promise.all([requestJson<ServiceStatus>("/status"), requestJson<{ drafts: DraftSummary[] }>("")]);
-    setService(status); setItems(result.drafts ?? []);
+    setService(status); setItems((result.drafts ?? []).filter(d=>!d.is_cartoon&&d.source_filename!=="cartoon-manual.txt"));
   }
 
   async function loadDraft(id: string, active?: () => boolean) {
@@ -287,3 +288,5 @@ export default function ContentStudio() {
     {error && <p className="error-message" role="alert">{error}</p>}{notice && <p className="success-message" role="status">{notice}</p>}
   </div>;
 }
+
+export default function ContentStudio(){const [mode,setMode]=useState<"cartoon"|"legacy">("cartoon");return <div className="content-studio"><nav className="cartoon-mode" aria-label="نوع المحتوى"><button type="button" className={mode==="cartoon"?"active":""} onClick={()=>setMode("cartoon")}>استوديو الكرتون</button><button type="button" className={mode==="legacy"?"active":""} onClick={()=>setMode("legacy")}>التجهيزات السابقة</button></nav>{mode==="cartoon"?<CartoonStudio/>:<LegacyContentStudio/>}</div>}
