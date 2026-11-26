@@ -81,7 +81,7 @@ export function calculateQuote(input: {
 
   // Extra pages extend the chosen package; they are not a second website package.
   // Price is configurable through the existing per-page option in admin.
-  const extraPageCount = selectedPackage?.includedPages == null ? 0 : Math.max(0, input.pages - selectedPackage.includedPages);
+  const extraPageCount = input.packageId ? Math.max(0, input.pages - (selectedPackage?.includedPages ?? 1)) : 0;
   if (extraPageCount > 0) {
     items.push({ id: "extra_page", label: optionLabel("extra_page", "صفحات إضافية") + " × " + extraPageCount, amount: extraPageCount * optionPrice("extra_page", 1000) });
   }
@@ -90,7 +90,7 @@ export function calculateQuote(input: {
   const identity = identityOptions.find((item) => item.id === input.identity);
   if (identity && identity.price > 0) items.push({ id: "identity", label: optionLabel(identity.id, identity.name), amount: optionPrice(identity.id, identity.price) });
   if (input.content === "writing") {
-    const perPage = optionType("writing") === "per_page";
+    const perPage = (optionType("writing") ?? "per_page") === "per_page";
     const price = optionPrice("writing", contentWritingPerPage);
     items.push({ id: "content", label: `${optionLabel("writing", "كتابة المحتوى")} (${input.pages} صفحة)`, amount: perPage ? price * input.pages : price });
   }
