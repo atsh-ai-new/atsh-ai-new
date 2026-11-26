@@ -5,7 +5,7 @@ for (const locale of ["ar","en"]) {
   await page.goto("/"+locale);
   const header=page.locator(".platform-header");
   const contact=header.locator(".platform-header-contact");
-  await expect(contact).toHaveText("1 ش النقطة القديمة منيل شيحة جيزة مصر 01007735321");
+  await expect(contact).toHaveText("شارع النقطة القديمة منيل شيحة أبو النمرس الجيزة 01007735321");
   await expect(contact).toHaveAttribute("href","tel:+201007735321");
   await expect(contact).toBeVisible();
   const geometry=await contact.evaluate(el=>{
