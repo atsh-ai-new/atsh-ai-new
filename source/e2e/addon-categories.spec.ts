@@ -31,9 +31,12 @@ test("central add-on categories reorder, move and appear in both pricing flows",
  await page.getByRole("button",{name:"تقديم البرمجة والأنظمة والتكاملات",exact:true}).click();
  await page.getByRole("button",{name:"حفظ ترتيب الأقسام",exact:true}).click();
  await expect.poll(()=>categories.find(c=>c.code==="integrations")?.sort_order).toBe(10);
+ await expect(page.getByRole("button",{name:"حفظ ترتيب الأقسام",exact:true})).toBeEnabled();
  await page.getByRole("button",{name:"البرمجة والأنظمة والتكاملات (1)",exact:true}).click();
  const card=page.locator(".admin-package-editor").filter({hasText:"الدفع الإلكتروني"});
- await card.getByLabel("القسم",{exact:true}).selectOption("marketing");
+ await expect(card).toBeVisible();
+ await expect(card.getByRole("combobox",{name:"القسم",exact:true})).toHaveValue("integrations");
+ await card.getByRole("combobox",{name:"القسم",exact:true}).selectOption("marketing");
  await card.getByLabel("ترتيب العرض داخل القسم").fill("5");
  await card.getByRole("button",{name:"حفظ التعديلات"}).click();
  await expect.poll(()=>options[1].category_code).toBe("marketing");
