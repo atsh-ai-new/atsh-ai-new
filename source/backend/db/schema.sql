@@ -78,7 +78,8 @@ FROM packages p CROSS JOIN (VALUES
 ('hosting','استضافة مُدارة وحماية','استضافة سنوية مع حماية ومتابعة.',600,'yearly','',90),
 ('maintenance','صيانة ودعم','صيانة ودعم فني لمدة سنة.',3600,'yearly','',100),
 ('smart_bot','البوت الذكي','ردود آلية محفوظة',500,'fixed','',110),
-('ai_assistant','المساعد الذكي','شبيه بمساعد ATSH AI',2500,'yearly','',120)
+('ai_assistant','المساعد الذكي','شبيه بمساعد ATSH AI',2500,'yearly','',120),
+('extra_page','صفحات إضافية','إضافة صفحات للمشروع.',1000,'per_page','صفحة',130)
 ) AS o(code,name,description,price,pricing_type,unit_label,sort_order)
 WHERE p.is_published=true AND NOT EXISTS(SELECT 1 FROM package_options existing WHERE existing.package_id=p.id AND existing.code=o.code);
 
@@ -97,6 +98,19 @@ FROM packages p CROSS JOIN (VALUES
 WHERE p.is_published=true
 AND NOT EXISTS(SELECT 1 FROM package_options o WHERE o.package_id=p.id AND o.code=a.code);
 
+
+-- One-time activation of the existing shared features in both customer journeys.
+DO $$
+DECLARE applied varchar(120);
+BEGIN
+  INSERT INTO schema_migrations(version) VALUES('2026-11-26-shared-addon-visibility')
+  ON CONFLICT(version) DO NOTHING RETURNING version INTO applied;
+  IF applied IS NOT NULL THEN
+    UPDATE package_options SET visibility='both',is_active=true
+    WHERE code IN ('language','logo','brand','writing','seo','booking','contact','analytics','hosting','maintenance','smart_bot','ai_assistant','extra_page');
+    UPDATE package_options SET pricing_type='per_page',unit_label='صفحة' WHERE code IN ('extra_page','writing');
+  END IF;
+END $$;
 
 -- ATSH customer journey: additive migration; preserves pricing, team and content studio.
 CREATE TABLE IF NOT EXISTS customer_journey_projects (

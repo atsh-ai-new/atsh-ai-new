@@ -522,7 +522,7 @@ app.post("/api/visitor/assistant",
 app.get("/api/catalog", route(async (_req,res) => {
   const [p,o] = await Promise.all([
     pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote FROM packages WHERE is_published=true ORDER BY sort_order,created_at"),
-    pool.query("SELECT id,package_id,code,name,description,price,pricing_type,unit_label,is_required,visibility FROM package_options WHERE is_active=true ORDER BY sort_order,created_at")
+    pool.query("SELECT o.id,o.package_id,o.code,o.name,o.description,o.price,o.pricing_type,o.unit_label,o.is_required,o.visibility FROM package_options o JOIN packages p ON p.id=o.package_id WHERE o.is_active=true AND p.is_published=true AND p.deleted_at IS NULL ORDER BY o.sort_order,p.sort_order,o.created_at")
   ]);
   res.json({packages:p.rows,options:o.rows});
 }));
@@ -1378,7 +1378,7 @@ await pool.query("ALTER TABLE packages ADD COLUMN IF NOT EXISTS deleted_at times
 app.get("/api/admin/packages",requireAdmin,requirePermission("products"),route(async(_req,res)=>{
   const [p,o]=await Promise.all([
     pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote,is_published,sort_order,created_at,updated_at FROM packages WHERE deleted_at IS NULL ORDER BY sort_order,created_at"),
-    pool.query("SELECT id,package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,created_at FROM package_options WHERE package_id IN (SELECT id FROM packages WHERE deleted_at IS NULL) ORDER BY sort_order,created_at")
+    pool.query("SELECT id,package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,created_at,visibility FROM package_options WHERE package_id IN (SELECT id FROM packages WHERE deleted_at IS NULL) ORDER BY sort_order,created_at")
   ]);
   res.json({packages:p.rows,options:o.rows});
 }));
@@ -1390,7 +1390,7 @@ app.post("/api/admin/packages",requireAdmin,requirePermission("products"),route(
     await auditChange(client,req.admin.email,"package.created","package",q.rows[0].id,null,q.rows[0]);
     const createdOptions=[];
     for(const option of x.options){
-      const saved=await client.query("INSERT INTO package_options(package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,visibility) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",[q.rows[0].id,option.code,option.name,option.description,option.price,option.pricingType,option.unitLabel,option.isRequired,option.isActive,option.sortOrder]);
+      const saved=await client.query("INSERT INTO package_options(package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,visibility) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",[q.rows[0].id,option.code,option.name,option.description,option.price,option.pricingType,option.unitLabel,option.isRequired,option.isActive,option.sortOrder,option.visibility]);
       await auditChange(client,req.admin.email,"package_option.created","package_option",saved.rows[0].id,null,saved.rows[0]);
       createdOptions.push(saved.rows[0]);
     }
