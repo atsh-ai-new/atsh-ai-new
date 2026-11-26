@@ -3,7 +3,7 @@ export type AssistantMessage = {who:"assistant"|"customer";text:string};
 export type DraftInvoice = {title:string;items:{name:string;amount:number;period:"fixed"|"monthly"|"yearly"}[];subtotal:number;vat:number;total:number;fixed:number;monthly:number;yearly:number;currency:"EGP";savedAt:string};
 export type CustomerWorkspace = {
   draftInvoice?:DraftInvoice;
-  ownershipMode?:"rent"|"copy"|"code"; domainChoice?:string; optionQuantities?:Record<string,number>;
+  ownershipMode?:"rent"|"copy"|"code"|"rent_monthly"; domainChoice?:string; optionQuantities?:Record<string,number>;
   assistantMessages?:AssistantMessage[];
   sectorSlug?:string; sectorName?:string; packageId?:string; businessName?:string;
   projectMode?:"ready"|"custom"; solutionType?:"website"|"store"|"mobile"|"management"|"ai"|"other"; requirements?:string;

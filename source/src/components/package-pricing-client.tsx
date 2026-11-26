@@ -7,7 +7,7 @@ import AddonGroups from "@/components/addon-groups";
 import type {CategorizedAddon} from "@/lib/addon-categories";
 import DomainLookup from "@/components/domain-lookup";
 import {loadGuestWorkspace,loadAccountWorkspace,loadPricingDraft,savePricingDraft,type PricingDraft} from "@/lib/customer-workspace";
-import OwnershipSelector,{ownershipName,type OwnershipMode,type OwnershipPrices} from "./ownership-selector";
+import OwnershipSelector,{ownershipName,ownershipPeriod,isRental,type OwnershipMode,type OwnershipPrices} from "./ownership-selector";
 
 type Package={ownershipPrices?:OwnershipPrices|null;list_price?:number|string;discount_percent?:number|string;id:string;name:string;description:string;price:number|string;is_custom_quote:boolean;features?:string[]};
 type Option=CategorizedAddon & {list_price?:number|string;discount_percent?:number|string;id:string;package_id:string;code:string;name:string;description:string;price:number|string;pricing_type:string;unit_label?:string;is_required:boolean};
@@ -35,20 +35,20 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  ]).then(([data,config])=>{if(!active)return;setCatalog(data);const rate=Number(config?.vatRate);setVat(Number.isFinite(rate)&&rate>=0&&rate<=100?rate:null);}).catch(()=>{if(active)setError(t("تعذر تحميل الأسعار المعتمدة. حاول مجددًا.","Unable to load current prices. Please retry."))});return()=>{active=false}},[en]);
  const pkg=catalog?.packages.find(p=>p.id===(aliases[params.packageId]??params.packageId));
  // Domain registration is requested via the live domain lookup above, not as a duplicate priced add-on.
- const options=useMemo(()=>catalog?.options.filter(o=>(mode!=="rent"||o.code!=="hosting")&&o.package_id===pkg?.id&&!(/(?:^|[_-])domain(?:[_-]|$)/i.test(o.code)||/^(?:نطاق|دومين)\s*\.(?:com|eg)\b/i.test(o.name)||/^(?:نطاق|دومين)\s+(?:com|eg)\b/i.test(o.name)))??[],[catalog,pkg?.id,mode]);
+ const options=useMemo(()=>catalog?.options.filter(o=>(!isRental(mode)||o.code!=="hosting")&&o.package_id===pkg?.id&&!(/(?:^|[_-])domain(?:[_-]|$)/i.test(o.code)||/^(?:نطاق|دومين)\s*\.(?:com|eg)\b/i.test(o.name)||/^(?:نطاق|دومين)\s+(?:com|eg)\b/i.test(o.name)))??[],[catalog,pkg?.id,mode]);
  const lines=options.filter(o=>o.is_required||selected.includes(o.id)).map(o=>{const unit=Number(o.price);const quantity=o.pricing_type==="per_page"?Math.max(1,Math.min(o.code==="extra_page"?5:50,quantities[o.id]??1)):1;return {...o,quantity,amount:round(unit*quantity)};});
  const tariff=pkg?.ownershipPrices?.[mode];
  const invalid=!ready||Boolean(pkg&&!pkg.is_custom_quote&&(!tariff||!Number.isFinite(tariff.price)||tariff.price<0))||lines.some(l=>!Number.isFinite(l.amount)||l.amount<0);
  const base=tariff?.price??0;
- const oneTime=round((mode==="rent"?0:base)+lines.filter(l=>!["monthly","yearly"].includes(l.pricing_type)).reduce((a,l)=>a+l.amount,0));
- const monthly=round(lines.filter(l=>l.pricing_type==="monthly").reduce((a,l)=>a+l.amount,0));
+ const oneTime=round((isRental(mode)?0:base)+lines.filter(l=>!["monthly","yearly"].includes(l.pricing_type)).reduce((a,l)=>a+l.amount,0));
+ const monthly=round((mode==="rent_monthly"?base:0)+lines.filter(l=>l.pricing_type==="monthly").reduce((a,l)=>a+l.amount,0));
  const yearly=round((mode==="rent"?base:0)+lines.filter(l=>l.pricing_type==="yearly").reduce((a,l)=>a+l.amount,0));
  const tax=vat===null?null:round((oneTime+monthly+yearly)*vat/100);
  const total=tax===null?null:round(oneTime+monthly+yearly+tax);
  const money=(n:number)=>new Intl.NumberFormat(en?"en-EG":"ar-EG",{maximumFractionDigits:2,minimumFractionDigits:0}).format(n)+" "+t("ج.م","EGP");
  const toggle=(id:string)=>setSelected(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id]);
  const submit=async(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();if(!pkg||invalid||vat===null||tax===null||total===null)return;setSubmission("");try{
- const items=[{name:pkg.name+" — "+ownershipName(mode),amount:base,period:mode==="rent"?"yearly" as const:"fixed" as const},...lines.map(l=>({name:l.name,amount:l.amount,period:l.pricing_type==="monthly"?"monthly" as const:l.pricing_type==="yearly"?"yearly" as const:"fixed" as const}))];
+ const items=[{name:pkg.name+" — "+ownershipName(mode),amount:base,period:ownershipPeriod(mode)},...lines.map(l=>({name:l.name,amount:l.amount,period:l.pricing_type==="monthly"?"monthly" as const:l.pricing_type==="yearly"?"yearly" as const:"fixed" as const}))];
  await savePricingDraft(edit,{domainName,packageId:pkg.id,ownershipMode:mode,requirements:customer.notes,domainChoice:requestDomainBooking?"request-booking":"existing",options:lines.map(l=>l.id),optionQuantities:Object.fromEntries(lines.map(l=>[l.id,l.quantity])),source:"configurator",projectMode:"custom",draftInvoice:{title:pkg.name,items,subtotal:round(oneTime+monthly+yearly),vat:tax,total,fixed:oneTime,monthly,yearly,currency:"EGP",savedAt:new Date().toISOString()}},locale);
  }catch(e){setSubmission(e instanceof Error?e.message:t("تعذر حفظ الاختيارات","Unable to save selections"))}};
  return <main dir={en?"ltr":"rtl"} style={{minHeight:"100vh",background:"#f8f7f3",color:"#203958",padding:"28px 16px",fontFamily:"inherit"}}>

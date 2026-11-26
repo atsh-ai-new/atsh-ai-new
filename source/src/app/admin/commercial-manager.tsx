@@ -3,7 +3,7 @@ import {useEffect,useState} from "react";
 import QuoteRevisionEditor from "@/components/quote-revision-editor";
 type Quote={id:number;customer_email:string;status:string;revision:number;total_piasters:number;valid_until:string|null;items:Array<{label:string;quantity:number;unitPricePiasters:number;period?:string}>};
 type EligibleOrder={id:string;reference:string;total:number;currency:string;project_title:string;latest_preview_status:string|null};
-type EligibleDraft={id:string;title:string;email:string;draft:{solutionType?:string;requirements?:string;businessName?:string;deliveryMethod?:string;ownershipMode?:"rent"|"copy"|"code"};latest_preview_status:string|null};
+type EligibleDraft={id:string;title:string;email:string;draft:{solutionType?:string;requirements?:string;businessName?:string;deliveryMethod?:string;ownershipMode?:"rent"|"copy"|"code"|"rent_monthly"};latest_preview_status:string|null};
 type ChangeRequest={id:number;quote_id:number;customer_email:string;quote_status:string;revision:number;status:string;details:string;created_at:string;resolution_note?:string};
 type Template={id:number;title:string;body:string;revision:number;category:string;is_published:boolean;is_archived:boolean};
 type TemplateVersion={template_id:number;title:string;body:string;revision:number;edited_by:string|null;created_at:string;is_published:boolean};
@@ -68,7 +68,7 @@ export default function CommercialManager(){
   <p>تراجع الشركة وصف المشروع ومعاينته أولًا، ثم تدخل السعر الأساسي قبل الضريبة. يضيف الخادم الضريبة المضبوطة في لوحة الشركة، دون قبول إجمالي من المتصفح.</p>
   {!eligibleDrafts.length&&<p>لا توجد مسودات مخصصة جاهزة لإعداد العرض.</p>}
   {eligibleDrafts.filter(d=>d.draft?.ownershipMode||d.draft?.solutionType||d.latest_preview_status==="approved").map(d=><div key={d.id} style={{border:"1px solid #d6e2ec",borderRadius:11,padding:13,margin:"10px 0",background:"white"}}>
-    <strong>{d.title} — {d.email}</strong><p style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>نوع الحل: {d.draft.solutionType||"لم يُحدد"} · طريقة التسليم: {(d.draft.ownershipMode?({rent:"إيجار سنوي",copy:"نسخة تشغيلية",code:"ملكية الكود"}[d.draft.ownershipMode]):d.draft.deliveryMethod)||"تحتاج تحديدًا"} · أحدث معاينة: {d.latest_preview_status==="approved"?"معتمدة":d.latest_preview_status||"لم تُنشأ"}</p>
+    <strong>{d.title} — {d.email}</strong><p style={{fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap"}}>نوع الحل: {d.draft.solutionType||"لم يُحدد"} · طريقة التسليم: {(d.draft.ownershipMode?({rent:"إيجار سنوي",rent_monthly:"إيجار شهري",copy:"نسخة تشغيلية",code:"ملكية الكود"}[d.draft.ownershipMode]):d.draft.deliveryMethod)||"تحتاج تحديدًا"} · أحدث معاينة: {d.latest_preview_status==="approved"?"معتمدة":d.latest_preview_status||"لم تُنشأ"}</p>
     {d.draft.requirements&&<details><summary>متطلبات العميل</summary><p style={{whiteSpace:"pre-wrap"}}>{d.draft.requirements}</p></details>}
     {d.draft.ownershipMode?<button type="button" disabled={d.latest_preview_status!=="approved"} onClick={()=>void run(()=>request(`project-drafts/${encodeURIComponent(d.id)}/quote`,"POST",{useSavedPricing:true}))}>توليد العرض من محرك التسعير المعتمد</button>:<><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,210px),1fr))",gap:9,marginTop:10}}>
       <label>اسم بند التنفيذ<input value={customDescriptions[d.id]??`تنفيذ مشروع: ${d.title}`} onChange={e=>setCustomDescriptions(old=>({...old,[d.id]:e.target.value}))} maxLength={250}/></label>

@@ -133,7 +133,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[],priceDraft=
  }).strict();
  const draftSchema=z.object({
   draftInvoice:draftInvoiceSchema.optional(),
-  ownershipMode:z.enum(["rent","copy","code"]).optional(),
+  ownershipMode:z.enum(["rent","copy","code","rent_monthly"]).optional(),
   sectorSlug:z.string().regex(/^[a-z0-9-]{1,100}$/).optional(),
   sectorName:z.string().max(120).optional(),
   packageId:z.string().max(100).optional(),
