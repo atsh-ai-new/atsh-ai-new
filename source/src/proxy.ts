@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {LOCALE_COOKIE,selectBrowserLocale} from "./lib/browser-locale";
+import {LOCALE_COOKIE,LOCALE_DEVICE_COOKIE,selectBrowserLocale} from "./lib/browser-locale";
 
 export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -15,7 +15,7 @@ export function proxy(request: NextRequest) {
 
   // Negotiate only the neutral entry URL; explicit language routes stay stable.
   if (pathname === "/") {
-    const locale=selectBrowserLocale(request.cookies.get(LOCALE_COOKIE)?.value,request.headers.get("accept-language"));
+    const locale=selectBrowserLocale(request.cookies.get(LOCALE_COOKIE)?.value,request.headers.get("accept-language"),request.cookies.get(LOCALE_DEVICE_COOKIE)?.value);
     const response=NextResponse.redirect(new URL("/"+locale+request.nextUrl.search,request.url));
     response.headers.set("Vary","Accept-Language, Cookie");
     response.headers.set("Cache-Control","private, no-store");
