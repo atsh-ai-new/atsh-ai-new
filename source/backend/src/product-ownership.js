@@ -8,8 +8,8 @@ const sectorTariffs=Object.freeze({
  supermarket:[1090,2290,6490],sofra:[2490,3490,8990],market:[1990,3490,7990],gzaar:[1290,1790,5490],khodra:[1190,1690,4990],mkawel:[3990,9900,24900],
  avocato:[1790,3490,8490],accounting:[2490,4990,11900],mosek:[2190,4490,10900],emtsal:[3990,7900,18900],
  center:[2990,5490,12900],academia:[4490,9900,23900],taalm:[3490,7490,17900],
- // Reserved tariffs for future catalog entries; no products are created here.
- hadana:[1690,3290,8900],madrasati:[1890,5990,16900],
+ // Education systems published in the catalog; tariffs do not create products.
+ hadnty:[1690,3290,8900],madrsty:[1890,5990,16900],
  news:[2990,6900,15900],otstodyo:[3290,6490,14900],cinema:[7900,19900,44900],bas:[8900,21900,49900],
  wnsh:[8900,19900,44900],mosla:[11900,27900,64900],toktok:[7900,17900,39900],torsekl:[8900,19900,44900]
 });

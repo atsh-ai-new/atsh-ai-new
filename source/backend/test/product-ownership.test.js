@@ -43,7 +43,7 @@ test('package rental period reaches billing and contractual quote',()=>{
 });
 
 test('all 28 registry keys use independent defaults and ten-month annual pricing',()=>{
- const keys='eyadaty agzakhana ebtsama hehaa nabd supermarket sofra market gzaar khodra mkawel avocato accounting mosek emtsal center academia taalm hadana madrasati news otstodyo cinema bas wnsh mosla toktok torsekl'.split(' ');
+ const keys='eyadaty agzakhana ebtsama hehaa nabd supermarket sofra market gzaar khodra mkawel avocato accounting mosek emtsal center academia taalm hadnty madrsty news otstodyo cinema bas wnsh mosla toktok torsekl'.split(' ');
  assert.equal(new Set(keys).size,28);
  for(const key of keys){const tariff=sectorTariff(key);assert.ok(tariff);assert.equal(tariff.rent,tariff.rent_monthly*10);assert.ok(tariff.code>tariff.copy);assert.ok(tariff.copy>tariff.rent);assert.deepEqual(initialOwnership('sector',key,null),tariff);}
  assert.equal(sectorTariff('__proto__'),null);
