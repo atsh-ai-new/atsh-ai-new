@@ -1,0 +1,74 @@
+import {test,expect} from "@playwright/test";
+
+test("admin replaces and clears a cover, deletes the selected system and leaves other records intact",async({page})=>{
+ const assetId="a".repeat(64);
+ const oldCover="https://example.test/old.png";
+ const newCover="/api/site-media/12345678-1234-1234-1234-123456789abc";
+ const template={category:"التجاري",sectorId:"business",published:true,archived:false,icon:"📁",description:"Demo",features:[],modules:[],sampleStats:[],sampleRows:[],sortOrder:10,previewUrl:"",basePrice:5000,addons:[],pricedAddons:[]};
+ let items=[{...template,slug:"cover-test",name:"نظام الاختبار",imageUrl:oldCover,previewAssetId:assetId},{...template,slug:"other-system",name:"نظام آخر",imageUrl:"",previewAssetId:assetId}];
+ let updatedAt="2026-11-25T00:00:00.000Z";
+ let saves=0;
+ const catalog=()=>({slug:"catalog",locale:"ar",is_published:true,updated_at:updatedAt,content:{items}});
+ await page.route("**/api/admin/**",async route=>{
+  const path=new URL(route.request().url()).pathname;
+  if(path==="/api/admin/me")return route.fulfill({json:{email:"owner@example.test",role:"owner",permissions:{products:true,content:true}}});
+  if(path==="/api/admin/pages")return route.fulfill({json:{pages:[catalog()]}});
+  if(path==="/api/admin/media")return route.fulfill({status:201,json:{media:{url:newCover}}});
+  if(path==="/api/admin/pages/catalog"&&route.request().method()==="PATCH"){
+   const input=route.request().postDataJSON();
+   expect(input.expectedUpdatedAt).toBe(updatedAt);
+   items=input.content.items;
+   saves++;
+   updatedAt=new Date(Date.parse(updatedAt)+1000).toISOString();
+   return route.fulfill({json:{page:catalog()}});
+  }
+  return route.fulfill({json:{}});
+ });
+ await page.context().route("**/api/site-content/catalog?*",route=>{
+  const query=new URL(route.request().url()).searchParams;
+  if(query.has("thumbnail"))return route.fulfill({contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT8sAAAAASUVORK5CYII=","base64")});
+  return route.fulfill({json:{page:catalog()}});
+ });
+ await page.route("**/api/site-media/**",route=>route.fulfill({contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT8sAAAAASUVORK5CYII=","base64")}));
+ await page.goto("/admin");
+ await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"المنتجات",exact:true}).click();
+ await page.getByRole("tab",{name:"أنظمة مخصصة"}).click();
+ const row=page.locator(".admin-team-row").filter({hasText:"نظام الاختبار"});
+ await row.getByRole("button",{name:"تغيير الغلاف"}).click();
+ const cover=page.locator("#catalog-cover-editor");
+ await expect(cover).toBeFocused();
+ await cover.locator('input[type="file"]').setInputFiles({name:"cover.png",mimeType:"image/png",buffer:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT8sAAAAASUVORK5CYII=","base64")});
+ await expect(cover.locator("img")).toHaveAttribute("src",newCover);
+ await page.getByRole("button",{name:"حفظ النظام المخصص",exact:true}).click();
+ await expect.poll(()=>saves).toBe(1);
+ await expect(page.locator("#catalog-item-editor h2")).toHaveText("إضافة نظام مخصص");
+ expect(items[0].imageUrl).toBe(newCover);
+ expect(items[0].previewAssetId).toBe(assetId);
+ await row.getByRole("button",{name:"تغيير الغلاف"}).click();
+ await cover.getByRole("button",{name:"إزالة الصورة واستخدام واجهة HTML"}).click();
+ await page.getByRole("button",{name:"حفظ النظام المخصص",exact:true}).click();
+ await expect.poll(()=>saves).toBe(2);
+ await expect(page.locator("#catalog-item-editor h2")).toHaveText("إضافة نظام مخصص");
+ expect(items[0].imageUrl).toBe("");
+ expect(items[0].previewAssetId).toBe(assetId);
+ const gallery=await page.context().newPage();
+ await gallery.goto("/catalog");
+ await expect(gallery.locator('a[href="/catalog/cover-test?fullscreen=1"] img')).toHaveAttribute("src",new RegExp("thumbnail="+assetId));
+ page.once("dialog",dialog=>dialog.dismiss());
+ await row.getByRole("button",{name:"حذف نهائي"}).click();
+ await expect(row).toBeVisible();
+ expect(saves).toBe(2);
+ page.once("dialog",dialog=>dialog.accept());
+ await row.getByRole("button",{name:"حذف نهائي"}).click();
+ await expect(row).toHaveCount(0);
+ expect(items.map(item=>item.slug)).toEqual(["other-system"]);
+ await gallery.reload();
+ await expect(gallery.locator('a[href="/catalog/other-system?fullscreen=1"] img')).toBeVisible();
+ await expect(gallery.locator('a[href="/catalog/cover-test?fullscreen=1"]')).toHaveCount(0);
+ await gallery.close();
+ await page.reload();
+ await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"المنتجات",exact:true}).click();
+ await page.getByRole("tab",{name:"أنظمة مخصصة"}).click();
+ await expect(page.locator(".admin-team-row").filter({hasText:"نظام آخر"})).toBeVisible();
+ await expect(row).toHaveCount(0);
+});
