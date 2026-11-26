@@ -8,6 +8,7 @@ on:
       - 'source/src/app/home-client.tsx'
       - 'source/src/app/globals.css'
       - 'source/e2e/catalog-admin-management.spec.ts'
+      - 'source/e2e/addon-categories.spec.ts'
       - 'source/src/app/admin/catalog-manager.tsx'
       - 'source/src/app/catalog-client.tsx'
       - 'source/src/app/admin/content-manager.tsx'
@@ -126,7 +127,7 @@ jobs:
       - name: Gallery copy browser regression
         if: always()
         working-directory: source
-        run: npx playwright test --config playwright.config.ts e2e/gallery-heading.spec.ts e2e/catalog-admin-management.spec.ts
+        run: npx playwright test --config playwright.config.ts e2e/gallery-heading.spec.ts e2e/catalog-admin-management.spec.ts e2e/addon-categories.spec.ts
       - name: Homepage header contact browser regression
         if: always()
         working-directory: source

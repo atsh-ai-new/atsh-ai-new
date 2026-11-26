@@ -86,6 +86,7 @@ await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sq
 await pool.query(await readFile(new URL("../db/commercial_checkout_stage52.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/unified_pricing_stage53.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/shared_addons_20261126.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/addon_categories_20261126.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/order_submission_idempotency_stage54.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/site_demo_assets.sql",import.meta.url),"utf8"));
 await pool.query(await readFile(new URL("../db/content_studio_assets_20261126.sql",import.meta.url),"utf8"));
@@ -532,12 +533,13 @@ app.post("/api/visitor/assistant",
 );
 
 app.get("/api/catalog", route(async (_req,res) => {
-  const [p,o,shared] = await Promise.all([
+  const [p,o,shared,categories] = await Promise.all([
     pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote FROM packages WHERE is_published=true AND deleted_at IS NULL ORDER BY sort_order,created_at"),
-    pool.query("SELECT o.id,o.package_id,o.code,o.name,o.description,o.price,o.pricing_type,o.unit_label,o.is_required,o.visibility FROM package_options o JOIN packages p ON p.id=o.package_id WHERE o.is_active=true AND p.is_published=true AND p.deleted_at IS NULL ORDER BY o.sort_order,p.sort_order,o.created_at"),
-    pool.query("SELECT *,'both' AS visibility FROM shared_addons WHERE is_active=true ORDER BY sort_order,code")
+    pool.query("SELECT o.id,o.package_id,o.code,o.name,o.description,o.price,o.pricing_type,o.unit_label,o.is_required,o.visibility,o.sort_order,a.category_code,c.sort_order AS category_sort_order FROM package_options o JOIN packages p ON p.id=o.package_id LEFT JOIN shared_addons a ON a.code=o.code LEFT JOIN addon_categories c ON c.code=a.category_code WHERE o.is_active=true AND p.is_published=true AND p.deleted_at IS NULL ORDER BY c.sort_order NULLS LAST,o.sort_order,p.sort_order,o.created_at"),
+    pool.query("SELECT a.*,'both' AS visibility,c.sort_order AS category_sort_order FROM shared_addons a JOIN addon_categories c ON c.code=a.category_code WHERE a.is_active=true ORDER BY c.sort_order,a.sort_order,a.code"),
+    pool.query("SELECT * FROM addon_categories ORDER BY sort_order,code")
   ]);
-  res.set("Cache-Control","no-store").json({packages:p.rows,options:o.rows,sharedOptions:shared.rows});
+  res.set("Cache-Control","no-store").json({packages:p.rows,options:o.rows,sharedOptions:shared.rows,addonCategories:categories.rows});
 }));
 // Unified template catalog. Previews are links to independently deployed builds, never invented demos.
 const templateWriteSchema=z.object({
@@ -983,7 +985,9 @@ const packageSchema=z.object({
   isPublished:z.boolean().default(false),
   sortOrder:z.number().int().min(-100000).max(100000).default(0)
 });
+const addonCategoryCodes=["foundation","integrations","conversation","creative","hosting","marketing"];
 const optionSchema=z.object({
+  categoryCode:z.enum(addonCategoryCodes).default("foundation"),
   packageId:z.string().uuid().optional(),
   code:z.string().regex(/^[a-z0-9_-]{2,80}$/),
   name:z.string().trim().min(2).max(160),
@@ -1006,7 +1010,7 @@ async function findSharedAddon(client,id){
 }
 async function insertSharedAddon(client,x,ignoreExisting=false){
   if(reservedAddonCodes.has(x.code))throw Object.assign(new Error("Reserved add-on code"),{code:"RESERVED_ADDON"});
-  return client.query("INSERT INTO shared_addons(code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) "+(ignoreExisting?"ON CONFLICT(code) DO NOTHING ":"")+"RETURNING *",[x.code,x.name,x.description,x.price,x.pricingType,x.unitLabel,x.isRequired,x.isActive,x.sortOrder]);
+  return client.query("INSERT INTO shared_addons(code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,category_code) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) "+(ignoreExisting?"ON CONFLICT(code) DO NOTHING ":"")+"RETURNING *",[x.code,x.name,x.description,x.price,x.pricingType,x.unitLabel,x.isRequired,x.isActive,x.sortOrder,x.categoryCode]);
 }
 async function auditChange(client,actor,action,type,id,before,after){
   await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,before_data,after_data) VALUES($1,$2,$3,$4,$5,$6)",[actor,action,type,id,before,after]);
@@ -1412,12 +1416,13 @@ app.post("/api/admin/team/:id/purge",requireAdmin,requirePermission("team"),requ
 }));
 await pool.query("ALTER TABLE packages ADD COLUMN IF NOT EXISTS deleted_at timestamptz");
 app.get("/api/admin/packages",requireAdmin,requirePermission("products"),route(async(_req,res)=>{
-  const [p,o,shared]=await Promise.all([
+  const [p,o,shared,categories]=await Promise.all([
     pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote,is_published,sort_order,created_at,updated_at FROM packages WHERE deleted_at IS NULL ORDER BY sort_order,created_at"),
     pool.query("SELECT id,package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,created_at,visibility FROM package_options WHERE package_id IN (SELECT id FROM packages WHERE deleted_at IS NULL) ORDER BY sort_order,created_at"),
-    pool.query("SELECT *,'both' AS visibility FROM shared_addons ORDER BY sort_order,code")
+    pool.query("SELECT a.*,'both' AS visibility,c.sort_order AS category_sort_order FROM shared_addons a JOIN addon_categories c ON c.code=a.category_code ORDER BY c.sort_order,a.sort_order,a.code"),
+    pool.query("SELECT * FROM addon_categories ORDER BY sort_order,code")
   ]);
-  res.json({packages:p.rows,options:o.rows,sharedOptions:shared.rows});
+  res.json({packages:p.rows,options:o.rows,sharedOptions:shared.rows,addonCategories:categories.rows});
 }));
 app.post("/api/admin/packages",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=packageCreateSchema.safeParse(req.body); if(!parsed.success)return res.status(400).json({error:"Invalid package",details:parsed.error.issues});
@@ -1450,6 +1455,19 @@ app.delete("/api/admin/packages/:id",requireAdmin,requirePermission("products"),
     const q=await client.query("UPDATE packages SET is_published=false,deleted_at=now(),updated_at=now() WHERE id=$1 RETURNING *",[req.params.id]);await auditChange(client,req.admin.email,"package.deleted","package",req.params.id,before.rows[0],q.rows[0]);await client.query("COMMIT");res.json({package:q.rows[0],message:"Package deleted from catalog; historical orders preserved."});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
+app.patch("/api/admin/addon-categories",requireAdmin,requirePermission("products"),route(async(req,res)=>{
+  const parsed=z.object({codes:z.array(z.enum(addonCategoryCodes)).length(addonCategoryCodes.length).refine(codes=>new Set(codes).size===addonCategoryCodes.length)}).strict().safeParse(req.body);
+  if(!parsed.success)return res.status(400).json({error:"Invalid category ordering"});
+  const client=await pool.connect();
+  try{await client.query("BEGIN");await addonLock(client);
+    const before=(await client.query("SELECT * FROM addon_categories ORDER BY sort_order,code")).rows;
+    for(const [index,code] of parsed.data.codes.entries())await client.query("UPDATE addon_categories SET sort_order=$1 WHERE code=$2",[(index+1)*10,code]);
+    const after=(await client.query("SELECT * FROM addon_categories ORDER BY sort_order,code")).rows;
+    // The central category list uses a stable audit UUID.
+    await auditChange(client,req.admin.email,"addon_categories.reordered","addon_categories","00000000-0000-4000-8000-000000000001",{categories:before},{categories:after});
+    await client.query("COMMIT");res.json({addonCategories:after});
+  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
 app.post("/api/admin/options",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=optionSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:"Invalid option",details:parsed.error.issues});
   const x=parsed.data,client=await pool.connect();try{
@@ -1465,7 +1483,7 @@ app.post("/api/admin/options",requireAdmin,requirePermission("products"),route(a
 app.patch("/api/admin/options/:id",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=optionSchema.partial().omit({packageId:true,code:true}).strict().safeParse(req.body);
   if(!parsed.success||!Object.keys(parsed.data||{}).length)return res.status(400).json({error:"Invalid option update"});
-  const map={name:"name",description:"description",price:"price",pricingType:"pricing_type",unitLabel:"unit_label",isRequired:"is_required",isActive:"is_active",sortOrder:"sort_order"};
+  const map={categoryCode:"category_code",name:"name",description:"description",price:"price",pricingType:"pricing_type",unitLabel:"unit_label",isRequired:"is_required",isActive:"is_active",sortOrder:"sort_order"};
   const entries=Object.entries(parsed.data).filter(([key])=>key!=="visibility"&&Object.hasOwn(req.body,key)),client=await pool.connect();try{
     await client.query("BEGIN");await addonLock(client);const before=await findSharedAddon(client,req.params.id);
     if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Option not found"});}
