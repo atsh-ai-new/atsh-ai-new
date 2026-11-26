@@ -52,13 +52,22 @@ test("admin replaces and clears a cover, deletes the selected system and leaves 
  await expect(page.locator("#catalog-item-editor h2")).toHaveText("إضافة نظام مخصص");
  expect(items[0].imageUrl).toBe("");
  expect(items[0].previewAssetId).toBe(assetId);
+ const beforeMove=JSON.parse(JSON.stringify(items[0]));
+ await row.getByRole("button",{name:"نقل إلى قسم آخر"}).click();
+ await row.getByLabel("القطاع الجديد").selectOption("health");
+ await row.getByLabel("التصنيف الفرعي الجديد").selectOption("clinics");
+ await row.getByRole("button",{name:"حفظ النقل"}).click();
+ await expect.poll(()=>saves).toBe(3);
+ await expect(row).toContainText("الصحة / العيادات والمراكز الطبية");
+ expect(items[0]).toEqual({...beforeMove,sectorId:"health",subcategoryId:"clinics",category:"العيادات والمراكز الطبية"});
+ await page.getByRole("button",{name:"مسح الفلاتر"}).click();
  const gallery=await page.context().newPage();
  await gallery.goto("/catalog");
  await expect(gallery.locator('a[href="/catalog/cover-test?fullscreen=1"] img')).toHaveAttribute("src",new RegExp("thumbnail="+assetId));
  page.once("dialog",dialog=>dialog.dismiss());
  await row.getByRole("button",{name:"حذف نهائي"}).click();
  await expect(row).toBeVisible();
- expect(saves).toBe(2);
+ expect(saves).toBe(3);
  page.once("dialog",dialog=>dialog.accept());
  await row.getByRole("button",{name:"حذف نهائي"}).click();
  await expect(row).toHaveCount(0);
@@ -163,7 +172,7 @@ test("products are nested under platform content while package and add-on pricin
  await expect(nav.getByRole("button",{name:"إدارة الفيديوهات",exact:true})).toBeVisible();
  await nav.getByRole("button",{name:"المنتجات",exact:true}).click();
  const packageCard=page.locator(".admin-package-quarter-grid .admin-package-editor").first();
- await packageCard.getByLabel("السعر بالجنيه").fill("5500");
+ await packageCard.getByLabel("السعر قبل الخصم").fill("5500");
  await packageCard.getByRole("button",{name:"حفظ الباقة",exact:true}).click();
  await expect.poll(()=>changes.length).toBe(1);
  expect(changes[0]).toMatchObject({path:"/api/admin/packages/package-test",price:5500});
@@ -182,7 +191,7 @@ test("products are nested under platform content while package and add-on pricin
  await page.getByRole("tab",{name:"أنظمة مخصصة",exact:true}).click();
  await expect(page.locator("#unified-catalog-pricing")).toBeVisible();
  await page.getByRole("tab",{name:"الباقات",exact:true}).click();
- await expect(packageCard.getByLabel("السعر بالجنيه")).toHaveValue("5500");
+ await expect(packageCard.getByLabel("السعر قبل الخصم")).toHaveValue("5500");
 });
 
 for(const products of [true,false]){
