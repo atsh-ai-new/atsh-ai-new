@@ -6,7 +6,8 @@ const db=new pg.Client({connectionString:process.env.DATABASE_URL});
 await db.connect();
 const key=randomUUID(),account=randomUUID(),foreign=randomUUID();
 const base="http://127.0.0.1:3017";
-const admin="atsh_admin="+jwt.sign({role:"owner",email:"ci-owner@example.test"},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-admin",expiresIn:"10m"});
+const ownerVersion=Number((await db.query("SELECT session_version FROM owner_password_overrides WHERE id=1")).rows[0]?.session_version??0);
+const admin="atsh_admin="+jwt.sign({role:"owner",email:"ci-owner@example.test",ownerVersion},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-admin",expiresIn:"10m"});
 const cookie=id=>"atsh_customer="+jwt.sign({sub:id,kind:"customer",ver:0},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-customer",expiresIn:"10m"});
 const api=async(path,method="GET",body,auth=admin)=>{const r=await fetch(base+path,{method,headers:{origin:base,cookie:auth,...(body?{"content-type":"application/json"}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()};};
 try{
