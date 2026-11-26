@@ -26,6 +26,7 @@ import { priceSectorSelection } from "./sector-pricing.js";
 import { calculateUnifiedPricing } from "./pricing-engine.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
+import {xpayConfig,verifyXpaySignature,retrieveXpaySession,verifiedTestPayment} from "./xpay-adapter.js";
 import {queueJourneyEvent,deliverJourneyEvents,eventDestination} from "./customer-event-outbox.js";
 import {checkDomainLive} from "./domain-registry-lookup.js";
 import {seedCatalogIfAbsent} from "./catalog-starter.js";
@@ -80,6 +81,10 @@ await pool.query(await readFile(new URL("../db/visitor_ai_usage_stage51.sql", im
 await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_checkout_stage52.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/commercial_payment_methods.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/commercial_invoice_revisions.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/commercial_refunds.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/commercial_xpay_test.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/unified_pricing_stage53.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/shared_addons_20261126.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/order_submission_idempotency_stage54.sql", import.meta.url), "utf8"));
@@ -129,10 +134,13 @@ app.use("/api/customer/auth/workspace/logo",express.raw({type:["image/png","imag
 app.use(/^\/api\/customer\/auth\/project-drafts\/[0-9a-f-]{36}\/logo\/?$/i,express.raw({type:["image/png","image/jpeg","image/webp"],limit:"2mb"}));
 app.use("/api/customer/auth/project-drafts",express.raw({type:["image/png","image/jpeg","image/webp"],limit:"2mb"}));
 app.use("/api/internal/verified-payments",express.raw({type:"application/json",limit:"16kb"}));
+app.use("/api/webhooks/xpay-test",express.raw({type:"application/json",limit:"256kb"}));
 // Allow a wider structured sector catalog while keeping other JSON endpoints tightly bounded.
 app.use("/api/admin/pages/catalog",express.json({limit:"68mb"}));
 app.use(["/api/admin/pages/home","/api/admin/page-drafts/home","/api/admin/home-featured"],express.json({limit:"68mb"}));
 const validFeaturedHtml=content=>{const files=content?.featuredSystemHtml;if(files===undefined)return true;if(!files||typeof files!=="object"||Array.isArray(files)||Object.keys(files).length>4)return false;return Object.entries(files).every(([slug,entry])=>/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)&&entry&&((typeof entry.html==="string"&&Buffer.byteLength(entry.html,"utf8")<=10*1024*1024)||(typeof entry.assetId==="string"&&/^[a-f0-9]{64}$/.test(entry.assetId)))&&typeof entry.name==="string"&&entry.name.length<=255);};
+app.use("/api/admin/commercial/contracts/pdf",express.raw({type:"application/pdf",limit:"5mb"}));
+app.use("/api/admin/commercial/revision-pdf",express.raw({type:"application/pdf",limit:"5mb"}));
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 const isolatedCiRate=process.env.ATSH_CI_TEST_RATE_LIMIT==="true"&&process.env.NODE_ENV!=="production";
@@ -194,6 +202,26 @@ app.use("/api/customer/deliverables",deliveryCustomerRouter({pool,allowedOrigins
 app.use("/api/admin/deliverables",requireAdmin,requireRole("owner","admin","editor"),deliveryAdminRouter({pool}));
 app.use("/api/admin/operations",requireAdmin,requireRole("owner","admin"),deliveryAdminRouter({pool,operationsOnly:true}));
 app.use("/api/customer/commercial",customerCommercialRouter({pool,allowedOrigins:origins,queueJourneyEvent}));
+app.post("/api/webhooks/xpay-test",rateLimit({windowMs:60000,limit:120,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
+ let cfg;try{cfg=xpayConfig();}catch{return res.status(503).json({error:"Sandbox not configured"});}
+ if(!cfg)return res.status(503).json({error:"Sandbox disabled"});
+ if(!verifyXpaySignature(req.body,req.get("xpay-signature"),cfg.secret))return res.status(401).json({error:"Invalid signature"});
+ let event;try{event=JSON.parse(req.body.toString("utf8"));}catch{return res.status(400).json({error:"Invalid event"});}
+ if(!["checkout.session.completed","checkout.session.async_payment_succeeded","checkout.session.expired"].includes(event?.type))return res.json({received:true});
+ const id=event?.data?.object?.id;
+ if(typeof id!=="string"||!/^cs_test_[A-Za-z0-9]+$/.test(id))return res.status(400).json({error:"Test session required"});
+ const q=await pool.query("SELECT id,session_id,amount_piasters,status FROM commercial_xpay_test_attempts WHERE session_id=$1",[id]);
+ if(!q.rowCount)return res.status(404).json({error:"Session not registered"});
+ const a=q.rows[0];
+ if(a.status==="test_paid")return res.json({received:true,testMode:true,duplicate:true});
+ const session=await retrieveXpaySession({key:cfg.key,sessionId:id});
+ const paid=verifiedTestPayment(session,{sessionId:a.session_id,amountPiasters:Number(a.amount_piasters)});
+ if(paid)await pool.query("UPDATE commercial_xpay_test_attempts SET status='test_paid',verified_at=COALESCE(verified_at,now()) WHERE id=$1 AND status IN ('open','expired')",[a.id]);
+ else if(session.status==="expired"||session.isExpired)await pool.query("UPDATE commercial_xpay_test_attempts SET status='expired' WHERE id=$1 AND status='open'",[a.id]);
+ else return res.status(409).json({error:"Test settlement not verified"});
+ res.json({received:true,testMode:true});
+}));
+
 
 // Enforce central operations flags on actual write entry points (not just dashboard state).
 app.use('/api/orders', (req,res,next)=>req.method==='POST'?operationGuard(pool,'new_orders')(req,res,next):next());
@@ -1628,6 +1656,24 @@ app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requirePermissio
  await client.query("COMMIT");res.status(201).json({quote:newer.rows[0],supersedes:x.id});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
 }));
+app.post("/api/admin/commercial/contracts/pdf",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const quoteId=Number(req.query.quoteId);
+ if(!Number.isSafeInteger(quoteId)||quoteId<1||!Buffer.isBuffer(req.body))return res.status(400).json({error:"PDF and quote required"});
+ const {contractPdf}=await import("./payment-revision-rules.js");
+ let fingerprint;try{fingerprint=contractPdf(req.body);}catch{return res.status(400).json({error:"Invalid PDF"});}
+ const c=await pool.connect();try{
+ await c.query("BEGIN");
+ const q=await c.query("SELECT id,status,valid_until,customer_account_id FROM commercial_quotes WHERE id=$1 FOR UPDATE",[quoteId]);
+ if(!q.rowCount||q.rows[0].status!=="issued"||!q.rows[0].customer_account_id||(q.rows[0].valid_until&&new Date(q.rows[0].valid_until)<=new Date())){await c.query("ROLLBACK");return res.status(409).json({error:"Issued account-owned quote required"});}
+ const prior=await c.query("SELECT id,status FROM customer_contracts WHERE quote_id=$1 AND status<>'void' FOR UPDATE",[quoteId]);
+ if(prior.rows.some(x=>x.status!=="issued")){await c.query("ROLLBACK");return res.status(409).json({error:"Signed contract cannot be replaced"});}
+ await c.query("UPDATE customer_contracts SET status='void' WHERE quote_id=$1 AND status='issued'",[quoteId]);
+ await c.query("UPDATE commercial_review_links SET revoked_at=now() WHERE quote_id=$1 AND revoked_at IS NULL",[quoteId]);
+ const ins=await c.query("INSERT INTO customer_contracts(quote_id,body_snapshot) VALUES($1,$2) RETURNING id,status,created_at",[quoteId,"PDF contract SHA256: "+fingerprint.sha256]);
+ await c.query("INSERT INTO commercial_contract_pdfs(contract_id,filename,pdf_bytes,sha256,uploaded_by) VALUES($1,$2,$3,$4,$5)",[ins.rows[0].id,"contract-"+ins.rows[0].id+".pdf",req.body,fingerprint.sha256,req.admin.email]);
+ await c.query("COMMIT");res.status(201).json({contract:ins.rows[0],sha256:fingerprint.sha256});
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}));
 app.post("/api/admin/commercial/contracts/issue",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  const {quoteId,templateId}=req.body||{};if(!validCommercialId(quoteId)||!validCommercialId(templateId))return res.status(400).json({error:"Invalid identifiers"});
  const client=await pool.connect();
@@ -1668,6 +1714,9 @@ app.post("/api/commercial/review/:token/accept-and-sign",reviewLimiter,route(asy
  const client=await pool.connect();try{await client.query("BEGIN");const l=await client.query("SELECT quote_id FROM commercial_review_links WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>now() FOR UPDATE",[hashReviewToken(token)]);
  if(!l.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Link expired or used"})}
  const id=l.rows[0].quote_id;
+ const lock=await client.query("SELECT id FROM commercial_quotes WHERE id=$1 FOR UPDATE",[id]);
+ const pdf=await client.query("SELECT 1 FROM commercial_contract_pdfs p JOIN customer_contracts c ON c.id=p.contract_id WHERE c.quote_id=$1 AND c.status='issued'",[id]);
+ if(pdf.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Sign in to review and approve the PDF contract"});}
  const pendingChanges=await client.query("SELECT 1 FROM commercial_quote_change_requests WHERE quote_id=$1 AND status='pending' LIMIT 1",[id]);
  if(pendingChanges.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Unresolved quote change request must be reviewed first"});}
  const q=await client.query("UPDATE commercial_quotes SET status='accepted',accepted_at=now() WHERE id=$1 AND status='issued' AND (valid_until IS NULL OR valid_until>now()) RETURNING id",[id]);
@@ -1701,7 +1750,84 @@ app.get("/api/admin/commercial/invoices",requireAdmin,requirePermission("custome
  WHERE ($1::bigint IS NULL OR i.quote_id=$1) ORDER BY i.due_at NULLS LAST,i.id LIMIT 500`,[quoteId]);
  res.json({invoices:result.rows});
 }));
-app.post("/api/admin/commercial/invoices/schedule",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+// Payment settings: privileged staff only, serialize changes with collection.
+app.put("/api/admin/commercial/payment-instructions/:method",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const method=req.params.method,{instructions,enabled}=req.body||{};
+ if(!["cash","bank_transfer","instapay","wallet_direct"].includes(method)||typeof instructions!=="string"||!instructions.trim()||instructions.length>2000||typeof enabled!=="boolean")return res.status(400).json({error:"Invalid payment instructions"});
+ const q=await pool.query("INSERT INTO commercial_payment_instructions(method,instructions,enabled,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(method) DO UPDATE SET instructions=EXCLUDED.instructions,enabled=EXCLUDED.enabled,updated_by=EXCLUDED.updated_by,updated_at=now() RETURNING *",[method,instructions.trim(),enabled,req.admin.email]);
+ res.json({instruction:q.rows[0]});
+}));
+app.get("/api/admin/commercial/payment-instructions",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const q=await pool.query("SELECT * FROM commercial_payment_instructions ORDER BY method");
+ res.set("Cache-Control","no-store").json({instructions:q.rows});
+}));
+app.put("/api/admin/commercial/quotes/:id/payment-methods",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id),methods=req.body?.methods;
+ if(!Number.isSafeInteger(id)||id<1||!Array.isArray(methods)||!methods.length||new Set(methods).size!==methods.length||methods.some(m=>!["cash","bank_transfer","instapay","wallet_direct","xpay"].includes(m)))return res.status(400).json({error:"Invalid payment methods"});
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const q=await c.query("SELECT id FROM commercial_quotes WHERE id=$1 AND status IN ('draft','issued','accepted') FOR UPDATE",[id]);
+ if(!q.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Quote unavailable"});}
+ await c.query("INSERT INTO commercial_payment_preferences(quote_id,methods,updated_by) VALUES($1,$2,$3) ON CONFLICT(quote_id) DO UPDATE SET methods=EXCLUDED.methods,updated_by=EXCLUDED.updated_by,updated_at=now()",[id,methods,req.admin.email]);
+ await c.query("COMMIT");res.json({methods});
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}));
+app.patch("/api/admin/commercial/invoices/:id/release",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id),{released,milestone}=req.body||{};
+ if(!Number.isSafeInteger(id)||id<1||typeof released!=="boolean"||typeof milestone!=="string"||!milestone.trim()||milestone.length>200)return res.status(400).json({error:"Invalid installment release"});
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const q=await c.query("SELECT q.id FROM commercial_quotes q JOIN commercial_invoices i ON i.quote_id=q.id WHERE i.id=$1 AND q.status IN ('issued','accepted') FOR UPDATE OF q",[id]);
+ if(!q.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Quote unavailable"});}
+ const r=await c.query("UPDATE commercial_invoices SET release_for_payment=$2,milestone=$3 WHERE id=$1 AND status IN ('unpaid','part_paid') RETURNING id,release_for_payment,milestone",[id,released,milestone.trim()]);
+ if(!r.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Invoice unavailable"});}
+ await c.query("COMMIT");res.json({invoice:r.rows[0]});
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}));
+// Revisions are proposals until the verified customer accepts the exact PDF.
+app.post("/api/admin/commercial/quotes/:id/revisions",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id),{items,schedule,reason}=req.body||{};
+ if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"Invalid quote"});
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const q=await c.query("SELECT id,revision,status FROM commercial_quotes WHERE id=$1 FOR UPDATE",[id]);
+ if(!q.rowCount||q.rows[0].status!=="accepted"){await c.query("ROLLBACK");return res.status(409).json({error:"Accepted quote required"});}
+ const signed=await c.query("SELECT 1 FROM customer_contracts WHERE quote_id=$1 AND status='signed'",[id]);
+ if(!signed.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Signed contract required"});}
+ const p=await c.query("SELECT (SELECT COALESCE(sum(p.amount_piasters),0) FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1)-(SELECT COALESCE(sum(amount_piasters),0) FROM commercial_refund_payments WHERE quote_id=$1) AS paid",[id]);
+ const {revisionProposal}=await import("./payment-revision-rules.js");
+ let proposal;try{proposal=revisionProposal({items,schedule,reason,paidPiasters:Number(p.rows[0].paid)});}catch(e){await c.query("ROLLBACK");return res.status(422).json({error:e.message});}
+ const inserted=await c.query("INSERT INTO commercial_invoice_revision_requests(quote_id,base_revision,proposed_items,proposed_total_piasters,proposed_schedule,reason,proposed_by) VALUES($1,$2,$3::jsonb,$4,$5::jsonb,$6,$7) RETURNING id,status,created_at",[id,q.rows[0].revision,JSON.stringify(proposal.items),proposal.totalPiasters,JSON.stringify(proposal.schedule),proposal.reason,req.admin.email]);
+ await c.query("COMMIT");res.status(201).json({revision:inserted.rows[0],balance:proposal});
+ }catch(e){await c.query("ROLLBACK");if(e.code==="23505")return res.status(409).json({error:"A revision is already open"});throw e;}finally{c.release();}
+}));
+app.get("/api/admin/commercial/quotes/:id/revisions",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"Invalid quote"});
+ const r=await pool.query("SELECT id,base_revision,proposed_items,proposed_total_piasters,proposed_schedule,reason,status,proposed_by,created_at,issued_at,accepted_at,contract_sha256 FROM commercial_invoice_revision_requests WHERE quote_id=$1 ORDER BY id DESC",[id]);
+ res.set("Cache-Control","no-store").json({revisions:r.rows});
+}));
+app.post("/api/admin/commercial/revisions/:id/cancel",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"Invalid revision"});
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const q=await c.query("SELECT q.id FROM commercial_quotes q JOIN commercial_invoice_revision_requests r ON r.quote_id=q.id WHERE r.id=$1 FOR UPDATE OF q",[id]);
+ if(!q.rowCount){await c.query("ROLLBACK");return res.status(404).json({error:"Not found"});}
+ const r=await c.query("UPDATE commercial_invoice_revision_requests SET status='cancelled' WHERE id=$1 AND status IN ('draft','issued') RETURNING id,status",[id]);
+ if(!r.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Accepted revisions cannot be cancelled"});}
+ await c.query("COMMIT");res.json({revision:r.rows[0]});
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}));
+app.post("/api/admin/commercial/revision-pdf",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.query.revisionId);if(!Number.isSafeInteger(id)||id<1||!Buffer.isBuffer(req.body))return res.status(400).json({error:"PDF and revision required"});
+ const {contractPdf,revisionProposal}=await import("./payment-revision-rules.js");
+ let fingerprint;try{fingerprint=contractPdf(req.body);}catch{return res.status(400).json({error:"Invalid PDF"});}
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const q=await c.query("SELECT q.id,q.revision,q.status FROM commercial_quotes q JOIN commercial_invoice_revision_requests r ON r.quote_id=q.id WHERE r.id=$1 FOR UPDATE OF q",[id]);
+ const r=await c.query("SELECT * FROM commercial_invoice_revision_requests WHERE id=$1 FOR UPDATE",[id]);
+ if(!q.rowCount||q.rows[0].status!=="accepted"||r.rows[0]?.status!=="draft"||Number(r.rows[0].base_revision)!==Number(q.rows[0].revision)){await c.query("ROLLBACK");return res.status(409).json({error:"Revision unavailable"});}
+ const p=await c.query("SELECT (SELECT COALESCE(sum(p.amount_piasters),0) FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1)-(SELECT COALESCE(sum(amount_piasters),0) FROM commercial_refund_payments WHERE quote_id=$1) AS paid",[q.rows[0].id]);
+ try{revisionProposal({items:r.rows[0].proposed_items,schedule:r.rows[0].proposed_schedule,reason:r.rows[0].reason,paidPiasters:Number(p.rows[0].paid)});}catch(e){await c.query("ROLLBACK");return res.status(409).json({error:"Balance changed; cancel and prepare a new revision"});}
+ await c.query("UPDATE commercial_invoice_revision_requests SET status='issued',issued_at=now(),contract_pdf=$2,contract_sha256=$3 WHERE id=$1",[id,req.body,fingerprint.sha256]);
+ await c.query("COMMIT");res.json({id,status:"issued",sha256:fingerprint.sha256});
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
+}));
+app.post("/api/admin/commercial/invoices/schedule",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
  const {quoteId,parts}=req.body||{};
  if(!Number.isSafeInteger(quoteId)||quoteId<1||!Array.isArray(parts)||parts.length<1||parts.length>24)return res.status(400).json({error:"Invalid schedule"});
  if(parts.some(p=>!Number.isSafeInteger(p.amountPiasters)||p.amountPiasters<1||typeof p.dueAt!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(p.dueAt)||!validCalendarDate(p.dueAt)))return res.status(400).json({error:"Invalid installment"});
@@ -1714,7 +1840,7 @@ app.post("/api/admin/commercial/invoices/schedule",requireAdmin,requirePermissio
  const sum=parts.reduce((a,p)=>a+p.amountPiasters,0);
  if(!Number.isSafeInteger(sum)||sum!==Number(quote.rows[0].total_piasters)){await client.query('ROLLBACK');return res.status(400).json({error:'Installments must equal quote total'});}
  const invoices=[];for(const p of parts){const r=await client.query('INSERT INTO commercial_invoices(quote_id,amount_piasters,due_at) VALUES($1,$2,$3::date) RETURNING *',[quoteId,p.amountPiasters,p.dueAt]);invoices.push(r.rows[0]);}
- await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.schedule.created','commercial_quote',$2,$3::jsonb)",[req.admin.email,String(quoteId),JSON.stringify({count:parts.length,totalPiasters:sum})]);
+ await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.schedule.created','commercial_quote',gen_random_uuid(),$2::jsonb)",[req.admin.email,JSON.stringify({quoteId,count:parts.length,totalPiasters:sum})]);
  await client.query('COMMIT');res.status(201).json({invoices});
  }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
 }));
@@ -1722,31 +1848,73 @@ app.get("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermis
  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Invalid id'});
  const r=await pool.query('SELECT id,invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by,created_at FROM commercial_invoice_payments WHERE invoice_id=$1 ORDER BY paid_at,id',[id]);res.json({payments:r.rows});
 }));
-app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
- const id=Number(req.params.id),{amountPiasters,paidAt,provider,providerReference}=req.body||{};
+app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id),{amountPiasters,paidAt,provider,providerReference,paymentMethod,receiptNote}=req.body||{};
  if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(amountPiasters)||amountPiasters<1||typeof provider!=='string'||!['manual_verified','gateway_verified'].includes(provider)||typeof providerReference!=='string'||!providerReference.trim()||providerReference.length>180||typeof paidAt!=='string'||Number.isNaN(Date.parse(paidAt)))return res.status(400).json({error:'Invalid verified payment'});
  // Gateway verification requires a server-side provider callback. Manual entries require owner/admin evidence review.
  if(provider==='gateway_verified')return res.status(400).json({error:'Gateway payments must be recorded by verified server webhook'});
+ if(!['cash','bank_transfer','instapay','wallet_direct'].includes(paymentMethod)|| (receiptNote!==undefined&&(typeof receiptNote!=='string'||receiptNote.length>2000)))return res.status(400).json({error:'Invalid manual payment method or receipt'});
  const client=await pool.connect();try{await client.query('BEGIN');
+ const locked=await client.query('SELECT q.id,q.status FROM commercial_quotes q JOIN commercial_invoices i ON i.quote_id=q.id WHERE i.id=$1 FOR UPDATE OF q',[id]);
+ if(!locked.rowCount||locked.rows[0].status!=='accepted'){await client.query('ROLLBACK');return res.status(409).json({error:'Accepted quote required'});}
+ const quoteId=locked.rows[0].id;
+ const contract=await client.query("SELECT id FROM customer_contracts WHERE quote_id=$1 AND status='signed' LIMIT 1",[quoteId]);
+ const revision=await client.query("SELECT id FROM commercial_invoice_revision_requests WHERE quote_id=$1 AND status='issued' LIMIT 1",[quoteId]);
+ const preferences=await client.query("SELECT methods FROM commercial_payment_preferences WHERE quote_id=$1",[quoteId]);
+ const instruction=await client.query("SELECT enabled FROM commercial_payment_instructions WHERE method=$1",[paymentMethod]);
+ if(!contract.rowCount||revision.rowCount||!preferences.rows[0]?.methods?.includes(paymentMethod)||instruction.rows[0]?.enabled!==true){await client.query('ROLLBACK');return res.status(409).json({error:'Contract, revision or payment method does not permit collection'});}
  const inv=await client.query('SELECT * FROM commercial_invoices WHERE id=$1 FOR UPDATE',[id]);
- if(!inv.rowCount||inv.rows[0].status==='void'){await client.query('ROLLBACK');return res.status(409).json({error:'Invoice unavailable'});}
+ if(!inv.rowCount||(inv.rows[0].status==='void'||inv.rows[0].release_for_payment!==true)){await client.query('ROLLBACK');return res.status(409).json({error:'Invoice unavailable'});}
  const remaining=Number(inv.rows[0].amount_piasters)-Number(inv.rows[0].verified_paid_piasters);
  if(amountPiasters>remaining){await client.query('ROLLBACK');return res.status(409).json({error:'Payment exceeds remaining balance'});}
- const payment=await client.query('INSERT INTO commercial_invoice_payments(invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[id,amountPiasters,paidAt,provider,providerReference.trim(),req.admin.email]);
+ const payment=await client.query('INSERT INTO commercial_invoice_payments(invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by,payment_method,receipt_note) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[id,amountPiasters,paidAt,provider,providerReference.trim(),req.admin.email,paymentMethod,receiptNote||null]);
  const newPaid=Number(inv.rows[0].verified_paid_piasters)+amountPiasters;
  await client.query('UPDATE commercial_invoices SET verified_paid_piasters=$1,status=$2 WHERE id=$3',[newPaid,newPaid===Number(inv.rows[0].amount_piasters)?'paid':'part_paid',id]);
- await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.payment.manually_verified','commercial_invoice',$2,$3::jsonb)",[req.admin.email,String(id),JSON.stringify({amountPiasters,paymentId:payment.rows[0].id,providerReference:providerReference.trim()})]);
+ await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.payment.manually_verified','commercial_invoice',gen_random_uuid(),$2::jsonb)",[req.admin.email,JSON.stringify({invoiceId:id,amountPiasters,paymentId:payment.rows[0].id,providerReference:providerReference.trim(),paymentMethod})]);
  await queueJourneyEvent(client,"payment.verified",`payment.verified:${payment.rows[0].id}`,{invoiceId:id,paymentId:payment.rows[0].id,amountPiasters,invoiceStatus:newPaid===Number(inv.rows[0].amount_piasters)?'paid':'part_paid'});
  await advancePaidJourneyIfEligible(client,id);
  await client.query('COMMIT');res.status(201).json({payment:payment.rows[0],remainingPiasters:Number(inv.rows[0].amount_piasters)-newPaid});
  }catch(e){await client.query('ROLLBACK');if(e.code==='23505')return res.status(409).json({error:'Duplicate payment reference'});throw e}finally{client.release()}
 }));
 // Finance dashboard: server-side totals avoid exposing individual customers to other customers.
-app.get('/api/admin/commercial/finance/summary',requireAdmin,requireRole('owner','admin','sales','viewer'),route(async(req,res)=>{
- const totals=await pool.query(`SELECT count(*)::integer AS invoice_count,
- COALESCE(sum(i.amount_piasters),0)::bigint AS invoiced_piasters,
- COALESCE(sum(i.verified_paid_piasters),0)::bigint AS paid_piasters,
- COALESCE(sum(i.amount_piasters-i.verified_paid_piasters),0)::bigint AS outstanding_piasters,
+// Refund confirmation records an actual outgoing transfer, never initiates one.
+app.post("/api/admin/commercial/quotes/:id/refunds",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id),{amountPiasters,method,reference,note,confirmed}=req.body||{};
+ if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(amountPiasters)||amountPiasters<1||!["cash","bank_transfer","instapay","wallet_direct"].includes(method)||typeof reference!=="string"||!reference.trim()||reference.length>180||confirmed!==true||(note!==undefined&&(typeof note!=="string"||note.length>2000)))return res.status(400).json({error:"Invalid confirmed refund"});
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const q=await c.query("SELECT total_piasters,status FROM commercial_quotes WHERE id=$1 FOR UPDATE",[id]);
+ if(!q.rowCount||q.rows[0].status!=="accepted"){await c.query("ROLLBACK");return res.status(409).json({error:"Accepted quote required"});}
+ const pending=await c.query("SELECT 1 FROM commercial_invoice_revision_requests WHERE quote_id=$1 AND status='issued'",[id]);
+ if(pending.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Resolve pending revision first"});}
+ const b=await c.query("SELECT (SELECT COALESCE(sum(p.amount_piasters),0) FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1) AS gross,(SELECT COALESCE(sum(amount_piasters),0) FROM commercial_refund_payments WHERE quote_id=$1) AS refunded",[id]);
+ const credit=Number(b.rows[0].gross)-Number(b.rows[0].refunded)-Number(q.rows[0].total_piasters);
+ if(!Number.isSafeInteger(credit)||amountPiasters>credit){await c.query("ROLLBACK");return res.status(409).json({error:"Refund exceeds customer credit"});}
+ const inserted=await c.query("INSERT INTO commercial_refund_payments(quote_id,amount_piasters,method,reference,recorded_by,note) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,amount_piasters,method,reference,recorded_at",[id,amountPiasters,method,reference.trim(),req.admin.email,note||null]);
+ await c.query("COMMIT");res.status(201).json({refund:inserted.rows[0],remainingCreditPiasters:credit-amountPiasters});
+ }catch(e){await c.query("ROLLBACK");if(e.code==="23505")return res.status(409).json({error:"Duplicate refund reference"});throw e;}finally{c.release();}
+}));
+app.get("/api/admin/commercial/quotes/:id/refunds",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"Invalid quote"});
+ const q=await pool.query("SELECT q.total_piasters,(SELECT COALESCE(sum(p.amount_piasters),0) FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=q.id) AS gross,(SELECT COALESCE(sum(amount_piasters),0) FROM commercial_refund_payments WHERE quote_id=q.id) AS refunded FROM commercial_quotes q WHERE q.id=$1",[id]);
+ if(!q.rowCount)return res.status(404).json({error:"Not found"});
+ const refunds=await pool.query("SELECT * FROM commercial_refund_payments WHERE quote_id=$1 ORDER BY id DESC",[id]);
+ const b=q.rows[0],net=Number(b.gross)-Number(b.refunded);
+ res.set("Cache-Control","no-store").json({refunds:refunds.rows,grossPaidPiasters:Number(b.gross),refundedPiasters:Number(b.refunded),netPaidPiasters:net,creditPiasters:Math.max(0,net-Number(b.total_piasters))});
+}));
+app.get('/api/admin/commercial/finance/summary',requireAdmin,requireRole('owner','admin'),requirePermission('customers'),route(async(req,res)=>{
+ const totals=await pool.query(`WITH balances AS (
+ SELECT q.id,q.total_piasters,COALESCE(p.gross,0) AS gross,COALESCE(r.refunded,0) AS refunded FROM commercial_quotes q
+ LEFT JOIN LATERAL (SELECT sum(p.amount_piasters) AS gross FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=q.id) p ON true
+ LEFT JOIN LATERAL (SELECT sum(amount_piasters) AS refunded FROM commercial_refund_payments WHERE quote_id=q.id) r ON true
+ WHERE q.status='accepted' OR EXISTS(SELECT 1 FROM commercial_invoices i WHERE i.quote_id=q.id AND i.status<>'void') OR COALESCE(p.gross,0)>0
+ ), financial AS (SELECT COALESCE(sum(total_piasters),0)::bigint AS invoiced_piasters,COALESCE(sum(gross),0)::bigint AS gross_paid_piasters,COALESCE(sum(refunded),0)::bigint AS refunded_piasters,COALESCE(sum(gross-refunded),0)::bigint AS paid_piasters,COALESCE(sum(GREATEST(0,total_piasters-gross+refunded)),0)::bigint AS outstanding_piasters,COALESCE(sum(GREATEST(0,gross-refunded-total_piasters)),0)::bigint AS credit_piasters FROM balances)
+ SELECT count(*)::integer AS invoice_count,
+ (SELECT invoiced_piasters FROM financial) AS invoiced_piasters,
+ (SELECT gross_paid_piasters FROM financial) AS gross_paid_piasters,
+ (SELECT refunded_piasters FROM financial) AS refunded_piasters,
+ (SELECT paid_piasters FROM financial) AS paid_piasters,
+ (SELECT outstanding_piasters FROM financial) AS outstanding_piasters,
+ (SELECT credit_piasters FROM financial) AS credit_piasters,
  count(*) FILTER (WHERE i.due_at < CURRENT_DATE AND i.status NOT IN ('void','paid') AND i.verified_paid_piasters<i.amount_piasters)::integer AS overdue_count,
  COALESCE(sum(i.amount_piasters-i.verified_paid_piasters) FILTER (WHERE i.due_at < CURRENT_DATE AND i.status NOT IN ('void','paid')),0)::bigint AS overdue_piasters
  FROM commercial_invoices i WHERE i.status<>'void'`);
@@ -1776,7 +1944,9 @@ app.post("/api/internal/verified-payments",rateLimit({windowMs:60*1000,limit:40,
  const client=await pool.connect();
  try{
   await client.query("BEGIN");
-  const invoice=await client.query("SELECT id,amount_piasters,verified_paid_piasters,status FROM commercial_invoices WHERE id=$1 FOR UPDATE",[invoiceId]);
+  const quote=await client.query("SELECT q.id,q.status FROM commercial_quotes q JOIN commercial_invoices i ON i.quote_id=q.id WHERE i.id=$1 FOR UPDATE OF q",[invoiceId]);
+  if(!quote.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Invoice not available"});}
+  const invoice=await client.query("SELECT id,amount_piasters,verified_paid_piasters,status,release_for_payment FROM commercial_invoices WHERE id=$1 FOR UPDATE",[invoiceId]);
   if(!invoice.rowCount||invoice.rows[0].status==="void"){await client.query("ROLLBACK");return res.status(404).json({error:"Invoice not available"});}
   const existing=await client.query("SELECT id,invoice_id,amount_piasters FROM commercial_invoice_payments WHERE provider='gateway_verified' AND provider_reference=$1 FOR UPDATE",[providerReference]);
   if(existing.rowCount){
@@ -1784,9 +1954,11 @@ app.post("/api/internal/verified-payments",rateLimit({windowMs:60*1000,limit:40,
    if(Number(existing.rows[0].invoice_id)!==invoiceId||Number(existing.rows[0].amount_piasters)!==amountPiasters)return res.status(409).json({error:"Payment reference conflict"});
    return res.json({accepted:true,duplicate:true,paymentId:existing.rows[0].id});
   }
+  const gate=await client.query("SELECT EXISTS(SELECT 1 FROM customer_contracts WHERE quote_id=$1 AND status='signed') AS signed, EXISTS(SELECT 1 FROM commercial_invoice_revision_requests WHERE quote_id=$1 AND status='issued') AS pending, EXISTS(SELECT 1 FROM commercial_payment_preferences WHERE quote_id=$1 AND 'xpay'=ANY(methods)) AS allowed",[quote.rows[0].id]);
+  if(quote.rows[0].status!=="accepted"||!gate.rows[0].signed||gate.rows[0].pending||!gate.rows[0].allowed||!invoice.rows[0].release_for_payment||/^(cs_test_|xpay_test)/i.test(providerReference)){await client.query("ROLLBACK");return res.status(409).json({error:"Payment requires eligible released invoice and verified live settlement; reconcile rejected external settlements separately"});}
   const remaining=Number(invoice.rows[0].amount_piasters)-Number(invoice.rows[0].verified_paid_piasters);
   if(amountPiasters>remaining){await client.query("ROLLBACK");return res.status(409).json({error:"Payment exceeds invoice balance"});}
-  const payment=await client.query("INSERT INTO commercial_invoice_payments(invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by) VALUES($1,$2,$3,'gateway_verified',$4,'trusted_gateway_adapter') RETURNING id",[invoiceId,amountPiasters,paidAt,providerReference]);
+  const payment=await client.query("INSERT INTO commercial_invoice_payments(invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by,payment_method) VALUES($1,$2,$3,'gateway_verified',$4,'trusted_gateway_adapter','xpay') RETURNING id",[invoiceId,amountPiasters,paidAt,providerReference]);
   const totalPaid=Number(invoice.rows[0].verified_paid_piasters)+amountPiasters;
   const status=totalPaid===Number(invoice.rows[0].amount_piasters)?"paid":"part_paid";
   await client.query("UPDATE commercial_invoices SET verified_paid_piasters=$1,status=$2 WHERE id=$3",[totalPaid,status,invoiceId]);
@@ -1810,12 +1982,12 @@ async function advancePaidJourneyIfEligible(client,invoiceId){
  const valid=await client.query(`SELECT q.id FROM commercial_quotes q
  JOIN customer_contracts c ON c.quote_id=q.id AND c.status='signed'
  WHERE q.id=$1 AND q.status='accepted'
- AND EXISTS(SELECT 1 FROM commercial_invoices x WHERE x.quote_id=q.id AND x.status='paid')
- AND NOT EXISTS(SELECT 1 FROM commercial_invoices x WHERE x.quote_id=q.id AND x.status<>'paid')`,[quoteId]);
+ AND EXISTS(SELECT 1 FROM commercial_invoices x WHERE x.id=$2 AND x.quote_id=q.id AND x.status='paid' AND x.verified_paid_piasters>=x.amount_piasters AND x.amount_piasters>0 AND x.id=(SELECT min(f.id) FROM commercial_invoices f WHERE f.quote_id=q.id AND f.status<>'void'))
+ AND NOT EXISTS(SELECT 1 FROM commercial_invoice_revision_requests r WHERE r.quote_id=q.id AND r.status='issued')`,[quoteId,invoiceId]);
  if(!valid.rowCount)return null;
  const updated=await transitionJourneyProject(client,{projectId,next:'paid',expectedStatus:'payment_pending',paymentVerified:true,actor:'verified-payment-ledger'});
  if(!updated.ok)return null;
- await queueJourneyEvent(client,"project.payment_confirmed",`project.payment_confirmed:${projectId}`,{projectId,quoteId,verified:true});
+ await queueJourneyEvent(client,"project.payment_confirmed",`project.payment_confirmed:${projectId}`,{projectId,quoteId,verified:true,paymentScope:"first_installment"});
  return projectId;
 }
 // Stage 12: admin-only commercial management. Customer signing/payment verification deliberately NOT exposed.
@@ -2006,10 +2178,21 @@ app.patch("/api/admin/commercial/tickets/:id/status",requireAdmin,requirePermiss
  if(!validateTicketTransition(q.rows[0].status,req.body?.status))return res.status(409).json({error:"Invalid ticket transition"});
  const changed=await pool.query("UPDATE support_tickets SET status=$1 WHERE id=$2 AND status=$3 RETURNING *",[req.body.status,id,q.rows[0].status]);if(!changed.rowCount)return res.status(409).json({error:"Concurrent update"});res.json({ticket:changed.rows[0]});
 }));
-app.post("/api/admin/commercial/deliveries",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+app.post("/api/admin/commercial/deliveries",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
  const {quoteId,method}=req.body||{};if(!Number.isSafeInteger(quoteId)||quoteId<1)return res.status(400).json({error:"Invalid quote"});
  try{validateDeliveryMethod(method)}catch(e){return res.status(400).json({error:e.message})}
- const q=await pool.query("INSERT INTO delivery_requests(quote_id,method) VALUES($1,$2) RETURNING *",[quoteId,method]);res.status(201).json({delivery:q.rows[0]});
+ const c=await pool.connect();try{await c.query("BEGIN");
+ const locked=await c.query("SELECT id FROM commercial_quotes WHERE id=$1 FOR UPDATE",[quoteId]);
+ if(!locked.rowCount){await c.query("ROLLBACK");return res.status(404).json({error:"Quote not found"});}
+ const gate=await c.query(`SELECT q.id FROM commercial_quotes q WHERE q.id=$1 AND q.status='accepted'
+ AND EXISTS(SELECT 1 FROM customer_contracts WHERE quote_id=q.id AND status='signed')
+ AND NOT EXISTS(SELECT 1 FROM commercial_invoice_revision_requests WHERE quote_id=q.id AND status='issued')
+ AND (SELECT COALESCE(sum(p.amount_piasters),0) FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=q.id)
+ -(SELECT COALESCE(sum(amount_piasters),0) FROM commercial_refund_payments WHERE quote_id=q.id)>=q.total_piasters`,[quoteId]);
+ if(!gate.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"Full verified payment and signed contract required"});}
+ const q=await c.query("INSERT INTO delivery_requests(quote_id,method) VALUES($1,$2) RETURNING *",[quoteId,method]);
+ await c.query("COMMIT");res.status(201).json({delivery:q.rows[0]});
+ }catch(e){await c.query("ROLLBACK");throw e;}finally{c.release();}
 }));
 // Human-approved project generation: all endpoints use existing admin session and origin protection.
 const reviewId=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

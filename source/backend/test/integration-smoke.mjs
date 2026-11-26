@@ -153,6 +153,14 @@ try{
   const response=await fetch(base+"/api/internal/verified-payments",{method:"POST",headers:{"content-type":"application/json","x-atsh-timestamp":timestamp,"x-atsh-signature":signed},body:raw});
   return {status:response.status,result:await response.json()};
  };
+ const blockedBridge=await bridge(eventFor(50000,"ci-blocked-"+randomUUID()));
+ assert.equal(blockedBridge.status,409,"Gateway cannot bypass release or payment method");
+ const methodsConfigured=await req(`/api/admin/commercial/quotes/${derived.result.quote.id}/payment-methods`,{method:"PUT",cookie:adminCookie,body:{methods:["xpay","cash"]}});
+ assert.equal(methodsConfigured.status,200,JSON.stringify(methodsConfigured));
+ const release=await req(`/api/admin/commercial/invoices/${targetInvoice.rows[0].id}/release`,{method:"PATCH",cookie:adminCookie,body:{released:true,milestone:"CI first installment"}});
+ assert.equal(release.status,200,JSON.stringify(release));
+ const sandboxDenied=await bridge(eventFor(50000,"cs_test_"+randomUUID()));
+ assert.equal(sandboxDenied.status,409,"Sandbox must not enter verified ledger");
  const partialBridge=await bridge(eventFor(50000,"ci-partial-"+randomUUID()));
  assert.equal(partialBridge.status,201,JSON.stringify(partialBridge));
  const during=await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id]);
@@ -161,6 +169,11 @@ try{
  assert.equal(settledBridge.status,201,JSON.stringify(settledBridge));
  const after=await pool.query("SELECT status FROM customer_journey_projects WHERE id=$1",[journey.rows[0].id]);
  assert.equal(after.rows[0].status,"paid");
+ const ciFinance=await req("/api/admin/commercial/finance/summary",{cookie:adminCookie});
+ assert.equal(ciFinance.status,200,JSON.stringify(ciFinance));
+ assert.ok(Number(ciFinance.result.totals.gross_paid_piasters)>=114000);
+ assert.equal(Number(ciFinance.result.totals.paid_piasters),Number(ciFinance.result.totals.gross_paid_piasters)-Number(ciFinance.result.totals.refunded_piasters));
+
  // Checkout: authenticated ownership, customer change request and staff resolution.
  const ownedQuote=await pool.query(`INSERT INTO commercial_quotes(customer_email,customer_account_id,status,items,total_piasters,currency,valid_until)
    VALUES($1,$2,'issued',$3::jsonb,22500,'EGP',now()+interval '12 days') RETURNING id`,
@@ -219,6 +232,97 @@ try{
  assert.equal(unpaidCustom.status,200);
  assert.equal(unpaidCustom.result.project?.status,"payment_pending");
  assert.equal(unpaidCustom.result.invoices[0]?.status,"unpaid");
+
+ // Full manual payment/revision/refund cycle against PostgreSQL and real HTTP routes.
+ const commercial="/api/admin/commercial", customerCommercial="/api/customer/commercial";
+ const testQuoteId=Number(customQuote.result.quote.id), testProject=customQuote.result.projectId;
+ const ownerRequest=(path,method,body)=>req(commercial+path,{method,cookie:adminCookie,body});
+ const clientRequest=(path,method="GET",body,cookie=cookieFor(accountA))=>req(customerCommercial+path,{method,cookie,body});
+ const expectStatus=async(p,status)=>{const result=await p;assert.equal(result.status,status,JSON.stringify(result));return result.result;};
+ const fakePdf=Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n");
+ const pdfUpload=async(path,cookie=adminCookie)=>{const response=await fetch(base+commercial+path,{method:"POST",headers:{origin,cookie,"content-type":"application/pdf"},body:fakePdf});return {status:response.status,result:await response.json()};};
+ const manual=(amountPiasters,providerReference="manual-ci-"+randomUUID())=>({amountPiasters,providerReference,provider:"manual_verified",paidAt:new Date().toISOString(),paymentMethod:"cash",receiptNote:"CI simulated receipt; no transfer"});
+ const revise=(total,schedule)=>({items:[{label:"CI revised project",quantity:1,unitPricePiasters:total}],schedule,reason:"CI test scope adjustment"});
+ const refund=(amountPiasters,reference="refund-ci-"+randomUUID())=>({amountPiasters,reference,method:"cash",confirmed:true,note:"CI simulated refund; no transfer"});
+ const balance=()=>clientRequest("/quotes/"+testQuoteId+"/balance");
+ const deliver=()=>ownerRequest("/deliveries","POST",{quoteId:testQuoteId,method:"zip"});
+ const viewer=teamCookie(chatB);
+ const firstId=Number(unpaidCustom.result.invoices[0].id);
+ await expectStatus(req(commercial+"/finance/summary",{cookie:viewer}),403);
+ await expectStatus(req(commercial+"/quotes/"+testQuoteId+"/payment-methods",{method:"PUT",cookie:viewer,body:{methods:["cash"]}}),403);
+ await expectStatus(req(commercial+"/invoices/"+firstId+"/payments",{method:"POST",cookie:viewer,body:manual(100)}),403);
+ await expectStatus(req(commercial+"/quotes/"+testQuoteId+"/refunds",{method:"POST",cookie:viewer,body:refund(100)}),403);
+ await expectStatus(req(commercial+"/quotes/"+testQuoteId+"/revisions",{method:"POST",cookie:viewer,body:revise(1368000,[])}),403);
+ await expectStatus(clientRequest("/quotes/"+testQuoteId+"/balance","GET",undefined,cookieFor(accountB)),404);
+ await expectStatus(deliver(),409);
+ const artifact=await expectStatus(req("/api/admin/deliverables",{method:"POST",cookie:adminCookie,body:{projectId:testProject,title:"CI final deliverable",kind:"document",assetUrl:"https://example.com/test.pdf"}}),201);
+ const publishArtifact=()=>req("/api/admin/deliverables/"+artifact.deliverable.id,{method:"PATCH",cookie:adminCookie,body:{status:"published"}});
+ await expectStatus(publishArtifact(),409);
+ await expectStatus(ownerRequest("/payment-instructions/cash","PUT",{instructions:"CI only — no actual payment",enabled:true}),200);
+ await expectStatus(ownerRequest("/quotes/"+testQuoteId+"/payment-methods","PUT",{methods:["cash"]}),200);
+ await expectStatus(ownerRequest("/invoices/"+firstId+"/payments","POST",manual(100)),409);
+ const optionsBefore=await expectStatus(clientRequest("/quotes/"+testQuoteId+"/payment-options"),200);
+ assert.equal(optionsBefore.canPay,false);assert.equal(optionsBefore.onlinePaymentEnabled,false);
+ // Rewrite the initial unpaid invoice into two installments through authenticated revision acceptance.
+ const split=await expectStatus(ownerRequest("/quotes/"+testQuoteId+"/revisions","POST",revise(1368000,[{amountPiasters:400000,milestone:"deposit"},{amountPiasters:968000,milestone:"final"}])),201);
+ const splitId=Number(split.revision.id);
+ await expectStatus(pdfUpload("/revision-pdf?revisionId="+splitId,viewer),403);
+ const splitPdf=await expectStatus(pdfUpload("/revision-pdf?revisionId="+splitId),200);
+ const decisionBody={decision:"accept",consent:true,contractSha256:splitPdf.sha256};
+ await expectStatus(clientRequest("/revisions/"+splitId+"/decision","POST",decisionBody,cookieFor(accountB)),404);
+ await expectStatus(clientRequest("/revisions/"+splitId+"/decision","POST",{...decisionBody,contractSha256:"0".repeat(64)}),409);
+ await expectStatus(deliver(),409);
+ await expectStatus(clientRequest("/revisions/"+splitId+"/decision","POST",decisionBody),200);
+ await expectStatus(clientRequest("/revisions/"+splitId+"/decision","POST",decisionBody),409);
+ const installmentRows=(await pool.query("SELECT id,amount_piasters,status FROM commercial_invoices WHERE quote_id=$1 AND status<>'void' ORDER BY id",[testQuoteId])).rows;
+ assert.equal(installmentRows.length,2);assert.deepEqual(installmentRows.map(x=>Number(x.amount_piasters)),[400000,968000]);
+ const deposit=Number(installmentRows[0].id),final=Number(installmentRows[1].id);
+ await expectStatus(ownerRequest("/invoices/"+deposit+"/release","PATCH",{released:true,milestone:"deposit"}),200);
+ const available=await expectStatus(clientRequest("/quotes/"+testQuoteId+"/payment-options"),200);assert.equal(available.canPay,true);assert.equal(available.onlinePaymentEnabled,false);
+ const partial=manual(150000);
+ await expectStatus(ownerRequest("/invoices/"+deposit+"/payments","POST",partial),201);
+ await expectStatus(ownerRequest("/invoices/"+deposit+"/payments","POST",partial),409);
+ await expectStatus(ownerRequest("/invoices/"+deposit+"/payments","POST",manual(250001)),409);
+ await expectStatus(ownerRequest("/invoices/"+final+"/payments","POST",manual(100)),409);
+ await expectStatus(deliver(),409);await expectStatus(publishArtifact(),409);
+ await expectStatus(ownerRequest("/invoices/"+deposit+"/payments","POST",manual(250000)),201);
+ await expectStatus(deliver(),409);await expectStatus(publishArtifact(),409);
+ assert.equal((await expectStatus(balance(),200)).remainingPiasters,968000);
+ await expectStatus(ownerRequest("/invoices/"+final+"/release","PATCH",{released:true,milestone:"final"}),200);
+ await expectStatus(ownerRequest("/invoices/"+final+"/payments","POST",manual(968000)),201);
+ assert.equal((await expectStatus(balance(),200)).remainingPiasters,0);
+ await expectStatus(deliver(),201);await expectStatus(publishArtifact(),200);
+ // Issue a price increase: pending revision and accepted outstanding balance both block delivery.
+ const increase=await expectStatus(ownerRequest("/quotes/"+testQuoteId+"/revisions","POST",revise(1468000,[{amountPiasters:100000,milestone:"extra scope"}])),201);
+ const incId=Number(increase.revision.id);
+ const incPdf=await expectStatus(pdfUpload("/revision-pdf?revisionId="+incId),200);
+ await expectStatus(deliver(),409);
+ const hidden=await expectStatus(req("/api/customer/deliverables",{cookie:cookieFor(accountA)}),200);
+ assert.ok(!hidden.deliverables.some(x=>x.id===artifact.deliverable.id));
+ await expectStatus(clientRequest("/revisions/"+incId+"/decision","POST",{decision:"accept",consent:true,contractSha256:incPdf.sha256}),200);
+ await expectStatus(deliver(),409);
+ const extra=Number((await pool.query("SELECT id FROM commercial_invoices WHERE quote_id=$1 AND status='unpaid' ORDER BY id DESC LIMIT 1",[testQuoteId])).rows[0].id);
+ await expectStatus(ownerRequest("/invoices/"+extra+"/release","PATCH",{released:true,milestone:"extra scope"}),200);
+ await expectStatus(ownerRequest("/invoices/"+extra+"/payments","POST",manual(100000)),201);
+ // Downward revision yields refundable credit, preserving all incoming records.
+ const decrease=await expectStatus(ownerRequest("/quotes/"+testQuoteId+"/revisions","POST",revise(1400000,[])),201);
+ const decId=Number(decrease.revision.id);
+ const decPdf=await expectStatus(pdfUpload("/revision-pdf?revisionId="+decId),200);
+ await expectStatus(clientRequest("/revisions/"+decId+"/decision","POST",{decision:"accept",consent:true,contractSha256:decPdf.sha256}),200);
+ assert.equal((await expectStatus(balance(),200)).creditPiasters,68000);
+ await expectStatus(ownerRequest("/quotes/"+testQuoteId+"/refunds","POST",refund(68001)),409);
+ const refundPayload=refund(30000);
+ await expectStatus(ownerRequest("/quotes/"+testQuoteId+"/refunds","POST",refundPayload),201);
+ await expectStatus(ownerRequest("/quotes/"+testQuoteId+"/refunds","POST",refundPayload),409);
+ await expectStatus(ownerRequest("/quotes/"+testQuoteId+"/refunds","POST",refund(38000)),201);
+ const net=await expectStatus(balance(),200);
+ assert.equal(net.grossPaidPiasters,1468000);assert.equal(net.refundedPiasters,68000);assert.equal(net.paidPiasters,1400000);assert.equal(net.creditPiasters,0);assert.equal(net.remainingPiasters,0);
+ const ledger=await pool.query("SELECT count(*)::int AS n,COALESCE(sum(p.amount_piasters),0) AS gross FROM commercial_invoice_payments p JOIN commercial_invoices i ON i.id=p.invoice_id WHERE i.quote_id=$1",[testQuoteId]);
+ assert.equal(ledger.rows[0].n,4);assert.equal(Number(ledger.rows[0].gross),1468000);
+ assert.equal((await pool.query("SELECT count(*)::int AS n FROM commercial_invoice_adjustment_ledger WHERE quote_id=$1",[testQuoteId])).rows[0].n,3);
+ await expectStatus(deliver(),201);
+ console.log("PASS: manual receipts, installments, PDF revision acceptance, refund reconciliation, RBAC, delivery gates and immutable incoming ledger");
+
  // Project-specific image ownership, even for separate drafts of the same customer.
  const png=Buffer.from([137,80,78,71,13,10,26,10,0,0,0,0]);
  const writeLogo=await fetch(base+`/api/customer/auth/project-drafts/${id}/logo`,{method:"POST",headers:{origin,"content-type":"image/png",cookie:cookieFor(accountA)},body:png});
@@ -243,7 +347,17 @@ try{
  const oldSnapshot=await fetch(snapUrl,{headers:{cookie:cookieFor(accountA)}});
  assert.deepEqual(Buffer.from(await oldSnapshot.arrayBuffer()),png,"Old customer preview logo must remain immutable");
  // Signed settlement bridge: reject unsigned, duplicate and excessive payments.
- const invoice=await pool.query("INSERT INTO commercial_invoices(quote_id,amount_piasters) VALUES($1,10000) RETURNING id",[quote.rows[0].id]);
+ // Use a legitimately accepted contract for the settlement/idempotency fixture.
+ const fixtureLink=await req(`/api/admin/commercial/quotes/${quote.rows[0].id}/review-link`,{method:"POST",cookie:adminCookie,body:{}});
+ assert.equal(fixtureLink.status,201,JSON.stringify(fixtureLink));
+ const fixtureSigned=await req(`/api/commercial/review/${fixtureLink.result.reviewToken}/accept-and-sign`,{method:"POST",body:{signerName:"Client A Verified",consent:true}});
+ assert.equal(fixtureSigned.status,200,JSON.stringify(fixtureSigned));
+ const invoice=await pool.query("SELECT id FROM commercial_invoices WHERE quote_id=$1 AND status='unpaid'",[quote.rows[0].id]);
+ assert.equal(invoice.rowCount,1);
+ const fixtureMethods=await req(`/api/admin/commercial/quotes/${quote.rows[0].id}/payment-methods`,{method:"PUT",cookie:adminCookie,body:{methods:["xpay"]}});
+ assert.equal(fixtureMethods.status,200,JSON.stringify(fixtureMethods));
+ const fixtureRelease=await req(`/api/admin/commercial/invoices/${invoice.rows[0].id}/release`,{method:"PATCH",cookie:adminCookie,body:{released:true,milestone:"CI verified settlement"}});
+ assert.equal(fixtureRelease.status,200,JSON.stringify(fixtureRelease));
  const gatewayEvent={invoiceId:Number(invoice.rows[0].id),amountPiasters:4000,providerReference:"integration-"+randomUUID(),paidAt:new Date().toISOString(),status:"settled"};
  const gatewayRaw=Buffer.from(JSON.stringify(gatewayEvent));
  const gatewayTimestamp=Math.floor(Date.now()/1000).toString();
