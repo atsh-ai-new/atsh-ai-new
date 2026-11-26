@@ -1,23 +1,30 @@
+import {artImage,heroImage} from "./content-studio-assets.js";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 const color=z.string().regex(/^#[0-9a-f]{6}$/i);
 const id=z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/);
 const positions={"left":.18,"center-left":.38,"center":.5,"center-right":.62,"right":.82};
 const voice=z.object({engine:z.literal("tiny-ar-msa"),pitch:z.number().min(-3).max(3),speed:z.number().min(.8).max(1.2),intonation:z.number().min(.8).max(1.2)}).strict();
-const character=z.object({id,name:z.string().trim().min(1).max(30),skin:color,shirt:color,hairColor:color,hair:z.enum(["short","long","bald"]),glasses:z.boolean(),beard:z.boolean(),voice}).strict();
-const placement=z.object({characterId:id,position:z.enum(["left","center-left","center","center-right","right"]),expression:z.enum(["neutral","happy","curious","serious"]),gesture:z.enum(["idle","wave","point","explain"]),pose:z.enum(["sit","stand","walk"]).optional()}).strict();
+const snapshot=z.object({id:z.string().uuid(),revision:z.number().int().min(1),images:z.array(heroImage).min(1).max(3).refine(v=>new Set(v.map(p=>p.pose)).size===v.length)}).strict();
+const sceneArt=z.object({id:z.string().uuid(),revision:z.number().int().min(1),image:artImage,mode:z.enum(["background","full"]),framing:z.enum(["fit","fill"]).optional()}).strict();
+const propArt=z.object({id:z.string().uuid(),revision:z.number().int().min(1),image:artImage,x:z.number().min(0).max(1),y:z.number().min(0).max(1),size:z.number().min(.1).max(1),foreground:z.boolean()}).strict();
+const character=z.object({id,name:z.string().trim().min(1).max(30),skin:color,shirt:color,hairColor:color,hair:z.enum(["short","long","bald"]),glasses:z.boolean(),beard:z.boolean(),voice,artwork:snapshot.optional()}).strict();
+const placement=z.object({characterId:id,position:z.enum(["left","center-left","center","center-right","right"]),expression:z.enum(["neutral","happy","curious","serious"]),gesture:z.enum(["idle","wave","point","explain"]),pose:z.enum(["sit","stand","walk"]).optional(),action:z.enum(["stand","walk","sit","stairs-up","stairs-down","enter","exit"]).optional()}).strict();
 const line=z.object({id,speakerId:id,text:z.string().trim().min(1).max(180),pronunciation:z.string().max(180),start:z.number().min(0).max(8)}).strict();
-export const characterAnimationSchema=z.object({version:z.literal(1),mode:z.literal("cartoon"),cast:z.array(character).min(1).max(4),shots:z.array(z.object({sceneIndex:z.number().int().min(0).max(3),background:z.enum(["studio","office","technology"]),placements:z.array(placement).min(1).max(4),dialogue:z.array(line).min(1).max(4)}).strict()).min(1).max(4),subtitles:z.boolean(),music:z.boolean(),musicVolume:z.number().min(0).max(.3),speechVolume:z.number().min(.5).max(1.5),mouthIntensity:z.number().min(.5).max(1.5)}).strict();
+export const characterAnimationSchema=z.object({version:z.literal(1),mode:z.literal("cartoon"),cast:z.array(character).min(1).max(4),shots:z.array(z.object({sceneIndex:z.number().int().min(0).max(3),background:z.enum(["studio","office","technology"]),placements:z.array(placement).min(1).max(4),dialogue:z.array(line).min(1).max(4),artwork:sceneArt.optional(),props:z.array(propArt).max(2).optional(),screenTexts:z.array(z.object({text:z.string().trim().min(1).max(90),start:z.number().min(0).max(8),end:z.number().min(0).max(8),position:z.enum(["top","middle","bottom"])}).strict()).max(3).optional()}).strict()).min(1).max(4),subtitles:z.boolean(),music:z.boolean(),musicVolume:z.number().min(0).max(.3),speechVolume:z.number().min(.5).max(1.5),mouthIntensity:z.number().min(.5).max(1.5)}).strict();
 export function refineCharacterPlan(plan,ctx){
   const a=plan.animation;if(!a)return;
   const fail=(message,path=[])=>ctx.addIssue({code:"custom",message,path:["animation",...path]});
   const ids=new Set(a.cast.map(c=>c.id));if(ids.size!==a.cast.length||new Set(a.cast.map(c=>c.name.trim())).size!==a.cast.length)fail("أسماء وهويات الشخصيات يجب أن تكون مختلفة.");
   if(a.shots.length!==plan.scenes.length||new Set(a.shots.map(s=>s.sceneIndex)).size!==plan.scenes.length)fail("كل مشهد يحتاج إعداد حركة واحد.");
   const lines=new Set();let total=0;
+  let artSize=0; for(const c of a.cast)for(const i of c.artwork?.images||[])artSize+=i.image.length;for(const s of a.shots){artSize+=s.artwork?.image.length||0;for(const p of s.props||[])artSize+=p.image.length;} if(artSize>3400000)fail("حجم صور المشروع أكبر من الحد المسموح.");
   for(const s of a.shots){
     const scene=plan.scenes[s.sceneIndex];if(!scene){fail("رقم مشهد غير صالح.");continue}
     const present=new Set(s.placements.map(p=>p.characterId));const slots=s.placements.map(p=>positions[p.position]).sort((a,b)=>a-b);
     if(present.size!==s.placements.length||[...present].some(i=>!ids.has(i))||slots.some((p,i)=>i>0&&p-slots[i-1]<.15))fail("وزّع الشخصيات دون تكرار أو تداخل في المشهد.");
+    for(const p of s.placements){const c=a.cast.find(c=>c.id===p.characterId);if(p.action&&!c?.artwork&&s.artwork?.mode!=="full")fail("اختر صورًا للبطل قبل اختيار حركة الصور.");if(p.action&&p.action!=="stand"&&s.artwork?.mode!=="full"){const poses=new Set(c?.artwork?.images.map(i=>i.pose)||[]);if(p.action==="walk"||p.action.startsWith("stairs")){if(!poses.has("walk-a")||!poses.has("walk-b"))fail("حركة المشي والسلالم تحتاج صورتين لخطوتين مختلفتين.");}else if(!poses.has(p.action))fail("أضف صورة الوضعية المطلوبة للبطل.");}}
+    if(s.screenTexts?.some(t=>t.end<=t.start||t.end>scene.seconds))fail("راجع بداية ونهاية النص الظاهر على الشاشة.");
     const starts=new Set();
     for(const l of s.dialogue){total++;if(lines.has(l.id)||!present.has(l.speakerId)||l.start>=scene.seconds-.1||starts.has(l.start)||/[A-Za-z]/.test(l.pronunciation||l.text))fail("تأكد من المتكلم ووقت البداية والنطق العربي لكل جملة.");lines.add(l.id);starts.add(l.start);}
   }
