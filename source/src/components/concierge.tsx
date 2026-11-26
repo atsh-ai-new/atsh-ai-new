@@ -133,6 +133,7 @@ export default function Concierge({locale="ar",embedded=false}:{locale?:"ar"|"en
    </section>}
    {!embedded&&<LiveSupport en={en} open={supportOpen} setOpen={setSupportOpen}/>}
    {!embedded&&<nav className="atsh-floating-actions" aria-label={t("التواصل والمساعد الذكي","Contact and assistant")}>
+     <LanguageSwitch />
      <button type="button" className="atsh-fab atsh-fab-assistant" aria-expanded={open} aria-label={open?t("إغلاق المساعد الذكي","Close assistant"):t("فتح المساعد الذكي","Open assistant")} title={t("المساعد الذكي","AI assistant")} onClick={()=>{setSupportOpen(false);setContactsOpen(false);setOpen(v=>!v)}}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3 13.9 9.1 20 11l-6.1 1.9L12 19l-1.9-6.1L4 11l6.1-1.9L12 3Z"/><path d="m19 17 .7 1.3L21 19l-1.3.7L19 21l-.7-1.3L17 19l1.3-.7L19 17Z"/></svg></button>
      <div className="atsh-contact-group">
        <button type="button" className="atsh-fab atsh-fab-contact-menu" aria-expanded={contactsOpen} aria-controls="atsh-contact-submenu" aria-label={t("قنوات التواصل واللغة","Contact channels and language")} title={t("التواصل","Contact")} onClick={()=>setContactsOpen(v=>!v)}><span className="atsh-contact-symbols" aria-hidden="true"><span>☎</span><span>◉</span><span>ϟ</span><span>➤</span></span></button>
@@ -141,7 +142,6 @@ export default function Concierge({locale="ar",embedded=false}:{locale?:"ar"|"en
      <a className="atsh-fab atsh-fab-messenger" href="https://m.me/61587637301618" target="_blank" rel="noopener noreferrer" aria-label="Messenger" title="Messenger"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.5 2 2 6.1 2 11.2c0 2.9 1.4 5.4 3.7 7.1V22l3.5-1.9c.9.3 1.8.4 2.8.4 5.5 0 10-4.1 10-9.3S17.5 2 12 2Zm1 12.3-2.5-2.7-4.8 2.7 5.3-5.7 2.5 2.7 4.8-2.7-5.3 5.7Z"/></svg></a>
      <span className="atsh-fab atsh-fab-telegram" aria-label={t("تليجرام — قريبًا","Telegram — coming soon")} title={t("تليجرام — قريبًا","Telegram — coming soon")}><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.5 3.5 2.8 10.8c-1.2.5-1.2 1.2-.2 1.5l4.8 1.5 1.8 5.5c.2.6.1.8.8.8.5 0 .8-.2 1.1-.5l2.3-2.2 4.8 3.6c.9.5 1.5.2 1.7-.9l3.2-15.1c.3-1.4-.5-2-1.6-1.5ZM8.2 13.4l10.9-6.9c.5-.3 1-.1.6.3l-9 8.2-.3 3.2-2.2-4.8Z"/></svg></span>
      <button type="button" className="atsh-fab atsh-fab-call" aria-label={t("خدمة العملاء","Live support")} title={t("الدعم المباشر","Live support")} onClick={()=>{setOpen(false);setContactsOpen(false);setSupportOpen(true)}}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M3 14v-3a9 9 0 0 1 18 0v3M3 13h3v6H3zM18 13h3v6h-3zM18 19c0 2-2 3-6 3"/></svg></button>
-     <LanguageSwitch />
        </div>}
      </div>
    </nav>}
