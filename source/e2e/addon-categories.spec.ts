@@ -55,6 +55,9 @@ test("central add-on categories reorder, move and appear in both pricing flows",
   await publicPage.goto(path);
   const group=publicPage.locator('[data-addon-category="marketing"]');
   await expect(group).toBeVisible();
+  await expect(publicPage.locator("body")).toHaveCSS("font-weight","500");
+  await expect(group.locator(".select-card-copy strong").first()).toHaveCSS("font-size","14px");
+
   await expect(group.locator(".select-card").first()).toContainText("الدفع الإلكتروني");
   await expect(publicPage.locator('[data-addon-category="foundation"]')).toContainText("اللغة الإضافية");
   await group.getByRole("button",{name:/الدفع الإلكتروني/}).click();

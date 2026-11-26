@@ -119,13 +119,13 @@ export default function DomainLookup({onDomainChange,locale="ar",source="configu
    {results.map(item=><div key={item.domain} className="domain-result-card">
     <div style={{minWidth:0,width:"100%"}}>
      <strong dir="ltr" style={{display:"block",textAlign:"center",overflowWrap:"anywhere",color:"#203958",fontSize:12,lineHeight:1.3}}>{item.domain}</strong>
-     <small style={{display:"block",lineHeight:1.3,fontSize:10,textAlign:"center",color:item.error?"#a16207":item.lookup?.status==="registered"||item.lookup?.available===false?"#8f3030":"#386375"}}>
+     <small style={{display:"block",lineHeight:1.3,fontSize:13,textAlign:"center",color:item.error?"#a16207":item.lookup?.status==="registered"||item.lookup?.available===false?"#8f3030":"#386375"}}>
       {item.error|| (item.lookup?resultLabel(item.lookup):t("لم يتم التحقق","Not verified"))}
      </small>
      {item.lookup?.premium&&<small style={{display:"block"}}>{t("دومين مميز — السعر يحتاج تأكيدًا","Premium domain — price needs confirmation")}</small>}
     </div>
     {item.lookup&&selectable(item.lookup)&&<button type="button" onClick={()=>select(item.domain)}
-     style={{background:selectedDomain===item.domain?"#e1ecf7":"#fff",color:"#203958",border:"1px solid #9db4cb",borderRadius:8,padding:"5px 4px",fontSize:10,cursor:"pointer",width:"100%"}}>
+     style={{background:selectedDomain===item.domain?"#e1ecf7":"#fff",color:"#203958",border:"1px solid #9db4cb",borderRadius:8,padding:"5px 4px",fontSize:13,cursor:"pointer",width:"100%"}}>
      {selectedDomain===item.domain?t("محدد ✓","Selected ✓"):t("اختيار مبدئي","Select")}
     </button>}
    </div>)}
