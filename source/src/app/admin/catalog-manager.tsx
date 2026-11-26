@@ -29,6 +29,7 @@ export default function CatalogManager() {
   const [subDraft,setSubDraft]=useState({sectorId:"",id:"",name:""});
   const [draft,setDraft]=useState<CatalogItem>(empty());
   const [originalSlug,setOriginalSlug]=useState("");
+  const [moveDraft,setMoveDraft]=useState<{slug:string;sectorId:string;subcategoryId:string}|null>(null);
   const [previewUrlLocal,setPreviewUrlLocal]=useState("");
   const [htmlPreview,setHtmlPreview]=useState(false);
   const goToEditor=()=>requestAnimationFrame(()=>{const el=document.getElementById("catalog-item-editor");el?.scrollIntoView({block:"start"});el?.focus({preventScroll:true});});
@@ -96,7 +97,7 @@ export default function CatalogManager() {
       const verification=await fetch("/api/admin/pages",{credentials:"include",cache:"no-store"});
       const verified=verification.ok?(await verification.json()).pages?.find((p:{slug:string;locale:string})=>p.slug==="catalog"&&p.locale==="ar"):null;
       const expectedIds=new Map(await Promise.all(next.map(async item=>[item.slug,item.previewHtml?Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(item.previewHtml)))).map(b=>b.toString(16).padStart(2,"0")).join(""):item.previewHtml===""?undefined:item.previewAssetId] as const)));
-      if(!verified||verified.is_published!==pageWasPublished||!Array.isArray(verified.content?.items)||verified.content.items.length!==next.length||next.some(item=>{const stored=verified.content.items.find((x:CatalogItem)=>x.slug===item.slug);return !stored||stored.previewAssetId!==expectedIds.get(item.slug)||stored.published!==item.published||stored.archived!==item.archived||(stored.imageUrl??"")!==(item.imageUrl??"");}))throw Error("تعذر التحقق من حفظ ملفات المعرض. أعد تحميل الصفحة.");
+      if(!verified||verified.is_published!==pageWasPublished||!Array.isArray(verified.content?.items)||verified.content.items.length!==next.length||next.some(item=>{const stored=verified.content.items.find((x:CatalogItem)=>x.slug===item.slug);return !stored||stored.previewAssetId!==expectedIds.get(item.slug)||stored.published!==item.published||stored.archived!==item.archived||(stored.imageUrl??"")!==(item.imageUrl??"")||(stored.sectorId??"")!==(item.sectorId??"")||(stored.subcategoryId??"")!==(item.subcategoryId??"")||stored.basePrice!==item.basePrice;}))throw Error("تعذر التحقق من حفظ ملفات المعرض. أعد تحميل الصفحة.");
       setItems(normalize(verified.content.items));setSectors(nextSectors);setNotice(message);setUpdatedAt(data?.page?.updated_at?new Date(data.page.updated_at).toISOString():updatedAt);setVersion(v=>v+1);
       return true;
     }catch(e){setError(e instanceof Error?e.message:"فشل الحفظ");return false;}
@@ -144,6 +145,21 @@ export default function CatalogManager() {
     if(!window.confirm(`حذف «${item.name}» نهائيًا من قائمة الأنظمة المخصصة والمعرض؟ لا يمكن استعادته من هذه القائمة. لن تُحذف طلبات العملاء السابقة أو ملفات الوسائط المشتركة.`))return;
     if(await saveAll(items.filter(x=>x.slug!==item.slug),"تم حذف النظام المخصص من المعرض.")){
       if(originalSlug===item.slug){setDraft(empty());setOriginalSlug("");setHtmlPreview(false);setPreviewUrlLocal("");}
+    }
+  };
+  const openMove=(item:CatalogItem)=>{
+    const placement=resolvePlacement(item,sectors);
+    setMoveDraft({slug:item.slug,sectorId:placement.sector?.id??"",subcategoryId:placement.subcategory?.id??""});setError("");setNotice("");
+  };
+  const moveItem=async(e:FormEvent)=>{
+    e.preventDefault();if(!moveDraft||busy||uploading)return;
+    const item=items.find(x=>x.slug===moveDraft.slug),sector=sectors.find(s=>s.id===moveDraft.sectorId);
+    const sub=sector?.subcategories.find(c=>c.id===moveDraft.subcategoryId);
+    if(!item||!sector||(moveDraft.subcategoryId&&!sub)){setError("اختر قطاعًا وتصنيفًا صالحين.");return;}
+    const patch={sectorId:sector.id,subcategoryId:sub?.id,category:sub?.name??sector.name};
+    if(await saveAll(items.map(x=>x.slug===item.slug?{...x,...patch}:x),`تم نقل «${item.name}» إلى ${sector.name}${sub?" / "+sub.name:""}.`)){
+      if(originalSlug===item.slug)setDraft(d=>({...d,...patch}));
+      setMoveDraft(null);setSectorFilter(sector.id);setSubcategoryFilter(sub?.id??"");setSearch("");setStatusFilter("all");setPage(1);
     }
   };
   const editCover=(item:CatalogItem)=>{
@@ -283,11 +299,18 @@ export default function CatalogManager() {
               <div className="catalog-system-actions">
                 <button type="button" className="inline-add" disabled={busy||uploading} onClick={()=>edit(item)}>تعديل</button>
                 <button type="button" className="inline-add" disabled={busy||uploading} onClick={()=>editCover(item)}>تغيير الغلاف</button>
+                <button type="button" className="inline-add" disabled={busy||uploading} onClick={()=>moveDraft?.slug===item.slug?setMoveDraft(null):openMove(item)} aria-expanded={moveDraft?.slug===item.slug}>نقل إلى قسم آخر</button>
                 {item.published&&!item.archived&&<a className="inline-add" href={`/catalog/${encodeURIComponent(item.slug)}`} target="_blank" rel="noopener noreferrer">معاينة العميل ↗</a>}
                 <button type="button" className="inline-add" disabled={busy||item.archived} onClick={()=>void toggle(item,{published:!item.published})}>{item.published?"إخفاء":"نشر"}</button>
                 {item.archived?<button type="button" className="inline-add" disabled={busy} onClick={()=>void toggle(item,{archived:false})}>استعادة</button>:<button type="button" className="inline-add" disabled={busy} onClick={()=>void archive(item)}>أرشفة</button>}
                 <button type="button" className="inline-add catalog-danger" disabled={busy||uploading} onClick={()=>void deleteItem(item)}>حذف نهائي</button>
               </div>
+              {moveDraft?.slug===item.slug&&<form onSubmit={moveItem} className="catalog-move-form admin-form-grid" aria-label={`نقل ${item.name}`} style={{gridColumn:"1 / -1",padding:12,background:"#f3f6fa",borderRadius:10}}>
+                <label className="admin-field">القطاع الجديد<select required value={moveDraft.sectorId} onChange={e=>setMoveDraft(d=>d?{...d,sectorId:e.target.value,subcategoryId:""}:d)}><option value="">اختر القطاع</option>{[...sectors].sort((a,b)=>a.sortOrder-b.sortOrder).map(s=><option key={s.id} value={s.id}>{s.name}{s.isPublished?"":" (مخفي)"}</option>)}</select></label>
+                <label className="admin-field">التصنيف الفرعي الجديد<select disabled={!moveDraft.sectorId} value={moveDraft.subcategoryId} onChange={e=>setMoveDraft(d=>d?{...d,subcategoryId:e.target.value}:d)}><option value="">بدون تصنيف فرعي</option>{sectors.find(s=>s.id===moveDraft.sectorId)?.subcategories.map(c=><option key={c.id} value={c.id}>{c.name}{c.isPublished?"":" (مخفي)"}</option>)}</select></label>
+                <p className="field-hint" style={{gridColumn:"1 / -1"}}>يتغير مكان العرض فقط. يبقى الرابط والسعر والغلاف وملف المعاينة وحالة النشر كما هي. اختيار قسم مخفي قد يخفي النظام من المعرض.</p>
+                <div className="admin-actions"><button className="button button-small" type="submit" disabled={busy||uploading||!moveDraft.sectorId}>حفظ النقل</button><button className="button button-outline button-small" type="button" disabled={busy} onClick={()=>setMoveDraft(null)}>إلغاء</button></div>
+              </form>}
             </article>)}
           </div>
           <div className="catalog-admin-pager" aria-label="صفحات الأنظمة">

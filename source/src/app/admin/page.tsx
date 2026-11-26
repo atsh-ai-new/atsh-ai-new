@@ -20,7 +20,7 @@ import CommercialManager from "./commercial-manager";
 
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
 type View = "videos" | "messages" | "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "theme" | "inbox" | "team" | "audit";
-type Package = { id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
+type Package = { list_price?:number|string;initial_price?:number|string;discount_percent?:number|string; id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
 type Option = { list_price?:number|string;discount_percent?:number|string;initial_price?:number|string;initial_pricing_type?:Option["pricing_type"];initial_unit_label?:string;category_code?:AddonCategoryCode;category_sort_order?:number; id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
 type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; linked_project_id?: string | null; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
 type JourneyProject = { id:string; customer_name:string; customer_email:string|null; status:string; created_at:string };
@@ -94,6 +94,7 @@ export default function AdminPage() {
   const [packages, setPackages] = useState<Package[]>([]);
   const [options, setOptions] = useState<Option[]>([]);
   const [bulkAddonDiscount,setBulkAddonDiscount]=useState("0");
+  const [bulkPackageDiscount,setBulkPackageDiscount]=useState("0");
   const [categoryOrder,setCategoryOrder]=useState<AddonCategoryOrder[]>(addonCategories.map((c,i)=>({code:c.code,sort_order:(i+1)*10})));
   const [addonTab,setAddonTab]=useState<AddonCategoryCode>("foundation");
   const [orders, setOrders] = useState<Order[]>([]);
@@ -265,7 +266,7 @@ export default function AdminPage() {
     setNewOwnerPassword("");
   };
 
-  const changePackage = <K extends keyof Package,>(id: string, key: K, value: Package[K]) => setPackages((current) => current.map((item) => item.id !== id ? item : { ...item, [key]: value }));
+  const changePackage = <K extends keyof Package,>(id: string, key: K, value: Package[K]) => setPackages((current) => current.map((item) => item.id !== id ? item : (()=>{const next={...item,[key]:value}; if(key==="list_price"||key==="discount_percent"||key==="is_custom_quote"){next.list_price=next.list_price??item.price;if(next.is_custom_quote)next.discount_percent=0;next.price=Math.round(Number(next.list_price)*(100-Number(next.discount_percent??0)))/100;}return next;})()));
   const changeOption = <K extends keyof Option,>(id: string, key: K, value: Option[K]) => setOptions(current=>current.map(item=>{
     if(item.id!==id)return item;
     const next={...item,[key]:value};
@@ -275,7 +276,18 @@ export default function AdminPage() {
     }
     return next;
   }));
-  const savePackage = (item: Package) => save(() => api(`packages/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, tagline: item.tagline, description: item.description, price: item.is_custom_quote ? 0 : Number(item.price), currency: "EGP", features: item.features, isFeatured: item.is_featured, isCustomQuote: item.is_custom_quote, isPublished: item.is_published, sortOrder: item.sort_order }) }), "تم حفظ البطاقة وتحديثها للعملاء.");
+  const savePackage = (item: Package) => save(() => api(`packages/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: item.name, tagline: item.tagline, description: item.description, price: Number(item.list_price??item.price), discountPercent:item.is_custom_quote?0:Number(item.discount_percent??0), currency: "EGP", features: item.features, isFeatured: item.is_featured, isCustomQuote: item.is_custom_quote, isPublished: item.is_published, sortOrder: item.sort_order }) }), "تم حفظ البطاقة وتحديثها للعملاء.");
+  const applyPackageDiscount=(cancel=false)=>{
+    const value=cancel?0:Number(bulkPackageDiscount);
+    if((!cancel&&!bulkPackageDiscount.trim())||!Number.isFinite(value)||value<0||value>100){setError("أدخل نسبة خصم من 0 إلى 100.");return;}
+    if(!window.confirm(cancel?"إلغاء خصومات جميع الباقات؟":`تطبيق خصم ${value}% على كل الباقات ذات السعر الثابت؟`))return;
+    void save(()=>api("packages/discount",{method:"POST",body:JSON.stringify({discountPercent:value})}),cancel?"تم إلغاء خصومات الباقات.":"تم تطبيق خصم الباقات.");
+  };
+  const resetPackagePrices=(item?:Package)=>{
+    if(!window.confirm(item?`إعادة سعر "${item.name}" للسعر الأساسي وإلغاء الخصم؟`:"إعادة ضبط جميع أسعار الباقات وإلغاء الخصومات؟ لن تتغير الطلبات السابقة."))return;
+    void save(()=>api("packages/reset-prices",{method:"POST",body:JSON.stringify(item?{id:item.id}:{})}),"تمت إعادة ضبط أسعار الباقات.");
+  };
+  const packagePriceFields=(item:Package)=><><label className="admin-field">السعر قبل الخصم<input type="number" min="0" step="0.01" disabled={item.is_custom_quote} value={item.list_price??item.price} onChange={e=>changePackage(item.id,"list_price",Number(e.target.value))}/></label><label className="admin-field">نسبة الخصم (%)<input type="number" min="0" max="100" step="0.01" disabled={item.is_custom_quote} value={item.discount_percent??0} onChange={e=>changePackage(item.id,"discount_percent",Math.min(100,Math.max(0,Number(e.target.value))))}/></label><div className="admin-field">السعر بعد الخصم{item.is_custom_quote?<strong>حسب الطلب</strong>:<AddonPrice item={item}/>}</div></>;
   const removePackage = async (item: Package) => {
     if (!window.confirm(`حذف الباقة "${item.name}" من المنتجات والموقع؟ ستظل الطلبات السابقة محفوظة.`)) return;
     setBusy(true);setError("");setNotice("");
@@ -420,6 +432,8 @@ export default function AdminPage() {
 
         {view === "options" && offeringTab === "packages" && <section id="unified-package-pricing" className="admin-content-card">
           <div className="admin-content-title"><div><h2>الباقات والأسعار</h2><p>عدّل البطاقة ومزاياها، أو أنشئ باقة جديدة. السعر بالجنيه المصري، ويمكن نسخ خيارات باقة موجودة كبداية.</p></div></div>
+          <div className="admin-actions"><label className="admin-field">خصم جميع الباقات (%)<input type="number" min="0" max="100" step="0.01" value={bulkPackageDiscount} onChange={e=>setBulkPackageDiscount(e.target.value)}/></label><button type="button" className="button button-small" disabled={busy||!packages.some(p=>!p.is_custom_quote)} onClick={()=>applyPackageDiscount()}>تطبيق الخصم على الباقات</button><button type="button" className="button button-outline button-small" disabled={busy} onClick={()=>applyPackageDiscount(true)}>إلغاء خصومات الباقات</button><button type="button" className="button button-outline button-small" disabled={busy||!packages.some(p=>!p.is_custom_quote)} onClick={()=>resetPackagePrices()}>إعادة ضبط جميع أسعار الباقات</button></div>
+          <p className="field-hint">إعادة الضبط تستعيد السعر الأساسي وتلغي الخصم. الباقات ذات التسعير المخصص لا تتأثر.</p>
           <form className="admin-package-create" onSubmit={addPackage}>
             <label className="admin-field">اسم الباقة<input required maxLength={160} value={packageDraft.name} onChange={(event) => setPackageDraft({ ...packageDraft, name: event.target.value })} /></label>
             <label className="admin-field">شارة البطاقة<input maxLength={160} placeholder="مثال: صفحة هبوط" value={packageDraft.tagline} onChange={(event) => setPackageDraft({ ...packageDraft, tagline: event.target.value })} /></label>
@@ -439,7 +453,7 @@ export default function AdminPage() {
                 <strong>الباقة {index+1}</strong>
                 {item ? <div className="admin-form-grid" style={{display:"grid",gridTemplateColumns:"1fr",gap:8,marginTop:8}}>
                   <label className="admin-field">اسم الباقة<input aria-label={`اسم الباقة ${index+1}`} value={item.name} onChange={event=>changePackage(item.id,"name",event.target.value)} /></label>
-                  <label className="admin-field">السعر بالجنيه<input type="number" min="0" step="0.01" disabled={item.is_custom_quote} value={item.price} onChange={event=>changePackage(item.id,"price",Number(event.target.value))}/></label>
+                  {packagePriceFields(item)}
                   <label className="admin-field">الوصف<textarea rows={2} value={item.description} onChange={event=>changePackage(item.id,"description",event.target.value)}/></label>
                   <label className="admin-field">ترتيب الباقة<input type="number" min="0" step="1" value={item.sort_order} onChange={event=>changePackage(item.id,"sort_order",Number(event.target.value))}/></label>
                   <label className="admin-field">شارة الباقة<input value={item.tagline} onChange={event=>changePackage(item.id,"tagline",event.target.value)}/></label>
@@ -448,7 +462,7 @@ export default function AdminPage() {
                   <label className="check-row"><input type="checkbox" checked={item.is_featured} onChange={event=>changePackage(item.id,"is_featured",event.target.checked)}/> باقة مميزة</label>
                   <label className="check-row"><input type="checkbox" checked={item.is_published} onChange={event=>changePackage(item.id,"is_published",event.target.checked)}/> منشورة للعملاء</label>
                   <small>{item.is_custom_quote ? "تسعير مخصص" : formatEgp(Number(item.price))} · {item.features.length} مزايا</small>
-                  <button type="button" className="button button-small" disabled={busy || !item.name.trim()} onClick={()=>savePackage(item)}>حفظ الباقة</button> <button type="button" className="button button-outline button-small" style={{color:"#b91c1c"}} disabled={busy} onClick={()=>void removePackage(item)}>حذف الباقة</button>
+                  <button type="button" className="button button-small" disabled={busy || !item.name.trim()} onClick={()=>savePackage(item)}>حفظ الباقة</button> <button type="button" className="button button-outline button-small" disabled={busy||item.is_custom_quote||item.initial_price==null} onClick={()=>resetPackagePrices(item)}>إعادة ضبط السعر</button> <button type="button" className="button button-outline button-small" style={{color:"#b91c1c"}} disabled={busy} onClick={()=>void removePackage(item)}>حذف الباقة</button>
                 </div> : <p>لا توجد باقة هنا — أنشئ باقة جديدة لإضافتها.</p>}
               </article>;
             })}
@@ -457,11 +471,11 @@ export default function AdminPage() {
             <div className="admin-form-grid">
               <label className="admin-field">اسم البطاقة<input value={item.name} onChange={(event) => changePackage(item.id, "name", event.target.value)} /></label>
               <label className="admin-field">شارة البطاقة<input value={item.tagline} onChange={(event) => changePackage(item.id, "tagline", event.target.value)} /></label>
-              <label className="admin-field">السعر بالجنيه<input disabled={item.is_custom_quote} type="number" min="0" step="0.01" value={item.price} onChange={(event) => changePackage(item.id, "price", Number(event.target.value))} /></label>
+              {packagePriceFields(item)}
               <label className="admin-field" style={{ gridColumn: "1 / -1" }}>الوصف<input value={item.description} onChange={(event) => changePackage(item.id, "description", event.target.value)} /></label>
               <label className="admin-field" style={{ gridColumn: "1 / -1" }}>المزايا (ميزة في كل سطر)<textarea rows={3} value={item.features.join("\n")} onChange={(event) => changePackage(item.id, "features", event.target.value.split("\n").map((feature) => feature.trim()).filter(Boolean))} /></label>
             </div>
-            <div className="admin-package-controls"><label className="check-row"><input type="checkbox" checked={item.is_published} onChange={(event) => changePackage(item.id, "is_published", event.target.checked)} /> منشورة للعملاء</label><label className="check-row"><input type="checkbox" checked={item.is_featured} onChange={(event) => changePackage(item.id, "is_featured", event.target.checked)} /> موصى بها</label><label className="check-row"><input type="checkbox" checked={item.is_custom_quote} onChange={(event) => changePackage(item.id, "is_custom_quote", event.target.checked)} /> تسعير مخصص</label><label className="admin-field">ترتيب البطاقة<input type="number" value={item.sort_order} onChange={(event) => changePackage(item.id, "sort_order", Number(event.target.value))} /></label><button className="button button-small" disabled={busy} onClick={() => savePackage(item)}>حفظ التعديلات</button> <button type="button" className="button button-outline button-small" style={{color:"#b91c1c"}} disabled={busy} onClick={()=>void removePackage(item)}>حذف الباقة</button></div>
+            <div className="admin-package-controls"><label className="check-row"><input type="checkbox" checked={item.is_published} onChange={(event) => changePackage(item.id, "is_published", event.target.checked)} /> منشورة للعملاء</label><label className="check-row"><input type="checkbox" checked={item.is_featured} onChange={(event) => changePackage(item.id, "is_featured", event.target.checked)} /> موصى بها</label><label className="check-row"><input type="checkbox" checked={item.is_custom_quote} onChange={(event) => changePackage(item.id, "is_custom_quote", event.target.checked)} /> تسعير مخصص</label><label className="admin-field">ترتيب البطاقة<input type="number" value={item.sort_order} onChange={(event) => changePackage(item.id, "sort_order", Number(event.target.value))} /></label><button className="button button-small" disabled={busy} onClick={() => savePackage(item)}>حفظ التعديلات</button> <button type="button" className="button button-outline button-small" disabled={busy||item.is_custom_quote||item.initial_price==null} onClick={()=>resetPackagePrices(item)}>إعادة ضبط السعر</button> <button type="button" className="button button-outline button-small" style={{color:"#b91c1c"}} disabled={busy} onClick={()=>void removePackage(item)}>حذف الباقة</button></div>
           </article>)}
         </section>}
 

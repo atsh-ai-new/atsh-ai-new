@@ -4,7 +4,7 @@ import {addonCategories} from "../src/lib/addon-categories";
 test("central add-on categories reorder, move and appear in both pricing flows",async({page})=>{
  const pkg={id:"11111111-1111-4111-8111-111111111111",name:"باقة تجريبية",description:"",tagline:"",price:5000,currency:"EGP",features:[],is_featured:false,is_custom_quote:false,is_published:true,sort_order:1};
  const categories=addonCategories.map((c,i)=>({code:c.code,sort_order:(i+1)*10}));
- const options=[{id:"a",code:"language",category_code:"foundation",name:"اللغة الإضافية",price:500,sort_order:10},{id:"b",code:"payment_gateway",category_code:"integrations",name:"الدفع الإلكتروني",price:1000,sort_order:10},{id:"c",code:"social_links",category_code:"marketing",name:"روابط السوشيال",price:200,sort_order:10}].map(o=>({...o,description:"",pricing_type:"fixed",unit_label:"",is_required:false,is_active:true,visibility:"both"}));
+ const options=[{id:"a",code:"language",category_code:"foundation",name:"اللغة الإضافية",price:500,sort_order:10},{id:"b",code:"payment_gateway",category_code:"integrations",name:"الدفع الإلكتروني",price:1000,sort_order:10},{id:"c",code:"social_links",category_code:"marketing",name:"روابط السوشيال",price:200,sort_order:10},{id:"d",code:"hosting",category_code:"hosting",name:"استضافة مُدارة",price:225,sort_order:10}].map(o=>({...o,description:"",pricing_type:o.code==="hosting"?"yearly":"fixed",unit_label:"",is_required:false,is_active:true,visibility:"both"}));
  const catalog=()=>({packages:[pkg],addonCategories:categories,sharedOptions:options.map(o=>({...o,category_sort_order:categories.find(c=>c.code===o.category_code)?.sort_order})),options:options.map(o=>({...o,package_id:pkg.id,category_sort_order:categories.find(c=>c.code===o.category_code)?.sort_order}))});
  await page.route("**/api/admin/**",async route=>{
   const path=new URL(route.request().url()).pathname;
@@ -58,6 +58,8 @@ test("central add-on categories reorder, move and appear in both pricing flows",
   await publicPage.goto(path);
   const group=publicPage.locator('[data-addon-category="marketing"]');
   await expect(group).toBeVisible();
+  await expect(group.locator(".select-card").first()).toBeHidden();
+  await group.locator("summary").click();
   await expect(publicPage.locator("body")).toHaveCSS("font-weight","500");
   await expect(group.locator(".select-card-copy strong").first()).toHaveCSS("font-size","14px");
   await expect(group.locator(".select-card-copy b").first()).toHaveCSS("font-size","14px");
@@ -66,5 +68,13 @@ test("central add-on categories reorder, move and appear in both pricing flows",
   await expect(publicPage.locator('[data-addon-category="foundation"]')).toContainText("اللغة الإضافية");
   await group.getByRole("button",{name:/الدفع الإلكتروني/}).click();
   await expect(group.getByRole("button",{name:/الدفع الإلكتروني/})).toHaveAttribute("aria-pressed","true");
+  await group.locator("summary").click();
+  await expect(group.locator(".select-card").first()).toBeHidden();
+  await expect(group.locator("summary")).toContainText("تم اختيار 1");
+  await group.locator("summary").click();
+  await expect(group.getByRole("button",{name:/الدفع الإلكتروني/})).toHaveAttribute("aria-pressed","true");
+  const hosting=publicPage.locator('[data-addon-category="hosting"]');
+  await hosting.locator("summary").click();
+  await expect(hosting.locator(".addon-price-current")).toContainText("اشتراك سنوي (12 شهرًا)");
  }
 });

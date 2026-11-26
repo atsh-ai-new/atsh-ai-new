@@ -88,6 +88,7 @@ await pool.query(await readFile(new URL("../db/unified_pricing_stage53.sql", imp
 await pool.query(await readFile(new URL("../db/shared_addons_20261126.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/addon_categories_20261126.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/approved_addon_prices_20261126.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/package_discounts_20261126.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/order_submission_idempotency_stage54.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/site_demo_assets.sql",import.meta.url),"utf8"));
 await pool.query(await readFile(new URL("../db/content_studio_assets_20261126.sql",import.meta.url),"utf8"));
@@ -535,7 +536,7 @@ app.post("/api/visitor/assistant",
 
 app.get("/api/catalog", route(async (_req,res) => {
   const [p,o,shared,categories] = await Promise.all([
-    pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote FROM packages WHERE is_published=true AND deleted_at IS NULL ORDER BY sort_order,created_at"),
+    pool.query("SELECT id,name,tagline,description,price,list_price,discount_percent,currency,features,is_featured,is_custom_quote FROM packages WHERE is_published=true AND deleted_at IS NULL ORDER BY sort_order,created_at"),
     pool.query("SELECT o.id,o.package_id,o.code,o.name,o.description,o.price,o.pricing_type,o.unit_label,o.is_required,o.visibility,o.sort_order,a.list_price,a.discount_percent,a.category_code,c.sort_order AS category_sort_order FROM package_options o JOIN packages p ON p.id=o.package_id LEFT JOIN shared_addons a ON a.code=o.code LEFT JOIN addon_categories c ON c.code=a.category_code WHERE o.is_active=true AND p.is_published=true AND p.deleted_at IS NULL ORDER BY c.sort_order NULLS LAST,o.sort_order,p.sort_order,o.created_at"),
     pool.query("SELECT a.*,'both' AS visibility,c.sort_order AS category_sort_order FROM shared_addons a JOIN addon_categories c ON c.code=a.category_code WHERE a.is_active=true ORDER BY c.sort_order,a.sort_order,a.code"),
     pool.query("SELECT * FROM addon_categories ORDER BY sort_order,code")
@@ -733,11 +734,11 @@ app.post("/api/orders", route(async (req,res) => {
       if(!ownedDraft.rowCount){await client.query("ROLLBACK");return res.status(403).json({error:"Project draft is not owned by this account"});}
       if(ownedDraft.rows[0].linked_journey_id){await client.query("ROLLBACK");return res.status(409).json({error:"This project draft already has an order or submission"});}
     }
-    const p=await client.query("SELECT p.id,p.name,p.description,u.amount AS price,p.currency FROM packages p JOIN unified_price_items u ON u.scope='package' AND u.owner_key=p.id::text AND u.code='base' WHERE p.id=$1 AND p.is_published=true FOR SHARE OF p",[input.packageId]);
+    const p=await client.query("SELECT p.id,p.name,p.description,u.amount AS price,p.currency,p.is_custom_quote FROM packages p JOIN unified_price_items u ON u.scope='package' AND u.owner_key=p.id::text AND u.code='base' WHERE p.id=$1 AND p.is_published=true AND p.deleted_at IS NULL FOR SHARE OF p",[input.packageId]);
     if(!p.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"Package unavailable"});}
     const pkg=p.rows[0];
     // Never interpret SQL NULL custom-price packages as free (Number(null) === 0).
-    if(pkg.price===null||pkg.price===undefined||!Number.isFinite(Number(pkg.price))||Number(pkg.price)<0){
+    if(pkg.is_custom_quote||pkg.price===null||pkg.price===undefined||!Number.isFinite(Number(pkg.price))||Number(pkg.price)<0){
       await client.query("ROLLBACK");return res.status(409).json({error:"هذه الباقة تحتاج عرض سعر معتمد قبل تسجيل شراء.",needsCustomQuote:true});
     }
     const [o, required] = await Promise.all([
@@ -979,6 +980,7 @@ const packageSchema=z.object({
   tagline:z.string().trim().max(160).default(""),
   description:z.string().trim().max(4000).default(""),
   price:z.number().finite().min(0).max(9999999999.99),
+  discountPercent:z.number().finite().min(0).max(100).optional(),
   currency:z.literal("EGP").default("EGP"),
   features:z.array(z.string().trim().min(1).max(300)).max(30).default([]),
   isFeatured:z.boolean().default(false),
@@ -1419,7 +1421,7 @@ app.post("/api/admin/team/:id/purge",requireAdmin,requirePermission("team"),requ
 await pool.query("ALTER TABLE packages ADD COLUMN IF NOT EXISTS deleted_at timestamptz");
 app.get("/api/admin/packages",requireAdmin,requirePermission("products"),route(async(_req,res)=>{
   const [p,o,shared,categories]=await Promise.all([
-    pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote,is_published,sort_order,created_at,updated_at FROM packages WHERE deleted_at IS NULL ORDER BY sort_order,created_at"),
+    pool.query("SELECT id,name,tagline,description,price,list_price,initial_price,discount_percent,currency,features,is_featured,is_custom_quote,is_published,sort_order,created_at,updated_at FROM packages WHERE deleted_at IS NULL ORDER BY sort_order,created_at"),
     pool.query("SELECT id,package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,created_at,visibility FROM package_options WHERE package_id IN (SELECT id FROM packages WHERE deleted_at IS NULL) ORDER BY sort_order,created_at"),
     pool.query("SELECT a.*,'both' AS visibility,c.sort_order AS category_sort_order FROM shared_addons a JOIN addon_categories c ON c.code=a.category_code ORDER BY c.sort_order,a.sort_order,a.code"),
     pool.query("SELECT * FROM addon_categories ORDER BY sort_order,code")
@@ -1430,7 +1432,7 @@ app.post("/api/admin/packages",requireAdmin,requirePermission("products"),route(
   const parsed=packageCreateSchema.safeParse(req.body); if(!parsed.success)return res.status(400).json({error:"Invalid package",details:parsed.error.issues});
   const x=parsed.data,client=await pool.connect();
   try{await client.query("BEGIN");await addonLock(client);
-    const q=await client.query("INSERT INTO packages(name,tagline,description,price,currency,features,is_featured,is_custom_quote,is_published,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",[x.name,x.tagline,x.description,x.price,x.currency,JSON.stringify(x.features),x.isFeatured,x.isCustomQuote,x.isPublished,x.sortOrder]);
+    const q=await client.query("INSERT INTO packages(name,tagline,description,price,currency,features,is_featured,is_custom_quote,is_published,sort_order,discount_percent) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",[x.name,x.tagline,x.description,x.price,x.currency,JSON.stringify(x.features),x.isFeatured,x.isCustomQuote,x.isPublished,x.sortOrder,x.discountPercent??0]);
     await auditChange(client,req.admin.email,"package.created","package",q.rows[0].id,null,q.rows[0]);
     // Legacy clients can send options, but cannot overwrite central definitions by copying them.
     for(const option of x.options){
@@ -1442,10 +1444,32 @@ app.post("/api/admin/packages",requireAdmin,requirePermission("products"),route(
     await client.query("COMMIT");res.status(201).json({package:q.rows[0],options:createdOptions});
   }catch(e){await client.query("ROLLBACK");if(e.code==="23505")return res.status(409).json({error:"An option with this code already exists in the package"});throw e;}finally{client.release();}
 }));
+// Bulk changes retain publication state, order history and the original tariff.
+for(const action of ["discount","reset-prices"]){
+ app.post("/api/admin/packages/"+action,requireAdmin,requirePermission("products"),route(async(req,res)=>{
+  const parsed=(action==="discount"?z.object({discountPercent:z.number().finite().min(0).max(100)}):z.object({id:z.string().uuid().optional()})).strict().safeParse(req.body??{});
+  if(!parsed.success)return res.status(400).json({error:"Invalid package price change"});
+  const client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    const id=parsed.data.id??null;
+    const before=await client.query("SELECT * FROM packages WHERE deleted_at IS NULL AND NOT is_custom_quote AND ($1::uuid IS NULL OR id=$1) ORDER BY id FOR UPDATE",[id]);
+    if(id&&!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Fixed-price package not found"});}
+    const ids=before.rows.map(p=>p.id);
+    const changed=action==="discount"
+      ? await client.query("UPDATE packages SET discount_percent=$2,updated_at=now() WHERE id=ANY($1::uuid[]) AND discount_percent IS DISTINCT FROM $2::numeric RETURNING *",[ids,parsed.data.discountPercent])
+      : await client.query("UPDATE packages SET list_price=initial_price,discount_percent=0,updated_at=now() WHERE id=ANY($1::uuid[]) AND (list_price,discount_percent) IS DISTINCT FROM (initial_price,0) RETURNING *",[ids]);
+    const prior=new Map(before.rows.map(p=>[p.id,p]));
+    for(const row of changed.rows)await auditChange(client,req.admin.email,action==="discount"?"package.discount_updated":"package.price_reset","package",row.id,prior.get(row.id),row);
+    await client.query("COMMIT");res.json({updated:changed.rowCount});
+  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+ }));
+}
 app.patch("/api/admin/packages/:id",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=packageSchema.partial().strict().safeParse(req.body);if(!parsed.success||!Object.keys(req.body||{}).length||!Object.keys(parsed.data||{}).length)return res.status(400).json({error:"Invalid package update"});
-  const map={name:"name",tagline:"tagline",description:"description",price:"price",currency:"currency",features:"features",isFeatured:"is_featured",isCustomQuote:"is_custom_quote",isPublished:"is_published",sortOrder:"sort_order",visibility:"visibility"};
-  const entries=Object.entries(parsed.data);const client=await pool.connect();
+  const map={name:"name",tagline:"tagline",description:"description",price:"list_price",discountPercent:"discount_percent",currency:"currency",features:"features",isFeatured:"is_featured",isCustomQuote:"is_custom_quote",isPublished:"is_published",sortOrder:"sort_order",visibility:"visibility"};
+  // Zod defaults may populate omitted fields even on a partial schema. Update only explicit request keys.
+  const entries=Object.entries(parsed.data).filter(([key])=>Object.hasOwn(req.body,key));const client=await pool.connect();
   try{await client.query("BEGIN");const before=await client.query("SELECT * FROM packages WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
     const sets=[],values=[];for(const [k,v] of entries){values.push(k==="features"?JSON.stringify(v):v);sets.push(map[k]+"=$"+values.length+(k==="features"?"::jsonb":""));}
     values.push(req.params.id);const q=await client.query("UPDATE packages SET "+sets.join(",")+",updated_at=now() WHERE id=$"+values.length+" RETURNING *",values);
@@ -1453,6 +1477,7 @@ app.patch("/api/admin/packages/:id",requireAdmin,requirePermission("products"),r
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.delete("/api/admin/packages/:id",requireAdmin,requirePermission("products"),route(async(req,res)=>{
+  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid package id"});
   const client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM packages WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
     const q=await client.query("UPDATE packages SET is_published=false,deleted_at=now(),updated_at=now() WHERE id=$1 RETURNING *",[req.params.id]);await auditChange(client,req.admin.email,"package.deleted","package",req.params.id,before.rows[0],q.rows[0]);await client.query("COMMIT");res.json({package:q.rows[0],message:"Package deleted from catalog; historical orders preserved."});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
