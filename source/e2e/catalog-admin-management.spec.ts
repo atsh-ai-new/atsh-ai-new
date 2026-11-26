@@ -135,8 +135,8 @@ test("admin navigates 105 systems using pagination, search, sector and publicati
 test("products are nested under platform content while package and add-on pricing stay connected",async({page})=>{
  const pkg={id:"package-test",name:"باقة الاختبار",tagline:"",description:"",price:5000,currency:"EGP",features:[],is_featured:false,is_custom_quote:false,is_published:true,sort_order:1,visibility:"both"};
  const addon={id:"addon-test",package_id:pkg.id,code:"test_addon",name:"إضافة الاختبار",description:"",price:500,pricing_type:"yearly",unit_label:"",is_required:false,is_active:true,sort_order:1,visibility:"both"};
- const sharedAddon={...addon,id:"shared-addon-test",package_id:undefined};
- const changes: Array<{path:string;price:number;visibility?:string}>=[];
+ const sharedAddon={...addon,id:"shared-addon-test",package_id:undefined,list_price:500,initial_price:500,discount_percent:0};
+ const changes: Array<{path:string;price:number;visibility?:string;discountPercent?:number}>=[];
  await page.route("**/api/admin/**",async route=>{
   const path=new URL(route.request().url()).pathname;
   if(path==="/api/admin/me")return route.fulfill({json:{email:"owner@example.test",role:"owner",permissions:{products:true,content:true,assistant:true}}});
@@ -144,9 +144,9 @@ test("products are nested under platform content while package and add-on pricin
   if(path==="/api/admin/pages")return route.fulfill({json:{pages:[]}});
   if(route.request().method()==="PATCH"){
    const input=route.request().postDataJSON();
-   changes.push({path,price:input.price,visibility:input.visibility});
+   changes.push({path,price:input.price,visibility:input.visibility,discountPercent:input.discountPercent});
    if(path==="/api/admin/packages/"+pkg.id)pkg.price=input.price;
-   if(path==="/api/admin/options/"+sharedAddon.id){sharedAddon.price=input.price;addon.price=input.price;}
+   if(path==="/api/admin/options/"+sharedAddon.id){sharedAddon.list_price=input.price;sharedAddon.discount_percent=input.discountPercent??0;sharedAddon.price=Math.round(input.price*(100-sharedAddon.discount_percent))/100;addon.price=sharedAddon.price;}
   }
   return route.fulfill({json:{}});
  });
@@ -171,9 +171,13 @@ test("products are nested under platform content while package and add-on pricin
  await expect(page.locator("#unified-package-options .admin-package-editor")).toHaveCount(1);
  const addonCard=page.locator("#unified-package-options .admin-package-editor").first();
  await addonCard.getByLabel("السعر",{exact:true}).fill("750");
+ await addonCard.getByLabel("نسبة الخصم (%)",{exact:true}).fill("20");
+ await expect(addonCard.locator(".addon-discount-badge")).toHaveText("خصم 20%");
+ await expect(addonCard.locator(".addon-price-original")).toBeVisible();
+ await expect(addonCard.locator(".addon-price-current")).toContainText("٦٠٠");
  await addonCard.getByRole("button",{name:"حفظ التعديلات",exact:true}).click();
  await expect.poll(()=>changes.length).toBe(2);
- expect(changes[1]).toMatchObject({path:"/api/admin/options/shared-addon-test",price:750,visibility:"both"});
+ expect(changes[1]).toMatchObject({path:"/api/admin/options/shared-addon-test",price:750,visibility:"both",discountPercent:20});
  await expect(page.locator("#unified-vat")).toBeVisible();
  await page.getByRole("tab",{name:"أنظمة مخصصة",exact:true}).click();
  await expect(page.locator("#unified-catalog-pricing")).toBeVisible();

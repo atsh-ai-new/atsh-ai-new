@@ -1084,3 +1084,9 @@ html:root body .platform-header .platform-header-contact,html:root body .platfor
 .admin-page :is(.catalog-admin-stats span,.catalog-admin-filters label,.catalog-admin-pager label,.catalog-admin-list-head,.catalog-system-info small,.catalog-system-status,.catalog-admin-empty,.catalog-admin-pager>div,.catalog-sector-metrics){font-size:14px;font-weight:600}
 .admin-page :is(.catalog-admin-filters input,.catalog-admin-filters select,.catalog-admin-pager select){font-size:15px}
 .admin-page :is(.catalog-admin-filters .catalog-reset,.catalog-admin-pager button,.catalog-system-actions .inline-add,.catalog-sector-body .inline-add){font-size:14px;font-weight:600}
+
+/* Compact promotional pricing with a visible, accessible before/after breakdown. */
+.addon-price-display{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px 9px;line-height:1.5}
+.addon-price-original{color:#64748b;font-size:.9em;font-weight:600;text-decoration:line-through}
+.addon-discount-badge{color:#075e35;background:#e4f6e9;border:1px solid #b9e4c7;border-radius:999px;padding:2px 8px;font-size:.85em;font-weight:700;white-space:nowrap}
+.addon-price-current{color:inherit;font-weight:750}
