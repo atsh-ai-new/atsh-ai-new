@@ -1078,3 +1078,9 @@ html:root body .platform-header .platform-header-contact,html:root body .platfor
 @media(max-width:767px){
   .admin-page :is(.admin-field,.field-label) :is(input,textarea,select){font-size:16px}
 }
+
+
+/* Catalog administration uses the same readable small-label scale. */
+.admin-page :is(.catalog-admin-stats span,.catalog-admin-filters label,.catalog-admin-pager label,.catalog-admin-list-head,.catalog-system-info small,.catalog-system-status,.catalog-admin-empty,.catalog-admin-pager>div,.catalog-sector-metrics){font-size:14px;font-weight:600}
+.admin-page :is(.catalog-admin-filters input,.catalog-admin-filters select,.catalog-admin-pager select){font-size:15px}
+.admin-page :is(.catalog-admin-filters .catalog-reset,.catalog-admin-pager button,.catalog-system-actions .inline-add,.catalog-sector-body .inline-add){font-size:14px;font-weight:600}

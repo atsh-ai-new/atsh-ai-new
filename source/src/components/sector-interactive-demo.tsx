@@ -38,7 +38,7 @@ function starter(slug:DomainSlug):DemoData{
 }
 export const isInteractiveSector=(slug:string):slug is DomainSlug=>["supermarket","agzakhana","eyadaty","avocato"].includes(slug);
 function table(headers:string[],rows:React.ReactNode[][]){
- return <div style={{overflowX:"auto",maxWidth:"100%"}}><table style={{borderCollapse:"collapse",width:"100%",textAlign:"right",fontSize:13,minWidth:440}}>
+ return <div style={{overflowX:"auto",maxWidth:"100%"}}><table style={{borderCollapse:"collapse",width:"100%",textAlign:"right",fontSize:14,fontWeight:600,minWidth:440}}>
   <thead><tr>{headers.map(h=><th key={h} scope="col" style={{...td,background:"#f1f5fa",color:"#334155"}}>{h}</th>)}</tr></thead>
   <tbody>{rows.length?rows.map((cells,i)=><tr key={i}>{cells.map((cell,j)=><td key={j} style={td}>{cell}</td>)}</tr>):
    <tr><td colSpan={headers.length} style={{padding:20,color:"#64748b"}}>لا توجد سجلات بعد. استخدم أزرار الإضافة لتجربة النظام.</td></tr>}</tbody>
@@ -134,7 +134,7 @@ export default function SectorInteractiveDemo({slug,active,brand,onNavigate}:{sl
     <strong style={{color:"#204466"}}>نظام تفاعلي للتجربة — بدون عمليات أو بيانات حقيقية</strong>
     <button style={secondary} onClick={reset} type="button">إعادة ضبط المحاكاة</button>
    </div>
-   <p style={{color:"#49657e",fontSize:12,lineHeight:1.8,marginBottom:0}}>
+   <p style={{color:"#49657e",fontSize:14,fontWeight:600,lineHeight:1.8,marginBottom:0}}>
     جرّب العمليات والأزرار والفواتير والمخزون أو المواعيد. البيانات محلية في تبويب متصفحك، ولا تُرسل إلى قاعدة عملاء أو نظام دفع. استخدم أسماء وهمية فقط.
    </p>
   </div>
@@ -182,7 +182,7 @@ export default function SectorInteractiveDemo({slug,active,brand,onNavigate}:{sl
     p.name,egp(p.price),String(p.stock),p.stock<5?"مخزون منخفض":"متوفر",
     <button key="restock" style={secondary} type="button" onClick={()=>{setData(d=>({...d,products:d.products.map(x=>x.id===p.id?{...x,stock:x.stock+10}:x)}));report("أُضيف توريد تجريبي بكمية 10.");}}>توريد +10</button>
    ]))}
-   {slug==="agzakhana"&&<p style={{color:"#9a5a12",fontSize:12}}>لا يدعم النموذج صرف وصفات أو التحقق الطبي أو إدارة أدوية حقيقية.</p>}
+   {slug==="agzakhana"&&<p style={{color:"#9a5a12",fontSize:14,fontWeight:600}}>لا يدعم النموذج صرف وصفات أو التحقق الطبي أو إدارة أدوية حقيقية.</p>}
   </section>}
   {isStore&&active==="المبيعات"&&<section style={box}><h3>سجل فواتير المبيعات</h3>
    {table(["رقم العملية","الوقت","بنود الفاتورة","القيمة"],data.sales.map((x,i)=>[String(data.sales.length-i),x.date,x.description,egp(x.total)]))}
@@ -250,7 +250,7 @@ export default function SectorInteractiveDemo({slug,active,brand,onNavigate}:{sl
     <label>القضية<select style={field} value={selectedMatter} onChange={e=>setSelectedMatter(e.target.value)}>{data.matters.map(m=><option key={m.id} value={m.id}>{m.title}</option>)}</select></label>
    </>)}
    {table(["اسم المرجع","القضية"],data.documents.map(x=>[x.title,data.matters.find(m=>m.id===x.matterId)?.title??"—"]))}
-   <p style={{fontSize:12,color:"#64748b"}}>هذا لا يرفع ملفات فعلية ولا يحفظ مستندات قانونية للعميل.</p>
+   <p style={{fontSize:14,fontWeight:600,color:"#64748b"}}>هذا لا يرفع ملفات فعلية ولا يحفظ مستندات قانونية للعميل.</p>
   </section>}
  </section>;
 }
