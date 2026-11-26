@@ -37,7 +37,7 @@ export function isolatedDemoHtml(html:string):string {
  // React Router's URL constructor cannot resolve relative paths against an opaque
  // origin or blob URL. Supply an inert base for resolution, not for network access.
  const routerCompat="<script>(()=>{const U=window.URL;window.URL=class extends U{constructor(input,base){if(base==='about:srcdoc'||base==='null'||(typeof base==='string'&&base.startsWith('blob:')))base='https://demo.invalid/';super(input,base)}}})();</script>";
- const injection=policy+routerCompat;
+ const injection=policy+demoStorageBootstrap+routerCompat;
  let documentHtml:string;
  if(/<head(?:\s[^>]*)?>/i.test(html))documentHtml=html.replace(/<head(?:\s[^>]*)?>/i,match=>match+injection);
  else if(/<html(?:\s[^>]*)?>/i.test(html))documentHtml=html.replace(/<html(?:\s[^>]*)?>/i,match=>match+"<head>"+injection+"</head>");
@@ -53,3 +53,10 @@ export function isolatedDemoHtml(html:string):string {
 }
 export const MAX_DEMO_HTML_BYTES=10*1024*1024;
 export const MAX_DEMO_PAGE_BYTES=64*1024*1024;
+
+/** In-memory storage for opaque sandbox documents; never accesses parent storage. */
+export const demoStorageBootstrap="<script>(()=>{for(const name of ['localStorage','sessionStorage']){try{void window[name].length;continue}catch{}const data=new Map();const methods={getItem:k=>data.get(String(k))??null,setItem:(k,v)=>{data.set(String(k),String(v))},removeItem:k=>{data.delete(String(k))},clear:()=>data.clear(),key:i=>Array.from(data.keys())[i]??null};const storage=new Proxy(Object.create(null),{get:(_,k)=>k==='length'?data.size:Object.prototype.hasOwnProperty.call(methods,k)?methods[k]:data.get(k),set:(_,k,v)=>{data.set(String(k),String(v));return true},deleteProperty:(_,k)=>{data.delete(String(k));return true}});Object.defineProperty(window,name,{value:storage,configurable:true})}})();</script>";
+export function withDemoStorage(html:string):string {
+ const start=/^\s*<!doctype[^>]*>/i.exec(html);
+ return start?html.slice(0,start[0].length)+demoStorageBootstrap+html.slice(start[0].length):demoStorageBootstrap+html;
+}
