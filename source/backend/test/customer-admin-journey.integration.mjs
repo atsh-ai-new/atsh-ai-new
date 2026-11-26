@@ -30,7 +30,7 @@ test("real customer login, concurrent submission and admin parity", {timeout:120
   const sectorAddonCodes=Array.from({length:45},(_,i)=>"test_extra_"+i);
   const invoiceItems=Array.from({length:91},(_,i)=>({name:"Line "+i,amount:10,period:"fixed"}));
   const patch={options,sectorAddonCodes,draftInvoice:{title:"Large draft",items:invoiceItems,subtotal:910,vat:0,total:910,fixed:910,monthly:0,yearly:0,currency:"EGP",savedAt:new Date().toISOString()}};
-  const patched=await api("/api/customer/auth/project-drafts/"+draftId,"PATCH",{expectedRevision:created.data.projectDraft.revision,patch},login.cookie);
+  const patched=await api("/api/customer/auth/project-drafts/"+draftId,"PATCH",{expectedRevision:Number(created.data.projectDraft.revision),patch},login.cookie);
   assert.equal(patched.status,200,JSON.stringify(patched.data));
   Object.assign(draft,patch);
   const restored=await api("/api/customer/auth/project-drafts/"+draftId,"GET",undefined,login.cookie);
