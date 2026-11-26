@@ -1,0 +1,10 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {z} from "zod";
+import {characterAnimationSchema,refineCharacterPlan,characterDraftView} from "../src/character-studio.js";
+import {localPlan,validateCartoon} from "../../src/app/admin/cartoon-plan.ts";
+const schema=z.object({scenes:z.array(z.object({seconds:z.number()})),animation:characterAnimationSchema}).superRefine(refineCharacterPlan);
+const make=(style="story",seconds=16,castCount=2)=>localPlan({product:"منصة إدارة المشاريع",audience:"الشركات",benefit:"إدارة أسهل",cta:"ابدأ الآن",style,background:"office",seconds,castCount});
+test("60 local campaign variants satisfy renderer-side control contract",()=>{for(const style of ["story","problem","intro"])for(const seconds of [8,12,16,24,32])for(let n=1;n<=4;n++){const p=make(style,seconds,n);assert.deepEqual(validateCartoon(p),[]);assert.equal(schema.safeParse(p).success,true);assert.equal(p.scenes.reduce((sum,s)=>sum+s.seconds,0),seconds);}});
+test("invalid speaker, equal times, overlap slots and English pronunciation rejected",()=>{for(const mutate of [p=>p.animation.shots[0].dialogue[0].speakerId="not-present",p=>p.animation.shots[0].placements[0].position="right",p=>p.animation.shots[0].dialogue[0].pronunciation="English",p=>p.animation.shots[0].dialogue.push({...p.animation.shots[0].dialogue[0],id:"new-line"})]){const p=make();mutate(p);assert.equal(schema.safeParse(p).success,false);assert.ok(validateCartoon(p).length);}});
+test("job metadata never appears in editable plan",()=>{const p=make();const v=characterDraftView({production_plan:{...p,_jobToken:"private",_rendererJobId:"private",_jobProgress:"created",_cancelRequested:true},video_size:0});assert.deepEqual(v.production_plan,p);assert.equal(v.progress,"created");assert.equal(v.cancelRequested,true);});
