@@ -2,8 +2,8 @@ import {test,expect} from "@playwright/test";
 import {addonCategories} from "../src/lib/addon-categories";
 
 test("central add-on categories reorder, move and appear in both pricing flows",async({page})=>{
- const tier=(price:number,period:"fixed"|"yearly")=>({price,list_price:price,initial_price:price,discount_percent:0,period});
- const ownershipPrices={rent:tier(3000,"yearly"),copy:tier(5000,"fixed"),code:tier(12000,"fixed")};
+ const tier=(price:number,period:"fixed"|"yearly"|"monthly")=>({price,list_price:price,initial_price:price,discount_percent:0,period});
+ const ownershipPrices={rent_monthly:tier(300,"monthly"),rent:tier(3000,"yearly"),copy:tier(5000,"fixed"),code:tier(12000,"fixed")};
  const pkg={ownershipPrices,id:"11111111-1111-4111-8111-111111111111",name:"باقة تجريبية",description:"",tagline:"",price:5000,currency:"EGP",features:[],is_featured:false,is_custom_quote:false,is_published:true,sort_order:1};
  const categories=addonCategories.map((c,i)=>({code:c.code,sort_order:(i+1)*10}));
  const options=[{id:"a",code:"language",category_code:"foundation",name:"اللغة الإضافية",price:500,sort_order:10},{id:"b",code:"payment_gateway",category_code:"integrations",name:"الدفع الإلكتروني",price:1000,sort_order:10},{id:"c",code:"social_links",category_code:"marketing",name:"روابط السوشيال",price:200,sort_order:10},{id:"d",code:"hosting",category_code:"hosting",name:"استضافة مُدارة",price:225,sort_order:10}].map(o=>({...o,description:"",pricing_type:o.code==="hosting"?"yearly":"fixed",unit_label:"",is_required:false,is_active:true,visibility:"both"}));
