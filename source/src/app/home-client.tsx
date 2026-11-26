@@ -19,7 +19,7 @@ import { combinedQuoteSummary } from "@/lib/quote-breakdown";
 type Customer = { name: string; company: string; email: string; phone: string; details: string; compliance: string };
 type BackendPackage = { list_price?:number|string;discount_percent?:number|string; id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean };
 type BackendOption = CategorizedAddon & {list_price?:number|string;discount_percent?:number|string; id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: string; unit_label: string; is_required: boolean; visibility?: "both" | "packages" | "systems" };
-type BackendCatalog = { packages: BackendPackage[]; options: BackendOption[] };
+type BackendCatalog = { packages: BackendPackage[]; options: BackendOption[]; sharedOptions?:BackendOption[] };
 type SiteConfig = { page?: { content?: Record<string, unknown> } | null; theme?: { navy: string; blue: string; gold: string; page: string; logoUrl?: string; heroImageUrl?: string; backgroundImageUrl?: string; fontFamily?: string; cardRadius?: number } | null; vatRate?: number };
 type PageLink = { slug: string; title: string };
 type PublicCard = { id?: string; title?: string; description?: string; imageUrl?: string; href?: string; linkLabel?: string; icon?: string };
@@ -551,11 +551,11 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         <div className="build-hero-art">
           <img src={siteConfig.theme?.heroImageUrl || "/images/atsh-hero.jpg"} alt={copy("heroImageAlt")} />
           <div className="hero-art-caption"><span>ATSH AI</span><span>{copy("heroBrandLine")}</span></div>
-          {copy("heroEstimateVisible")!=="false"&&(()=>{const estimate=(key:string,fallback:number)=>{const raw=copy(key).trim();const n=Number(raw);return raw&&Number.isFinite(n)&&n>=0?n:fallback;};const packagePrice=estimate("heroEstimatePackagePrice",visiblePackages.find(item=>item.id==="multi")?.price??2500);const identityPrice=estimate("heroEstimateIdentityPrice",3500);const hostingPrice=estimate("heroEstimateHostingPrice",600);return <div className="hero-price-card">
+          {copy("heroEstimateVisible")!=="false"&&(()=>{const estimate=(key:string,fallback:number)=>{const raw=copy(key).trim();const n=Number(raw);return raw&&Number.isFinite(n)&&n>=0?n:fallback;};const packagePrice=estimate("heroEstimatePackagePrice",visiblePackages.find(item=>item.id==="multi")?.price??2500);const identityPrice=estimate("heroEstimateIdentityPrice",3500);const hostingOption=(apiCatalog.sharedOptions??apiCatalog.options).find(o=>o.code==="hosting"&&o.pricing_type==="yearly");if(!hostingOption||!visiblePackages.some(p=>p.id==="multi"&&p.price!==null))return null;const hostingPrice=Number(hostingOption.price);return <div className="hero-price-card">
             <div className="price-card-top"><span className="status-dot" /> {copy("heroPriceLabel")}</div>
             <div className="price-preview-line"><span>{copy("heroEstimatePackageName") || (visiblePackages.find((item) => item.id === "multi")?.name ?? copy("priceSummaryPackageFallback"))}</span><b>{money(packagePrice)}</b></div>
             <div className="price-preview-line"><span>{copy("heroIdentityLine")}</span><b>{money(identityPrice)}</b></div>
-            <div className="price-preview-line"><span>{copy("heroHostingLine")}</span><b>{money(hostingPrice)} / {copy("yearUnit")}</b></div>
+            <div className="price-preview-line"><span>{copy("heroHostingLine")}</span><AddonPrice item={hostingOption} locale={locale}/></div>
             <div className="price-preview-total"><span>{copy("heroTotalLabel")} {vatRate}%</span><strong>{money((packagePrice + identityPrice + hostingPrice) * (1 + vatRate / 100))}</strong></div>
             <small>{copy("heroPriceFootnote")}</small>
           </div>;})()}
@@ -647,7 +647,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
 
               {(!groupedPricing&&step === 4) && <div className="form-stack">
                 <div className="hosting-callout"><span className="hosting-icon">✓</span><div><strong>{copy("hostingCalloutTitle")}</strong><p>{copy("hostingCalloutText")}</p></div></div>
-                {hasOption("hosting")&&<button type="button" className={hosting ? "select-card selected" : "select-card"} onClick={() => setHosting((value) => !value)}><span className="select-mark">{hosting ? "✓" : "+"}</span><span className="select-card-copy"><strong>{serverOptions.find((option) => option.code === "hosting")?.name ?? copy("hostingOptionTitle")}</strong><small>{serverOptions.find((option) => option.code === "hosting")?.description || copy("hostingOptionDescription")}</small><b>+{money(Number(serverOptions.find((option) => option.code === "hosting")?.price ?? 600))} / {copy("yearUnit")}</b></span></button>}
+                {hasOption("hosting")&&<button type="button" className={hosting ? "select-card selected" : "select-card"} onClick={() => setHosting((value) => !value)}><span className="select-mark">{hosting ? "✓" : "+"}</span><span className="select-card-copy"><strong>{serverOptions.find((option) => option.code === "hosting")?.name ?? copy("hostingOptionTitle")}</strong><small>{serverOptions.find((option) => option.code === "hosting")?.description || copy("hostingOptionDescription")}</small>{serverOptions.filter(o=>o.code==="hosting").map(o=><AddonPrice key={o.id} item={o} locale={locale} prefix="+"/>)}</span></button>}
                 {hasOption("maintenance")&&<button type="button" className={maintenance ? "select-card selected" : "select-card"} onClick={() => setMaintenance((value) => !value)}><span className="select-mark">{maintenance ? "✓" : "+"}</span><span className="select-card-copy"><strong>{serverOptions.find((option) => option.code === "maintenance")?.name ?? copy("maintenanceTitle")}</strong><small>{serverOptions.find((option) => option.code === "maintenance")?.description || copy("maintenanceDescription")}</small><b>+{money(Number(serverOptions.find((option) => option.code === "maintenance")?.price ?? 3600))} / {copy("yearUnit")}</b></span></button>}
               </div>}
 
