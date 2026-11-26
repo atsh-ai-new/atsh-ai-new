@@ -987,3 +987,46 @@ html:root body .platform-header .platform-header-contact,html:root body .platfor
 .admin-addon-order-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid #dce5ee;border-radius:10px;padding:8px}
 .admin-addon-order-row strong{flex:1;min-width:140px}
 @media(max-width:600px){.addon-category-panel{padding:10px}.addon-category-heading{gap:8px}.addon-category-grid{grid-template-columns:1fr}.addon-category-heading p{font-size:12px}}
+
+/* Admin-only readable typography. Keep public pricing, headers and customer pages unchanged. */
+:is(.admin-page,.admin-gate){font-size:15px;line-height:1.5}
+.admin-page .admin-brand strong{font-size:17px}
+.admin-page :is(.admin-brand small,.admin-nav-label,.admin-sidebar-bottom){font-size:12px;line-height:1.5}
+.admin-page .admin-nav button{font-size:14px;line-height:1.45}
+.admin-page .admin-nav button span{font-size:12px;flex-shrink:0}
+.admin-page .admin-topbar h1{font-size:25px;line-height:1.35}
+.admin-page .admin-topbar p{font-size:13px}
+.admin-page .admin-identity strong{font-size:14px}
+.admin-page :is(.admin-identity small,.admin-avatar){font-size:12px}
+.admin-page .admin-preview-banner{font-size:13px;line-height:1.6}
+.admin-page .admin-content-card h2,.admin-page .admin-content-title h2{font-size:20px;line-height:1.4}
+.admin-page .admin-content-card h3{font-size:17px;line-height:1.45}
+.admin-page .admin-content-card h4{font-size:15px;line-height:1.45}
+.admin-page .admin-content-title p{font-size:13px;line-height:1.6}
+.admin-page .admin-stat :is(span,small){font-size:13px}
+.admin-page .admin-stat strong{font-size:24px}
+:is(.admin-page,.admin-gate) :is(.admin-field,.field-label,.check-row){font-size:13px;line-height:1.5;min-width:0}
+:is(.admin-page,.admin-gate) :is(.admin-field,.field-label) :is(input,textarea,select),
+.admin-page :is(.admin-table,.admin-team-row,.admin-package-row) :is(input,select,textarea),
+.admin-page .cms-inline-card input,
+.admin-page .cartoon-panel :is(input,select,textarea){font-size:14px;line-height:1.5;min-width:0}
+:is(.admin-page,.admin-gate) :is(.admin-content-card,.admin-gate-card,.cartoon-studio) :is(button,.button,.inline-add){font-size:14px;line-height:1.45}
+.admin-page .admin-content-card :is(.button-small,.inline-add){white-space:normal}
+.admin-page :is(.admin-table,.admin-team-row){font-size:14px;line-height:1.5}
+.admin-page .admin-table th{font-size:13px}
+.admin-page :is(.admin-package-row strong,.admin-team-row strong,.option-admin-heading,.cms-section-editor>header,.cms-home-card>strong,.studio-draft-item strong,.studio-scene>header>strong){font-size:14px}
+.admin-page :is(.admin-image-setting>small,.admin-field small,.studio-draft-item span,.studio-draft-item small,.field-hint,.option-admin-heading code,.option-admin-heading small,.cms-project-cover,.theme-swatch,.atsh-chat .atsh-chat-person small,.atsh-chat .atsh-bubble span,.atsh-chat .atsh-bubble small){font-size:12px;line-height:1.5}
+.admin-page :is(.status-chip,.connection-pill,.studio-connection,.studio-consent,.studio-question-box,.admin-empty,.cms-empty,.api-notice,.error-message,.success-message){font-size:13px;line-height:1.6}
+.admin-page .cartoon-studio{font-size:14px}
+.admin-page .cartoon-panel :is(label,p),.admin-page .cartoon-hero :is(small,p),.admin-page .cartoon-progress span{font-size:14px;line-height:1.5}
+.admin-page .cartoon-stage>small{font-size:12px}
+.admin-gate .admin-gate-card p{font-size:14px;line-height:1.65}
+.admin-gate .admin-gate-card h1{font-size:24px;line-height:1.4}
+@media(max-width:767px){
+  .admin-page .admin-topbar h1{font-size:19px!important}
+  .admin-page .admin-topbar .admin-identity strong{font-size:12px!important}
+  .admin-page .admin-topbar .admin-top-actions button,.admin-page .admin-topbar .language-pill{font-size:12px}
+  .admin-page .admin-content-card h2,.admin-page .admin-content-title h2{font-size:18px}
+  .admin-page .admin-stat strong{font-size:22px}
+  :is(.admin-page,.admin-gate) :is(.admin-field,.field-label) :is(input,textarea,select){font-size:16px}
+}
