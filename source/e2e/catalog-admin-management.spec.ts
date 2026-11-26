@@ -31,6 +31,7 @@ test("admin replaces and clears a cover, deletes the selected system and leaves 
  });
  await page.route("**/api/site-media/**",route=>route.fulfill({contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT8sAAAAASUVORK5CYII=","base64")}));
  await page.goto("/admin");
+ await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"محتوى المنصة",exact:true}).click();
  await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"المنتجات",exact:true}).click();
  await page.getByRole("tab",{name:"أنظمة مخصصة"}).click();
  const row=page.locator(".admin-team-row").filter({hasText:"نظام الاختبار"});
@@ -67,6 +68,7 @@ test("admin replaces and clears a cover, deletes the selected system and leaves 
  await expect(gallery.locator('a[href="/catalog/cover-test?fullscreen=1"]')).toHaveCount(0);
  await gallery.close();
  await page.reload();
+ await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"محتوى المنصة",exact:true}).click();
  await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"المنتجات",exact:true}).click();
  await page.getByRole("tab",{name:"أنظمة مخصصة"}).click();
  await expect(page.locator(".admin-team-row").filter({hasText:"نظام آخر"})).toBeVisible();
@@ -88,6 +90,7 @@ test("admin navigates 105 systems using pagination, search, sector and publicati
   return route.fulfill({json:{}});
  });
  await page.goto("/admin");
+ await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"محتوى المنصة",exact:true}).click();
  await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"المنتجات",exact:true}).click();
  await page.getByRole("tab",{name:"أنظمة مخصصة"}).click();
  const rows=page.locator(".catalog-system-row"),count=page.getByTestId("catalog-result-count"),pager=page.locator(".catalog-admin-pager");
@@ -128,3 +131,69 @@ test("admin navigates 105 systems using pagination, search, sector and publicati
  await expect(rows.first()).toContainText("نظام 001");
  expect(saves).toBe(0);
 });
+
+test("products are nested under platform content while package and add-on pricing stay connected",async({page})=>{
+ const pkg={id:"package-test",name:"باقة الاختبار",tagline:"",description:"",price:5000,currency:"EGP",features:[],is_featured:false,is_custom_quote:false,is_published:true,sort_order:1,visibility:"both"};
+ const addon={id:"addon-test",package_id:pkg.id,code:"test_addon",name:"إضافة الاختبار",description:"",price:500,pricing_type:"yearly",unit_label:"",is_required:false,is_active:true,sort_order:1,visibility:"both"};
+ const changes: Array<{path:string;price:number;visibility?:string}>=[];
+ await page.route("**/api/admin/**",async route=>{
+  const path=new URL(route.request().url()).pathname;
+  if(path==="/api/admin/me")return route.fulfill({json:{email:"owner@example.test",role:"owner",permissions:{products:true,content:true,assistant:true}}});
+  if(path==="/api/admin/packages")return route.fulfill({json:{packages:[pkg],options:[addon]}});
+  if(path==="/api/admin/pages")return route.fulfill({json:{pages:[]}});
+  if(route.request().method()==="PATCH"){
+   const input=route.request().postDataJSON();
+   changes.push({path,price:input.price,visibility:input.visibility});
+   if(path==="/api/admin/packages/"+pkg.id)pkg.price=input.price;
+   if(path==="/api/admin/options/"+addon.id)addon.price=input.price;
+  }
+  return route.fulfill({json:{}});
+ });
+ await page.goto("/admin");
+ const nav=page.getByRole("navigation",{name:"أقسام لوحة الإدارة"});
+ await expect(nav.getByRole("button",{name:"المنتجات",exact:true})).toHaveCount(0);
+ await nav.getByRole("button",{name:"محتوى المنصة",exact:true}).click();
+ await expect(nav.getByRole("button",{name:"منشئ المحتوى",exact:true})).toBeVisible();
+ await expect(nav.getByRole("button",{name:"إدارة الفيديوهات",exact:true})).toBeVisible();
+ await nav.getByRole("button",{name:"المنتجات",exact:true}).click();
+ const packageCard=page.locator(".admin-package-quarter-grid .admin-package-editor").first();
+ await packageCard.getByLabel("السعر بالجنيه").fill("5500");
+ await packageCard.getByRole("button",{name:"حفظ الباقة",exact:true}).click();
+ await expect.poll(()=>changes.length).toBe(1);
+ expect(changes[0]).toMatchObject({path:"/api/admin/packages/package-test",price:5500});
+ await page.getByRole("tab",{name:"الإضافات",exact:true}).click();
+ const addonCard=page.locator("#unified-package-options .admin-package-editor").first();
+ await addonCard.getByLabel("السعر",{exact:true}).fill("750");
+ await addonCard.getByRole("button",{name:"حفظ التعديلات",exact:true}).click();
+ await expect.poll(()=>changes.length).toBe(2);
+ expect(changes[1]).toMatchObject({path:"/api/admin/options/addon-test",price:750,visibility:"both"});
+ await expect(page.locator("#unified-vat")).toBeVisible();
+ await page.getByRole("tab",{name:"أنظمة مخصصة",exact:true}).click();
+ await expect(page.locator("#unified-catalog-pricing")).toBeVisible();
+ await page.getByRole("tab",{name:"الباقات",exact:true}).click();
+ await expect(packageCard.getByLabel("السعر بالجنيه")).toHaveValue("5500");
+});
+
+for(const products of [true,false]){
+ test("nested navigation retains separate products permission: "+products,async({page})=>{
+  await page.route("**/api/admin/**",route=>{
+   const path=new URL(route.request().url()).pathname;
+   if(path==="/api/admin/me")return route.fulfill({json:{email:"member@example.test",role:"viewer",permissions:{products,content:!products,assistant:false}}});
+   return route.fulfill({json:{}});
+  });
+  await page.goto("/admin");
+  const nav=page.getByRole("navigation",{name:"أقسام لوحة الإدارة"});
+  await nav.getByRole("button",{name:"محتوى المنصة",exact:true}).click();
+  const product=nav.getByRole("button",{name:"المنتجات",exact:true});
+  if(products){
+   await expect(product).toBeVisible();
+   await expect(nav.getByRole("button",{name:"صفحات المنصة",exact:true})).toHaveCount(0);
+   await product.click();
+   await expect(page.locator("#unified-package-pricing")).toBeVisible();
+  }else{
+   await expect(product).toHaveCount(0);
+   await expect(page.locator("#unified-package-pricing")).toHaveCount(0);
+   await expect(nav.getByRole("button",{name:"صفحات المنصة",exact:true})).toBeVisible();
+  }
+ });
+}
