@@ -8,14 +8,8 @@ import { normalizeCatalogSectors, defaultCatalogPlacements, resolvePlacement, va
 
 type PricedAddon={code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
 type CatalogItem = SectorTemplate & {previewHtml?:string;previewHtmlName?:string;previewAssetId?:string;hasPreviewHtml?:boolean;published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; demoSlug?:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[];sectorId?:string;subcategoryId?:string};
-const defaultPricedAddons=():PricedAddon[]=>[
- {code:"extra_page",name:"صفحة إضافية (لكل صفحة)",price:1000,pricingType:"fixed"},
- {code:"domain",name:"دومين (سنة)",price:1000,pricingType:"yearly"},
- {code:"hosting",name:"استضافة (سنة)",price:1000,pricingType:"yearly"},
- {code:"extra_feature",name:"ميزة إضافية",price:1000,pricingType:"fixed"}
-];
-const seed = (): CatalogItem[] => sectorTemplates.map((s,i)=>({...s,published:true,archived:false,sortOrder:i*10,imageUrl:"",previewUrl:"",demoSlug:s.slug,basePrice:5000,addons:[],pricedAddons:[]}));
-const empty = (): CatalogItem => ({slug:"",name:"",category:"",icon:"📁",description:"",features:[],modules:["لوحة القيادة"],sampleStats:[],sampleRows:[],note:"معاينة تجريبية",published:false,archived:false,sortOrder:100,imageUrl:"",previewUrl:"",demoSlug:"",basePrice:5000,addons:[],pricedAddons:[]});
+const seed = (): CatalogItem[] => sectorTemplates.map((s,i)=>({...s,published:true,archived:false,sortOrder:i*10,imageUrl:"",previewUrl:"",demoSlug:s.slug,basePrice:null,addons:[],pricedAddons:[]}));
+const empty = (): CatalogItem => ({slug:"",name:"",category:"",icon:"📁",description:"",features:[],modules:["لوحة القيادة"],sampleStats:[],sampleRows:[],note:"معاينة تجريبية",published:false,archived:false,sortOrder:100,imageUrl:"",previewUrl:"",demoSlug:"",basePrice:null,addons:[],pricedAddons:[]});
 const normalize = (v: unknown): CatalogItem[] => Array.isArray(v) ? v.filter(x=>x && typeof x==="object" && typeof x.slug==="string" && typeof x.name==="string").map(x=>({...empty(),...x,features:Array.isArray(x.features)?x.features:[],modules:Array.isArray(x.modules)?x.modules:[],sampleStats:Array.isArray(x.sampleStats)?x.sampleStats:[],sampleRows:Array.isArray(x.sampleRows)?x.sampleRows:[],addons:Array.isArray(x.addons)?x.addons:[],pricedAddons:Array.isArray(x.pricedAddons)?x.pricedAddons.filter((option:PricedAddon)=>!["logo_design","visual_identity"].includes(option.code)):[]})) : seed();
 export default function CatalogManager() {
   const [items,setItems]=useState<CatalogItem[]>([]);
@@ -123,10 +117,16 @@ export default function CatalogManager() {
       setDraft(empty());setOriginalSlug("");setHtmlPreview(false);setPreviewUrlLocal("");
     }
   };
-  const applyDemoPrices=async()=>{
-    if(!window.confirm("تعيين سعر أساسي تجريبي ٥٠٠٠ ج.م للأنظمة التي لا سعر لها فقط؟ لن تُنشأ إضافات أو أسعار مستقلة."))return;
-    const next=items.map(item=>({...item,basePrice:item.basePrice===null?5000:item.basePrice,pricedAddons:[]}));
-    await saveAll(next,"تم تعيين الأسعار الأساسية التجريبية دون إنشاء إضافات منفصلة.");
+  const applyApprovedPrices=async()=>{
+    if(!window.confirm("استعادة أسعار الإيجار والتملك الافتراضية وإلغاء الخصومات للأنظمة المسعّرة في الكود فقط؟ لن تتغير الإضافات أو الباقات أو الطلبات السابقة."))return;
+    setBusy(true);setError("");setNotice("");
+    try{
+      const response=await fetch("/api/admin/ownership-prices/sector/reset-approved",{method:"POST",credentials:"include",cache:"no-store"});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||!Array.isArray(data.reset)||!Array.isArray(data.skipped))throw Error(data.error||"تعذر استعادة الأسعار");
+      setVersion(v=>v+1);
+      setNotice(`تم استعادة أسعار الإيجار والتملك لـ ${data.reset.length} نظام. الأنظمة بلا تسعير افتراضي: ${data.skipped.length} (لم تتغير).`);
+    }catch(e){setError(e instanceof Error?e.message:"تعذر استعادة الأسعار");}finally{setBusy(false);}
   };
   const importStarter=async()=>{
     const used=new Set(items.map(item=>item.slug));
@@ -276,7 +276,7 @@ export default function CatalogManager() {
         <div className="admin-actions">
           <button type="button" className="button button-outline" onClick={()=>{setOriginalSlug("");setDraft(empty());setHtmlPreview(false);setPreviewUrlLocal("");goToEditor();}}>+ نظام مخصص جديد</button>
           <button type="button" className="button button-outline" disabled={busy} onClick={()=>void importStarter()}>استيراد النماذج الأربعة المبدئية دون تكرار</button>
-          <button type="button" className="button button-outline" disabled={busy} onClick={()=>void applyDemoPrices()}>تطبيق الأسعار التجريبية على الأنظمة المخصصة الحالية (٥٠٠٠ + إضافات ١٠٠٠)</button>
+          <button type="button" className="button button-outline" disabled={busy} onClick={()=>void applyApprovedPrices()}>استعادة الأسعار الافتراضية المعتمدة للأنظمة</button>
           <a className="inline-add" href="/catalog" target="_blank" rel="noreferrer">عرض المعرض ↗</a>
           <button type="button" className="button button-outline" onClick={showLivePreview}>معاينة تفاعلية قبل الحفظ</button>
         </div>
@@ -414,7 +414,7 @@ export default function CatalogManager() {
         {htmlPreview&&draft.previewHtml&&<div id="catalog-html-preview" style={{gridColumn:"1 / -1"}}><div className="admin-actions"><button type="button" onClick={()=>setPreviewDevice("desktop")}>كمبيوتر</button><button type="button" onClick={()=>setPreviewDevice("mobile")}>موبايل</button><button type="button" onClick={()=>setHtmlPreview(false)}>إغلاق المعاينة</button></div><iframe title="معاينة HTML قبل الحفظ" srcDoc={isolatedDemoHtml(draft.previewHtml)} sandbox="allow-scripts allow-modals" referrerPolicy="no-referrer" style={{width:previewDevice==="mobile"?390:"100%",maxWidth:"100%",height:"65vh",border:0}}/></div>}
         {field("رابط النظام التفاعلي المنشور HTTPS — الصق رابط المعاينة هنا",draft.previewUrl,v=>update("previewUrl",v))}
         <label className="admin-field">مرجع السعر القديم / سعر تأسيس منتج جديد (جنيه)<input type="number" min="0" step="0.01" value={draft.basePrice??""} onChange={e=>update("basePrice",e.target.value===""?null:Number(e.target.value))}/></label>
-        {originalSlug&&<OwnershipAdmin key={originalSlug} scope="sector" productKey={originalSlug} base={draft.basePrice}/>}
+        {originalSlug&&<OwnershipAdmin key={originalSlug+":"+version} scope="sector" productKey={originalSlug} base={draft.basePrice}/>}
         <p className="field-hint" style={{gridColumn:"1 / -1"}}>تُدار الإضافات وأسعارها من قسم الإضافات المركزي في لوحة الإدارة؛ لا توجد أسعار منفصلة لهذا النظام.</p>
         <label className="admin-field">ترتيب الظهور<input type="number" value={draft.sortOrder} onChange={e=>update("sortOrder",Number(e.target.value))}/></label>
         <label className="check-row"><input type="checkbox" checked={draft.published} onChange={e=>update("published",e.target.checked)}/> منشور في المعرض</label>

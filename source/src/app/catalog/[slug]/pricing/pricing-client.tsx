@@ -6,7 +6,7 @@ import AddonGroups from "@/components/addon-groups";
 import DomainLookup from "@/components/domain-lookup";
 import type {CategorizedAddon} from "@/lib/addon-categories";
 import {loadGuestWorkspace,loadAccountWorkspace,loadPricingDraft,savePricingDraft,type PricingDraft} from "@/lib/customer-workspace";
-import OwnershipSelector,{ownershipName,type OwnershipMode,type OwnershipPrices} from "@/components/ownership-selector";
+import OwnershipSelector,{ownershipName,ownershipPeriod,isRental,type OwnershipMode,type OwnershipPrices} from "@/components/ownership-selector";
 
 type Addon=CategorizedAddon & {list_price?:number|string;discount_percent?:number|string;required?:boolean;code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"|"per_page"};
 type Catalog={ownershipPrices?:OwnershipPrices|null;slug:string;name:string;basePrice:number|null;pricedAddons?:Addon[];published?:boolean;archived?:boolean};
@@ -52,18 +52,18 @@ export default function CatalogPricingClient({slug}:{slug:string}){
   return()=>{active=false};
  },[slug]);
  const en=locale==="en",t=(ar:string,english:string)=>en?english:ar;
- const addons=useMemo(()=>sharedAddons.filter(a=>mode!=="rent"||a.code!=="hosting"),[sharedAddons,mode]);
+ const addons=useMemo(()=>sharedAddons.filter(a=>!isRental(mode)||a.code!=="hosting"),[sharedAddons,mode]);
  const pageAddon=addons.find(a=>a.code==="extra_page");
  const base=catalog?.ownershipPrices?.[mode]?.price??null;
  const chosen=[...new Set([...selected.filter(code=>addons.some(a=>a.code===code)),...addons.filter(a=>a.required&&a.code!=="extra_page").map(a=>a.code)])];
- const baseFixed=mode==="rent"?0:base??0;const baseYearly=mode==="rent"?base??0:0;
+ const baseFixed=isRental(mode)?0:base??0;const baseYearly=mode==="rent"?base??0:0;
  const amountFor=(a:Addon)=>Number(a.price)*(a.pricingType==="per_page"?writingPages:1);
  const fixed=addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)&&(a.pricingType==="fixed"||a.pricingType==="per_page")).reduce((n,a)=>n+amountFor(a),0)+pages*Number(pageAddon?.price??0);
- const monthly=addons.filter(a=>chosen.includes(a.code)&&a.pricingType==="monthly").reduce((n,a)=>n+Number(a.price),0);
+ const monthly=(mode==="rent_monthly"?base??0:0)+addons.filter(a=>chosen.includes(a.code)&&a.pricingType==="monthly").reduce((n,a)=>n+Number(a.price),0);
  const yearly=baseYearly+addons.filter(a=>chosen.includes(a.code)&&a.pricingType==="yearly").reduce((n,a)=>n+Number(a.price),0);
  const money=(n:number)=>n.toLocaleString(en?"en-EG":"ar-EG",{maximumFractionDigits:2})+" "+t("ج.م","EGP");
  const save=async()=>{if(!catalog||base===null||!editReady)return;setSaveError("");try{
- const items=[{name:catalog.name+" — "+ownershipName(mode),amount:base,period:mode==="rent"?"yearly" as const:"fixed" as const},...addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="per_page"?"fixed" as const:a.pricingType})),...(pages>0&&pageAddon?[{name:"صفحات إضافية × "+pages,amount:pages*Number(pageAddon.price),period:"fixed" as const}]:[])];
+ const items=[{name:catalog.name+" — "+ownershipName(mode),amount:base,period:ownershipPeriod(mode)},...addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="per_page"?"fixed" as const:a.pricingType})),...(pages>0&&pageAddon?[{name:"صفحات إضافية × "+pages,amount:pages*Number(pageAddon.price),period:"fixed" as const}]:[])];
  const subtotal=Math.round((baseFixed+fixed+monthly+yearly)*100)/100,tax=Math.round(subtotal*vat)/100;
  await savePricingDraft(edit,{domainName,sectorSlug:slug,sectorName:catalog.name,ownershipMode:mode,sectorAddonCodes:[...chosen,...(pages>0&&pageAddon?["extra_page"]:[])],sectorAddonQuantities:Object.fromEntries([...addons.filter(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&chosen.includes(a.code)).map(a=>[a.code,writingPages] as const),...(pages>0&&pageAddon?[["extra_page",pages] as const]:[])]),source:"catalog",projectMode:"ready",businessDescription:details,draftInvoice:{title:catalog.name,items,subtotal,vat:tax,total:Math.round((subtotal+tax)*100)/100,fixed:baseFixed+fixed,monthly,yearly,currency:"EGP",savedAt:new Date().toISOString()}},locale);
  }catch(e){setSaveError(e instanceof Error?e.message:"تعذر حفظ الاختيارات")}};
@@ -84,7 +84,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
     <div style={{color:"#718398",fontSize:14,fontWeight:600}}>{t("ملخص مباشر","Live summary")}</div>
     <h2 style={{fontSize:27,margin:"8px 0 20px"}}>{t("طلبك الحالي","Your current order")}</h2>
     <div style={{background:"#f5f7f9",border:"1px solid #e0e6eb",borderRadius:12,padding:"13px 15px",color:"#718398",fontSize:14,fontWeight:600,marginBottom:18}}>{t("تفاصيل النظام والإضافات المحددة","Selected system and add-ons")}</div>
-    {([{name:catalog?.name??t("النظام المخصص","Custom system"),amount:base??0,period:mode==="rent"?t("سنويًا","Yearly"):t("مرة واحدة","One-time")},...addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="monthly"?t("شهريًا","Monthly"):a.pricingType==="yearly"?(a.code==="hosting"?t("اشتراك سنوي لمدة 12 شهرًا","Annual subscription (12 months)"):t("سنويًا","Yearly")):t("مرة واحدة","One-time")})),...(pages>0&&pageAddon?[{name:t(`صفحات إضافية × ${pages}`,`Additional pages × ${pages}`),amount:pages*Number(pageAddon.price),period:t("مرة واحدة","One-time")}]:[]) ]).map((item,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"center",padding:"14px 0",borderBottom:"1px solid #e6e9ed"}}><div style={{textAlign:"start"}}><div>{item.name}</div><small style={{color:"#9aa3ad"}}>{item.period}</small></div><strong style={{whiteSpace:"nowrap",fontSize:14}}>{money(item.amount)}</strong></div>)}
+    {([{name:catalog?.name??t("النظام المخصص","Custom system"),amount:base??0,period:mode==="rent"?t("سنويًا","Yearly"):mode==="rent_monthly"?t("شهريًا","Monthly"):t("مرة واحدة","One-time")},...addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="monthly"?t("شهريًا","Monthly"):a.pricingType==="yearly"?(a.code==="hosting"?t("اشتراك سنوي لمدة 12 شهرًا","Annual subscription (12 months)"):t("سنويًا","Yearly")):t("مرة واحدة","One-time")})),...(pages>0&&pageAddon?[{name:t(`صفحات إضافية × ${pages}`,`Additional pages × ${pages}`),amount:pages*Number(pageAddon.price),period:t("مرة واحدة","One-time")}]:[]) ]).map((item,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"center",padding:"14px 0",borderBottom:"1px solid #e6e9ed"}}><div style={{textAlign:"start"}}><div>{item.name}</div><small style={{color:"#9aa3ad"}}>{item.period}</small></div><strong style={{whiteSpace:"nowrap",fontSize:14}}>{money(item.amount)}</strong></div>)}
     <div style={{display:"flex",justifyContent:"space-between",gap:12,padding:"17px 0 10px",color:"#667586"}}><span>{t("المجموع قبل الضريبة","Subtotal before tax")}</span><strong>{base===null?"—":money(baseFixed+fixed+monthly+yearly)}</strong></div>
     <div style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0 17px",borderBottom:"1px solid #dce2e8",color:"#667586"}}><span>{t("ضريبة القيمة المضافة ("+vat+"%)","VAT ("+vat+"%)")}</span><strong>{base===null?"—":money((baseFixed+fixed+monthly+yearly)*vat/100)}</strong></div>
     <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"20px 0 18px"}}><span style={{color:"#667586"}}>{t("الإجمالي التقديري","Estimated total")}</span><strong style={{fontSize:"clamp(21px,5vw,30px)",color:"#203958",whiteSpace:"nowrap"}}>{base===null?"—":money((baseFixed+fixed+monthly+yearly)*(1+vat/100))}</strong></div>

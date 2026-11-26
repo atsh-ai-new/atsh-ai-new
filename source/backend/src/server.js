@@ -27,7 +27,7 @@ import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
 import { buildVisitorInstructions } from "./visitor-assistant.js";
 import { priceSectorSelection } from "./sector-pricing.js";
-import { ensureOwnership,resolveOwnership,ownershipModes,ownershipLabels,ownershipConflicts } from "./product-ownership.js";
+import { ensureOwnership,resolveOwnership,ownershipModes,ownershipLabels,ownershipConflicts,sectorTariff,resetOwnership } from "./product-ownership.js";
 import { calculateUnifiedPricing } from "./pricing-engine.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
@@ -667,7 +667,7 @@ async function pricedSectorCatalog(db,items){
     if(!item||typeof item!=="object")return item;
     const base=prices.get("sector:"+item.slug+":base");
     const ownershipPrices=await ensureOwnership(db,"sector",item.slug,item.name,base?.amount??null);
-    return {...item,basePrice:base?Number(base.amount):null,ownershipPrices,
+    return {...item,basePrice:sectorTariff(item.slug)?ownershipPrices?.copy.price??null:base?Number(base.amount):null,ownershipPrices,
       pricedAddons:[...activeShared,...(Array.isArray(item.pricedAddons)?item.pricedAddons:[]).filter(a=>!centralCodes.has(a.code)&&!reservedAddonCodes.has(a.code)).map(addon=>{
         const price=prices.get("sector_addon:"+item.slug+":"+addon.code);
         return price&&price.amount!==null?{...addon,price:Number(price.amount),pricingType:price.pricing_type}:null;
@@ -721,7 +721,7 @@ app.get("/api/sector-price",route(async(req,res)=>{
 }));
 
 const orderSchema = z.object({
-  ownershipMode:z.enum(["rent","copy","code"]).optional(),
+  ownershipMode:z.enum(["rent","copy","code","rent_monthly"]).optional(),
   packageId:z.string().uuid(),
   optionIds:z.array(z.string().uuid()).max(MAX_ADDONS_PER_SELECTION).default([]),
   optionQuantities:z.record(z.string().uuid(),z.number().int().min(1).max(50)).default({}),
@@ -1481,24 +1481,47 @@ app.get("/api/admin/ownership-prices/:scope/:key",requireAdmin,requirePermission
 app.patch("/api/admin/ownership-prices/:scope/:key",requireAdmin,requirePermission("products"),route(async(req,res)=>{
  const {scope,key}=req.params;
  const tariff=z.object({list_price:z.number().finite().min(0).max(99999999),discount_percent:z.number().finite().min(0).max(100)}).strict();
- const parsed=z.object({rent:tariff,copy:tariff,code:tariff}).strict().safeParse(req.body);
+ const parsed=z.object({rent:tariff,copy:tariff,code:tariff,rent_monthly:tariff.optional()}).strict().safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid prices"});
  const client=await pool.connect();try{
   await client.query("BEGIN");
   const p=await ownershipProduct(client,scope,key);
   if(!p){await client.query("ROLLBACK");return res.status(404).json({error:"Product unavailable"});}
   const before=await ensureOwnership(client,scope,key,p.name,p.base??parsed.data.copy.list_price);
-  for(const mode of ownershipModes){const x=parsed.data[mode];await client.query("UPDATE product_ownership_prices SET list_price=$4,discount_percent=$5 WHERE scope=$1 AND owner_key=$2 AND mode=$3",[scope,key,mode,x.list_price,x.discount_percent]);}
+  for(const mode of ownershipModes){const x=parsed.data[mode];if(!x)continue;await client.query("UPDATE product_ownership_prices SET list_price=$4,discount_percent=$5 WHERE scope=$1 AND owner_key=$2 AND mode=$3",[scope,key,mode,x.list_price,x.discount_percent]);}
   const prices=await ensureOwnership(client,scope,key,p.name,p.base??parsed.data.copy.list_price);
   await auditChange(client,req.admin.email,"ownership.prices_updated",scope,scope==="package"?key:"00000000-0000-4000-8000-000000000001",{key,prices:before},{key,prices});
   await client.query("COMMIT");res.json({prices});
  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
+// Bulk reset only for existing catalog entries with a coded tariff; no new
+// products, add-on changes, package changes, or historical order mutations.
+app.post("/api/admin/ownership-prices/sector/reset-approved",requireAdmin,requirePermission("products"),route(async(req,res)=>{
+ const client=await pool.connect();try{
+  await client.query("BEGIN");
+  const catalog=await client.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' FOR SHARE");
+  const items=catalog.rows[0]?.content?.items;
+  const reset=[],skipped=[];
+  for(const item of Array.isArray(items)?items:[]){
+   if(!item||typeof item.slug!=="string")continue;
+   if(!sectorTariff(item.slug)){skipped.push(item.slug);continue;}
+   const result=await resetOwnership(client,"sector",item.slug,item.name,item.basePrice);
+   reset.push({key:item.slug,prices:result.prices});
+   await auditChange(client,req.admin.email,"ownership.prices_reset","sector","00000000-0000-4000-8000-000000000001",{key:item.slug,prices:result.before},{key:item.slug,prices:result.prices});
+  }
+  await client.query("COMMIT");res.json({reset,skipped});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
 app.post("/api/admin/ownership-prices/:scope/:key/reset",requireAdmin,requirePermission("products"),route(async(req,res)=>{
- const {scope,key}=req.params,p=await ownershipProduct(pool,scope,key);
- if(!p)return res.status(404).json({error:"Product unavailable"});
- await pool.query("UPDATE product_ownership_prices SET list_price=initial_price,discount_percent=0 WHERE scope=$1 AND owner_key=$2",[scope,key]);
- res.json({prices:await ensureOwnership(pool,scope,key,p.name,p.base)});
+ const {scope,key}=req.params;
+ const client=await pool.connect();try{
+  await client.query("BEGIN");
+  const p=await ownershipProduct(client,scope,key);
+  if(!p){await client.query("ROLLBACK");return res.status(404).json({error:"Product unavailable"});}
+  const result=await resetOwnership(client,scope,key,p.name,p.base);
+  await auditChange(client,req.admin.email,"ownership.prices_reset",scope,scope==="package"?key:"00000000-0000-4000-8000-000000000001",{key,prices:result.before},{key,prices:result.prices});
+  await client.query("COMMIT");res.json({prices:result.prices});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.get("/api/admin/packages",requireAdmin,requirePermission("products"),route(async(_req,res)=>{
   const [p,o,shared,categories]=await Promise.all([

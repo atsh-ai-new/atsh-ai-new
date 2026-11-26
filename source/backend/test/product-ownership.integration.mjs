@@ -17,9 +17,11 @@ try{
  const original=await api(endpoint);assert.equal(original.status,200,JSON.stringify(original));
  assert.equal(original.data.prices.rent.price,750);
  assert.equal(original.data.prices.copy.price,1250);
- const tariff={rent:{list_price:1800,discount_percent:10},copy:{list_price:2100,discount_percent:0},code:{list_price:5000,discount_percent:5}};
+ assert.equal(original.data.prices.rent_monthly.price,75);
+ assert.equal(original.data.prices.rent_monthly.period,"monthly");
+ const tariff={rent:{list_price:1800,discount_percent:10},copy:{list_price:2100,discount_percent:0},code:{list_price:5000,discount_percent:5},rent_monthly:{list_price:200,discount_percent:10}};
  assert.equal((await api(endpoint,"PATCH",tariff,"")).status,401);
- const updated=await api(endpoint,"PATCH",tariff);assert.equal(updated.status,200,JSON.stringify(updated));assert.equal(updated.data.prices.rent.price,1620);assert.equal(updated.data.prices.code.price,4750);
+ const updated=await api(endpoint,"PATCH",tariff);assert.equal(updated.status,200,JSON.stringify(updated));assert.equal(updated.data.prices.rent.price,1620);assert.equal(updated.data.prices.code.price,4750);assert.equal(updated.data.prices.rent_monthly.price,180);
  const options=(await db.query("SELECT id,code FROM package_options WHERE package_id=$1 AND is_active=true AND code IN ('hosting','payment_gateway')",[key])).rows;
  const host=options.find(x=>x.code==="hosting").id,addon=options.find(x=>x.code==="payment_gateway").id;
  const customerPath="/api/customer/auth/project-drafts";
@@ -34,7 +36,10 @@ try{
  assert.equal(patched.data.projectDraft.draft.ownershipMode,"code");assert.equal(patched.data.projectDraft.draft.draftInvoice.yearly,225);
  assert.ok(patched.data.projectDraft.draft.draftInvoice.fixed>=4750);
  assert.equal((await api(customerPath+"/"+d.id,"PATCH",edit,cookie(account))).status,409);
- const reset=await api(endpoint+"/reset","POST",{});assert.equal(reset.status,200,JSON.stringify(reset));assert.equal(reset.data.prices.copy.price,1250);assert.equal(reset.data.prices.rent.discount_percent,0);
+ const monthly=await api(customerPath+"/"+d.id,"PATCH",{expectedRevision:patched.data.projectDraft.revision,patch:{...selection,ownershipMode:"rent_monthly"}},cookie(account));
+ assert.equal(monthly.status,200,JSON.stringify(monthly));assert.equal(monthly.data.projectDraft.draft.draftInvoice.monthly,180);
+ assert.equal(monthly.data.projectDraft.draft.draftInvoice.yearly,0);assert.ok(!monthly.data.projectDraft.draft.options.includes(host));
+ const reset=await api(endpoint+"/reset","POST",{});assert.equal(reset.status,200,JSON.stringify(reset));assert.equal(reset.data.prices.copy.price,1250);assert.equal(reset.data.prices.rent.discount_percent,0);assert.equal(reset.data.prices.rent_monthly.price,75);
  console.log("PASS: tariff persistence, independent discounts, reset, server repricing and owner-only same-project edit");
 }finally{
  await db.query("DELETE FROM customer_project_drafts WHERE customer_id=ANY($1::uuid[])",[[account,foreign]]);
