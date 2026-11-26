@@ -104,4 +104,5 @@ jobs:
 
           node test/integration-smoke.mjs
           node test/persistence-restart.mjs
+          node test/shared-addons.integration.mjs
           node --test test/content-studio.integration.mjs

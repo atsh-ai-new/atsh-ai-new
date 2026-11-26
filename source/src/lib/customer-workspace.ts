@@ -6,7 +6,7 @@ export type CustomerWorkspace = {
   assistantMessages?:AssistantMessage[];
   sectorSlug?:string; sectorName?:string; packageId?:string; businessName?:string;
   projectMode?:"ready"|"custom"; solutionType?:"website"|"store"|"mobile"|"management"|"ai"|"other"; requirements?:string;
-  businessDescription?:string; brandColor?:string; options?:string[]; sectorAddonCodes?:string[];
+  businessDescription?:string; brandColor?:string; options?:string[]; sectorAddonCodes?:string[]; sectorAddonQuantities?:Record<string,number>;
   deliveryMethod?:"managed"|"source-code"|"undecided"; domainName?:string;
   source?:"catalog"|"configurator"|"concierge"|"preview"|"account";
 };
@@ -26,7 +26,7 @@ function guestStorage():Storage|null{
     return window.sessionStorage;
   }catch{return null;}
 }
-const allowed=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","brandColor","options","sectorAddonCodes","projectMode","solutionType","requirements","deliveryMethod","domainName","source","assistantMessages","draftInvoice"]);
+const allowed=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","brandColor","options","sectorAddonCodes","sectorAddonQuantities","projectMode","solutionType","requirements","deliveryMethod","domainName","source","assistantMessages","draftInvoice"]);
 export function loadGuestWorkspace():CustomerWorkspace {
   if(typeof window==="undefined")return {};
   try{

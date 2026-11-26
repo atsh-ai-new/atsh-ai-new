@@ -139,6 +139,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   brandColor:z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   options:z.array(z.string().max(100)).max(30).optional(),
   sectorAddonCodes:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).max(30).optional(),
+  sectorAddonQuantities:z.record(z.string().regex(/^[a-z0-9_-]{1,80}$/),z.number().int().min(1).max(50)).optional(),
   projectMode:z.enum(['ready','custom']).optional(),
   solutionType:z.enum(['website','store','mobile','management','ai','other']).optional(),
   requirements:z.string().trim().max(4000).optional(),

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { loadGuestWorkspace, loadAccountWorkspace, saveGuestWorkspace } from "@/lib/customer-workspace";
-type PreviewAddon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
+type PreviewAddon={code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"|"per_page";isRequired?:boolean};
 import Link from "next/link";
 import { isolatedDemoHtml, interactiveDemoPaths, type SectorTemplate } from "@/lib/sector-catalog";
 import SectorInteractiveDemo,{isInteractiveSector} from "@/components/sector-interactive-demo";
@@ -19,8 +19,10 @@ export default function SectorPreview({template,demoSlug,previewHtml,demoDocumen
   useEffect(()=>{const sync=()=>setFullScreen(Boolean(document.fullscreenElement));document.addEventListener("fullscreenchange",sync);return()=>document.removeEventListener("fullscreenchange",sync);},[]);
   const [previewMode,setPreviewMode]=useState<"full"|"simple">(demoSlug||previewHtml||demoDocumentUrl?"full":"simple");
   const [rows,setRows]=useState(template.sampleRows);
-  const [selectedAddons,setSelectedAddons]=useState<string[]>([]);
-  const [extraPages,setExtraPages]=useState(0);
+  const [selectedAddons,setSelectedAddons]=useState<string[]>(()=>pricedAddons.filter(a=>a.isRequired&&a.code!=="extra_page").map(a=>a.code));
+  const pageAddon=pricedAddons.find(a=>a.code==="extra_page");
+  const minExtra=pageAddon?.isRequired?1:0;
+  const [extraPages,setExtraPages]=useState(minExtra);
   const [name,setName]=useState("");
   const [brand,setBrand]=useState("#203958");
   const [customTitle,setCustomTitle]=useState("");
@@ -29,12 +31,13 @@ export default function SectorPreview({template,demoSlug,previewHtml,demoDocumen
     if(new URLSearchParams(window.location.search).get("fullscreen")==="1")return;
     const guest=loadGuestWorkspace();
     if(guest.sectorSlug===template.slug){
-      setSelectedAddons(Array.isArray(guest.sectorAddonCodes)?guest.sectorAddonCodes.filter(code=>pricedAddons.some(item=>item.code===code)):[]);
+      setSelectedAddons([...new Set([...(Array.isArray(guest.sectorAddonCodes)?guest.sectorAddonCodes.filter(code=>code!=="extra_page"&&pricedAddons.some(item=>item.code===code)):[]),...pricedAddons.filter(a=>a.isRequired&&a.code!=="extra_page").map(a=>a.code)])]);
+      setExtraPages(pageAddon?Math.min(5,Math.max(minExtra,(guest.sectorAddonCodes?.includes("extra_page")?guest.sectorAddonQuantities?.extra_page??1:0))):0);
       if(guest.businessName)setCustomTitle(guest.businessName);
       if(guest.businessDescription)setCustomDescription(guest.businessDescription);
       if(guest.brandColor)setBrand(guest.brandColor);
     }
-    saveGuestWorkspace({sectorSlug:template.slug,sectorName:template.name,source:"preview"});
+    saveGuestWorkspace({sectorSlug:template.slug,sectorName:template.name,source:"preview",...(guest.sectorSlug!==template.slug?{sectorAddonCodes:pricedAddons.filter(a=>a.isRequired).map(a=>a.code),sectorAddonQuantities:{}}:{})});
   },[template.slug,template.name]);
 
   const [logoData,setLogoData]=useState("");
@@ -127,18 +130,18 @@ export default function SectorPreview({template,demoSlug,previewHtml,demoDocumen
     <section aria-label={t("الخصائص والإضافات القابلة للتخصيص","Customizable features and add-ons")} style={{background:"#fff",border:"1px solid #dce5f0",borderRadius:14,padding:16,marginBottom:16}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:9}}><div><h2 style={{fontSize:20,margin:"0 0 6px",color:brand}}>{t("المزايا والإضافات الخاصة بالنظام","Solution features and add-ons")}</h2><p style={{margin:0,color:"#60728a",fontSize:13}}>اختر ما تحتاجه؛ البنود المدفوعة تُراجع داخل التسعير الرسمي، ولا تُنشئ فاتورة أو طلب شراء من هنا.</p></div><strong>{basePrice===null?"سعر النظام حسب العرض المعتمد":`سعر الأساس: ${basePrice.toLocaleString("ar-EG")} ج.م`}</strong></div>
       {(template.features||[]).length>0&&<p style={{lineHeight:1.9,fontSize:14}}>{t("يشمل النموذج:","The demo includes:")} {(en?englishTemplateFeatures(template.slug,template.features):template.features).join(" · ")}</p>}
-      {pricedAddons.some(a=>a.code==="extra_page")&&<div className="select-card" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBlock:10}}><span className="select-card-copy"><strong>{t("صفحات إضافية","Additional pages")}</strong><small>{t("حتى خمس صفحات إضافية","Up to five additional pages")}</small><b>+{(pricedAddons.find(a=>a.code==="extra_page")?.price??1000).toLocaleString(en?"en-EG":"ar-EG")} {t("ج.م / صفحة","EGP / page")}</b></span><span className="page-quantity"><button type="button" disabled={extraPages===0} onClick={()=>setExtraPages(n=>Math.max(0,n-1))} aria-label={t("تقليل الصفحات","Remove page")}>−</button><output aria-live="polite">{extraPages}</output><button type="button" disabled={extraPages>=5} onClick={()=>setExtraPages(n=>Math.min(5,n+1))} aria-label={t("زيادة الصفحات","Add page")}>+</button></span></div>}
+      {pricedAddons.some(a=>a.code==="extra_page")&&<div className="select-card" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBlock:10}}><span className="select-card-copy"><strong>{t("صفحات إضافية","Additional pages")}</strong><small>{t("حتى خمس صفحات إضافية","Up to five additional pages")}</small><b>+{(pricedAddons.find(a=>a.code==="extra_page")?.price??1000).toLocaleString(en?"en-EG":"ar-EG")} {t("ج.م / صفحة","EGP / page")}</b></span><span className="page-quantity"><button type="button" disabled={extraPages<=minExtra} onClick={()=>{const n=Math.max(minExtra,extraPages-1);setExtraPages(n);saveGuestWorkspace({sectorAddonCodes:[...selectedAddons,...(n?["extra_page"]:[])],sectorAddonQuantities:{...loadGuestWorkspace().sectorAddonQuantities,extra_page:n||1}})}} aria-label={t("تقليل الصفحات","Remove page")}>−</button><output aria-live="polite">{extraPages}</output><button type="button" disabled={extraPages>=5} onClick={()=>{const n=Math.min(5,extraPages+1);setExtraPages(n);saveGuestWorkspace({sectorAddonCodes:[...selectedAddons,"extra_page"],sectorAddonQuantities:{...loadGuestWorkspace().sectorAddonQuantities,extra_page:n}})}} aria-label={t("زيادة الصفحات","Add page")}>+</button></span></div>}
       {pricedAddons.length>0?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,230px),1fr))",gap:10,margin:"12px 0"}}>
        {pricedAddons.filter(addon=>addon.code!=="extra_page").map(addon=><label key={addon.code} style={{display:"flex",gap:10,border:"1px solid #dce5ee",borderRadius:9,padding:12,alignItems:"center",flexWrap:"wrap"}}>
-         <input type="checkbox" checked={selectedAddons.includes(addon.code)} onChange={event=>setSelectedAddons(previous=>{const next=event.target.checked?[...new Set([...previous,addon.code])]:previous.filter(code=>code!==addon.code);saveGuestWorkspace({sectorSlug:template.slug,sectorName:template.name,sectorAddonCodes:next,source:"preview"});return next})}/>
-         <span style={{flex:"1 1 120px"}}>{addon.name}</span><strong style={{fontSize:13}}>{addon.price.toLocaleString(en?"en-EG":"ar-EG")} {t("ج.م","EGP")}{addon.pricingType==="monthly"?t("/ شهر","/ month"):addon.pricingType==="yearly"?t("/ سنة","/ year"):""}</strong>
+         <input type="checkbox" disabled={addon.isRequired} checked={selectedAddons.includes(addon.code)||addon.isRequired===true} onChange={event=>setSelectedAddons(previous=>{const next=event.target.checked?[...new Set([...previous,addon.code])]:previous.filter(code=>code!==addon.code);saveGuestWorkspace({sectorSlug:template.slug,sectorName:template.name,sectorAddonCodes:[...next,...(extraPages?["extra_page"]:[])],source:"preview"});return next})}/>
+         <span style={{flex:"1 1 120px"}}>{addon.name}</span><strong style={{fontSize:13}}>{addon.price.toLocaleString(en?"en-EG":"ar-EG")} {t("ج.م","EGP")}{addon.pricingType==="monthly"?t("/ شهر","/ month"):addon.pricingType==="yearly"?t("/ سنة","/ year"):addon.pricingType==="per_page"?t("/ صفحة","/ page"):""}</strong>
        </label>)}
       </div>:<p style={{fontSize:13,color:"#60728a"}}>{t("لا توجد إضافات قطاعية محددة الأسعار لهذا النموذج حاليًا.","No priced sector add-ons have been published for this demo.")}</p>}
       <div role="status" style={{background:"#f1f5f9",padding:16,borderRadius:12,display:"grid",gap:8}}>
         <strong>{t("ملخص سعر النظام الجاهز وإضافاته","Ready-made system and add-on pricing")}</strong>
         <div>{t("سعر الكتالوج الأساسي","Catalog base price")}: {basePrice===null?t("لم يحدده المسؤول بعد","Not set by admin yet"):`${basePrice.toLocaleString(en?"en-EG":"ar-EG")} ${t("ج.م","EGP")}`}</div>
-        <div>{t("الإضافات لمرة واحدة","One-time add-ons")}: {(pricedAddons.filter(a=>selectedAddons.includes(a.code)&&a.pricingType==="fixed").reduce((sum,a)=>sum+a.price,0)+extraPages*(pricedAddons.find(a=>a.code==="extra_page")?.price??0)).toLocaleString(en?"en-EG":"ar-EG")} {t("ج.م","EGP")}</div>
-        <strong>{t("الإجمالي المبدئي لمرة واحدة","Estimated one-time total")}: {basePrice===null?t("بانتظار سعر الكتالوج","Awaiting catalog price"):`${(basePrice+(pricedAddons.filter(a=>selectedAddons.includes(a.code)&&a.pricingType==="fixed").reduce((sum,a)=>sum+a.price,0)+extraPages*(pricedAddons.find(a=>a.code==="extra_page")?.price??0))).toLocaleString(en?"en-EG":"ar-EG")} ${t("ج.م","EGP")}`}</strong>
+        <div>{t("الإضافات لمرة واحدة","One-time add-ons")}: {(pricedAddons.filter(a=>selectedAddons.includes(a.code)&&(a.pricingType==="fixed"||a.pricingType==="per_page")).reduce((sum,a)=>sum+a.price,0)+extraPages*(pricedAddons.find(a=>a.code==="extra_page")?.price??0)).toLocaleString(en?"en-EG":"ar-EG")} {t("ج.م","EGP")}</div>
+        <strong>{t("الإجمالي المبدئي لمرة واحدة","Estimated one-time total")}: {basePrice===null?t("بانتظار سعر الكتالوج","Awaiting catalog price"):`${(basePrice+(pricedAddons.filter(a=>selectedAddons.includes(a.code)&&(a.pricingType==="fixed"||a.pricingType==="per_page")).reduce((sum,a)=>sum+a.price,0)+extraPages*(pricedAddons.find(a=>a.code==="extra_page")?.price??0))).toLocaleString(en?"en-EG":"ar-EG")} ${t("ج.م","EGP")}`}</strong>
         <div>{t("إضافات شهرية","Monthly add-ons")}: {pricedAddons.filter(a=>selectedAddons.includes(a.code)&&a.pricingType==="monthly").reduce((sum,a)=>sum+a.price,0).toLocaleString(en?"en-EG":"ar-EG")} {t("ج.م/شهر","EGP/month")}</div>
         <div>{t("إضافات سنوية","Yearly add-ons")}: {pricedAddons.filter(a=>selectedAddons.includes(a.code)&&a.pricingType==="yearly").reduce((sum,a)=>sum+a.price,0).toLocaleString(en?"en-EG":"ar-EG")} {t("ج.م/سنة","EGP/year")}</div>
         <small>{t("أضف من لوحة الإدارة أسعار الصفحات الإضافية والشعار والهوية والدومين والاستضافة كبنود مستقلة؛ لن نعيد تسعير باقة موقع جديدة.","Set prices for extra pages, logo, identity, domain and hosting as catalog add-ons in admin; no new website package is selected.")}</small>

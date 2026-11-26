@@ -82,6 +82,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   const [selectedSector, setSelectedSector] = useState<{ slug: string; name: string } | null>(null);
   const [sectorPricedAddons,setSectorPricedAddons]=useState<Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>>([]);
   const [sectorAddonCodes,setSectorAddonCodes]=useState<string[]>([]);
+  const [sectorAddonQuantities,setSectorAddonQuantities]=useState<Record<string,number>>({});
   const [sectorPrice,setSectorPrice]=useState<{subtotal:number;monthly:number;yearly:number;needsCustomQuote:boolean;items:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"}>}|null>(null);
   const copy=(key:string)=>{const content=siteConfig.page?.content;const value=content?.[key];if(isEnglish && arabicReference && Object.prototype.hasOwnProperty.call(arabicReference,key) && arabicReference[key] === "")return "";if(typeof value==="string")return value;return isEnglish ? siteCopyEn[key] ?? "" : siteCopyDefaults[key] ?? "";};
   const steps = Array.from({ length: 8 }, (_, index) => copy(`stepper${index}`));
@@ -142,14 +143,14 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     const requestedPackage=new URLSearchParams(window.location.search).get("package");
     if(configuratorOnly&&requestedPackage){setPackageId(requestedPackage);setPages(packages.find(item=>item.id===requestedPackage)?.includedPages??1);}
     else if(guest.packageId)setPackageId(guest.packageId);
-    if(Array.isArray(guest.sectorAddonCodes)&&(!slug||guest.sectorSlug===slug))setSectorAddonCodes(guest.sectorAddonCodes);
+    if(Array.isArray(guest.sectorAddonCodes)&&(!slug||guest.sectorSlug===slug)){setSectorAddonCodes(guest.sectorAddonCodes);setSectorAddonQuantities(guest.sectorAddonQuantities??{});}
     // Account-owned draft is only read after authentication; never silently merge guest data into another account.
     if(!guest.sectorSlug&&!guest.packageId&&!slug){
       void loadAccountWorkspace().then(account=>{
         if(!active||!account)return;
         if(account.sectorSlug&&account.sectorName)setSelectedSector({slug:account.sectorSlug,name:account.sectorName});
         if(account.packageId)setPackageId(account.packageId);
-        if(Array.isArray(account.sectorAddonCodes))setSectorAddonCodes(account.sectorAddonCodes);
+        if(Array.isArray(account.sectorAddonCodes)){setSectorAddonCodes(account.sectorAddonCodes);setSectorAddonQuantities(account.sectorAddonQuantities??{});}
       }).catch(()=>undefined);
     }
     return()=>{active=false;};
@@ -171,12 +172,13 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     let active=true;
     const params=new URLSearchParams({slug:selectedSector.slug});
     if(sectorAddonCodes.length)params.set("addons",sectorAddonCodes.join(","));
+    params.set("quantities",JSON.stringify(sectorAddonQuantities));
     fetch(`/api/sector-price?${params}`,{cache:"no-store"})
       .then(async r=>{if(!r.ok)throw Error("Sector pricing unavailable");return r.json();})
       .then(data=>{if(active)setSectorPrice(data);})
       .catch(()=>{if(active)setSectorPrice({subtotal:0,monthly:0,yearly:0,needsCustomQuote:true,items:[]});});
     return()=>{active=false;};
-  },[selectedSector,sectorAddonCodes]);
+  },[selectedSector,sectorAddonCodes,sectorAddonQuantities]);
   useEffect(()=>{
     let active=true;
     let retryTimer:ReturnType<typeof setTimeout>|undefined;
@@ -231,6 +233,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         if(draft.sectorSlug&&draft.sectorName)setSelectedSector({slug:draft.sectorSlug,name:draft.sectorName});
         if(draft.packageId)setPackageId(draft.packageId);
         setSectorAddonCodes(Array.isArray(draft.sectorAddonCodes)?draft.sectorAddonCodes:[]);
+        setSectorAddonQuantities(draft.sectorAddonQuantities??{});
         if(draft.domainName)setRequestedDomainName(draft.domainName);
         if(draft.businessName)setCustomer(old=>({...old,company:draft.businessName}));
       }).catch(()=>setRequestMessage(t("تعذر فتح مسودة المشروع المطلوبة. تحقق من ملكيتها وتسجيل الدخول.","Could not access the requested project draft. Verify your account and try again.")));
@@ -257,15 +260,23 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   const selectedBackendPackageId = packageId ? backendPackageIds[packageId] ?? packageId : undefined;
   const selectedServerPackage = selectedBackendPackageId ? apiCatalog.packages.find((item) => item.id === selectedBackendPackageId) : undefined;
   const serverOptions = apiCatalog.options.filter((option) => option.package_id === selectedServerPackage?.id && option.visibility !== "systems");
+  const hasOption=(code:string)=>catalogStatus==="ready"&&serverOptions.some(option=>option.code===code);
+  const enabledIdentity=identity!=="provided"&&hasOption(identity)?identity:"provided";
+  const enabledContent=content==="writing"&&hasOption("writing")?content:"provided";
+  const enabledAddons=addons.filter(hasOption);
+  const enabledBilingual=bilingual&&hasOption("language");
+  const enabledHosting=hosting&&hasOption("hosting");
+  const enabledMaintenance=maintenance&&hasOption("maintenance");
+  const basePages=visiblePackages.find(item=>item.id===packageId)?.includedPages??1;
+  const enabledPages=hasOption("extra_page")?pages:Math.min(pages,basePages);
   const customerSelectedOptionCodes = [
-    ...(bilingual ? ["language"] : []),
-    ...(identity === "provided" ? [] : [identity]),
-    ...(content === "writing" ? ["writing"] : []),
-    ...(pages > (visiblePackages.find(item=>item.id===packageId)?.includedPages ?? 1) ? ["extra_page"] : []),
-    ...addons,
-    ...(hosting ? ["hosting"] : []),
-    ...(hosting && domain !== "none" ? [`domain_${domain}`] : []),
-    ...(maintenance ? ["maintenance"] : [])
+    ...(enabledBilingual ? ["language"] : []),
+    ...(enabledIdentity === "provided" ? [] : [enabledIdentity]),
+    ...(enabledContent === "writing" ? ["writing"] : []),
+    ...(enabledPages > basePages ? ["extra_page"] : []),
+    ...enabledAddons,
+    ...(enabledHosting ? ["hosting"] : []),
+    ...(enabledMaintenance ? ["maintenance"] : [])
   ];
   const selectedOptionCodes = [...new Set([...customerSelectedOptionCodes, ...serverOptions.filter((option) => option.is_required && !obsoleteIdentityOptionCodes.has(option.code)).map((option) => option.code)])];
   const selectedConfiguredOptions = selectedOptionCodes.map((code) => serverOptions.find((option) => option.code === code));
@@ -275,7 +286,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   const extraQuoteOptions = [...selectedExtraOptions, ...requiredOptionsNotIncludedInQuote.filter((option) => !selectedExtraOptions.some((selected) => selected.id === option.id))].filter(option=>option.code!=="extra_page").map((option) => ({ id: option.id, name: localizeOption(option.code,option.name), price: Number(option.price), pricingType: option.pricing_type, unitLabel: option.unit_label }));
   const apiConfigured = catalogStatus === "ready" && Boolean(selectedServerPackage) && selectedConfiguredOptions.every(Boolean);
   const selectedPackageOptions = serverOptions.map((option) => ({ code: option.code, name: localizeOption(option.code,option.name), price: Number(option.price), pricingType: option.pricing_type }));
-  const quote = useMemo(() => calculateQuote({ packageId, identity, content, addons, pages, bilingual, hosting, maintenance, domain }, apiOverrides, selectedPackageOptions, vatRate, extraQuoteOptions), [packageId, identity, content, addons, pages, bilingual, hosting, maintenance, domain, apiOverrides, selectedPackageOptions, vatRate, extraQuoteOptions]);
+  const quote = useMemo(() => calculateQuote({ packageId, identity:enabledIdentity, content:enabledContent, addons:enabledAddons, pages:enabledPages, bilingual:enabledBilingual, hosting:enabledHosting, maintenance:enabledMaintenance, domain }, apiOverrides, selectedPackageOptions, vatRate, extraQuoteOptions), [packageId, enabledIdentity, enabledContent, enabledAddons, enabledPages, enabledBilingual, enabledHosting, enabledMaintenance, domain, apiOverrides, selectedPackageOptions, vatRate, extraQuoteOptions]);
   const localizedQuoteItems=quote.items.map(item=>isEnglish?({...item,label:item.id==="package"?(englishPackages[packageId || ""]?.name || "Custom package"):(item.id==="extra_page" ? "Additional pages" : englishOptions[item.id==="identity"?identity:item.id==="content"?"writing":item.id]?.name) || item.label,period:item.period==="سنوي"?"annual":item.period==="شهري"?"monthly":undefined}):item);
   const sectorNeedsQuote=Boolean(selectedSector&&(!sectorPrice||sectorPrice.needsCustomQuote));
   const quoteSummary=combinedQuoteSummary({items:quote.items,needsCustomQuote:quote.needsCustomQuote},selectedSector?sectorPrice:null,vatRate);
@@ -320,12 +331,12 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
        const chosenPackage=packageId||savedDraft.packageId;
        const customRequirements=(customer.details||savedDraft.requirements||"").trim();
        if(!chosenSector&&!chosenPackage&&!(savedDraft.projectMode==="custom"&&customRequirements))throw Error(t("لم يتم تحديد نوع المشروع في المسودة. ارجع لاختيار باقة أو مشروع من النظام المخصص، ثم أكمل الإضافات.","No project type is selected in this draft. Choose a package or catalog project, then continue with add-ons."));
-       const patch={draftInvoice:currentDraftInvoice(),...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes,source:"catalog" as const}:{}),...(packageId?{packageId,source:"configurator" as const}:{}),options:[...addons,...selectedExtraOptionIds].slice(0,30),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||savedDraft.businessName||"",requirements:customRequirements,
-        pages,bilingual,identity,contentMode:content==="writing"?"writing" as const:"provided" as const,
-        hosting,domainChoice:domain,maintenance,startWindow:startWindowLabel,contactWindow:contactWindowLabel,
+       const patch={draftInvoice:currentDraftInvoice(),...(selectedSector?{sectorSlug:selectedSector.slug,sectorName:selectedSector.name,sectorAddonCodes,sectorAddonQuantities,source:"catalog" as const}:{}),...(packageId?{packageId,source:"configurator" as const}:{}),options:[...enabledAddons,...selectedExtraOptions.map(option=>option.id)].slice(0,30),...(requestedDomainName?{domainName:requestedDomainName}:{}),businessName:customer.company||savedDraft.businessName||"",requirements:customRequirements,
+        pages:enabledPages,bilingual:enabledBilingual,identity:enabledIdentity,contentMode:enabledContent==="writing"?"writing" as const:"provided" as const,
+        hosting:enabledHosting,domainChoice:domain,maintenance:enabledMaintenance,startWindow:startWindowLabel,contactWindow:contactWindowLabel,
         stylePreference,inspirationLinks:inspirationLinks.filter(Boolean).slice(0,20),
         compliance:customer.compliance,logoName,customerName:customer.name,customerEmail:customer.email,customerPhone:customer.phone,
-        optionQuantities:Object.fromEntries(selectedServerOptions.filter((option):option is BackendOption=>Boolean(option)&&option.pricing_type==="per_page").map(option=>[option.id,option.code==="extra_page"?Math.max(1,pages-includedPages):pages]))};
+        optionQuantities:Object.fromEntries(selectedServerOptions.filter((option):option is BackendOption=>Boolean(option)&&option.pricing_type==="per_page").map(option=>[option.id,option.code==="extra_page"?Math.max(1,enabledPages-includedPages):enabledPages]))};
       const response=await fetch(endpoint,{method:"PATCH",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({expectedRevision:Number(body.projectDraft.revision),patch})});
       const result=await response.json().catch(()=>({}));
       if(!response.ok)throw Error(isEnglish?"Unable to save the current project draft":result.error||"تعذر حفظ المسودة؛ راجع التعديلات الجديدة.");
@@ -416,7 +427,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
       }
       if (!selectedServerPackage || selectedServerOptions.some((option) => !option)) throw new Error(t("تعذر مطابقة اختياراتك مع نظام مخصص الخادم. أعد تحميل الصفحة أو تواصل معنا.","Some selected items are no longer in the live catalog. Refresh or contact us."));
       const resolvedOptions = selectedServerOptions.filter((option): option is BackendOption => Boolean(option));
-      const optionQuantities = Object.fromEntries(resolvedOptions.filter((option) => option.pricing_type === "per_page").map((option) => [option.id, option.code==="extra_page"?Math.max(1,pages-includedPages):pages]));
+      const optionQuantities = Object.fromEntries(resolvedOptions.filter((option) => option.pricing_type === "per_page").map((option) => [option.id, option.code==="extra_page"?Math.max(1,enabledPages-includedPages):enabledPages]));
       const notes = [
         `الشركة: ${customer.company || "غير محدد"}`,
         `عدد الصفحات: ${pages}`,
@@ -441,7 +452,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
           packageId: selectedServerPackage.id,
           optionIds: resolvedOptions.map((option) => option.id),
           optionQuantities,
-          ...(selectedSector ? {sectorSlug:selectedSector.slug,sectorAddonCodes} : {}),
+          ...(selectedSector ? {sectorSlug:selectedSector.slug,sectorAddonCodes,sectorAddonQuantities} : {}),
           ...(selectedProjectDraftId ? {projectDraftId:selectedProjectDraftId} : {}),
           customerName: customer.name,
           email: customer.email,
@@ -481,7 +492,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     saveGuestWorkspace({
       packageId:packageId??undefined,domainName:requestedDomainName,
       sectorSlug:selectedSector?.slug,sectorName:selectedSector?.name,
-      sectorAddonCodes,draftInvoice:currentDraftInvoice(),source:"configurator"
+      sectorAddonCodes,sectorAddonQuantities,draftInvoice:currentDraftInvoice(),source:"configurator"
     });
     window.location.assign(isEnglish
       ?(customerSignedIn?"/en/account/dashboard":"/en/account/register")
@@ -578,23 +589,23 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
 
               {(step === 1 || (pricingOnly&&step<5)) && <div className="form-stack">
                 <div style={{padding:"14px",border:"1px solid #dbe4ee",borderRadius:12,background:"#fff"}}><h4 style={{margin:"0 0 10px"}}>{t("البحث الحي عن الدومين","Live domain availability search")}</h4><DomainLookup locale={locale} onDomainChange={value=>{setRequestedDomainName(value);const suffix=value.trim().toLowerCase();setDomain(suffix.endsWith(".com")?"com":suffix.endsWith(".eg")?"eg":"none");}}/></div>
-                {(packageId==="multi"||packageId==="enterprise")&&<><label className="field-label">{copy("requestedPagesLabel")}<input type="number" min={packageId==="multi"?5:1} max={includedPages+5} value={pages} onChange={(event) => setPages(Math.max(packageId==="multi"?5:1,Math.min(includedPages+5,Number(event.target.value)||1)))} /></label><p className="field-hint">{packageId==="multi"?t("الباقة تشمل 5 صفحات؛ الصفحات الإضافية تُحسب منفصلة في الفاتورة.","The package includes 5 pages; additional pages are billed separately."):t("عدد الصفحات حسب متطلبات المشروع، والسعر يخضع للمراجعة.","Page count depends on your project requirements; pricing requires review.")}</p></>}{packageId!=="multi"&&packageId!=="enterprise"&&<p className="field-hint">{t("عدد الصفحات المشمولة في الباقة: ","Pages included in this package: ")}{includedPages||1}</p>}
+                {(packageId==="multi"||packageId==="enterprise")&&<><label className="field-label">{copy("requestedPagesLabel")}<input type="number" min={packageId==="multi"?5:1} max={includedPages+(hasOption("extra_page")?5:0)} value={enabledPages} onChange={(event) => setPages(Math.max(packageId==="multi"?5:1,Math.min(includedPages+(hasOption("extra_page")?5:0),Number(event.target.value)||1)))} /></label><p className="field-hint">{packageId==="multi"?t("الباقة تشمل 5 صفحات؛ الصفحات الإضافية تُحسب منفصلة في الفاتورة.","The package includes 5 pages; additional pages are billed separately."):t("عدد الصفحات حسب متطلبات المشروع، والسعر يخضع للمراجعة.","Page count depends on your project requirements; pricing requires review.")}</p></>}{packageId!=="multi"&&packageId!=="enterprise"&&<p className="field-hint">{t("عدد الصفحات المشمولة في الباقة: ","Pages included in this package: ")}{includedPages||1}</p>}
                 
-                <div className="choice-row"><div><strong>{copy("languageChoiceTitle")}</strong><small>{copy("languageIncluded")}</small></div><div className="choice-toggle"><button type="button" className={!bilingual ? "selected" : ""} onClick={() => setBilingual(false)}>{copy("languageArabic")}</button><button type="button" className={bilingual ? "selected" : ""} onClick={() => setBilingual(true)}>{copy("languageBilingual")} <b>+{money(Number(serverOptions.find((option) => option.code === "language")?.price ?? 900))}</b></button></div></div>
+                {hasOption("language")&&<div className="choice-row"><div><strong>{copy("languageChoiceTitle")}</strong><small>{copy("languageIncluded")}</small></div><div className="choice-toggle"><button type="button" className={!bilingual ? "selected" : ""} onClick={() => setBilingual(false)}>{copy("languageArabic")}</button><button type="button" className={bilingual ? "selected" : ""} onClick={() => setBilingual(true)}>{copy("languageBilingual")} <b>+{money(Number(serverOptions.find((option) => option.code === "language")?.price ?? 900))}</b></button></div></div>}
                 <label className="field-label">{copy("colorPreferenceLabel")}<textarea value={stylePreference} onChange={(event) => setStylePreference(event.target.value)} placeholder={copy("colorPreferencePlaceholder")} rows={3} /></label>
                 <div className="field-label">{copy("inspirationLabel")} <small>{copy("optionalLabel")}</small>{inspirationLinks.map((link, index) => <input key={index} value={link} onChange={(event) => setInspiration(index, event.target.value)} placeholder={copy("inspirationPlaceholder")} type="url" />)}<button type="button" className="inline-add" onClick={addInspiration}>{copy("addLink")}</button></div>
               </div>}
 
               {(step === 2 || (pricingOnly&&step<5)) && <div className="option-grid">
-                {identityOptions.map((item) => { const configured = serverOptions.find((option) => option.code === item.id); const itemName=localizeOption(item.id,configured?.name ?? item.name); const itemDescription=localizeOption(item.id,configured?.description || item.description,"description"); const itemPrice = configured ? Number(configured.price) : item.price; return <button type="button" key={item.id} className={identity === item.id ? "select-card selected" : "select-card"} onClick={() => setIdentity(item.id)}><span className="select-mark">{identity === item.id ? "✓" : "+"}</span><span className="select-card-copy"><strong>{itemName}</strong><small>{itemDescription}</small><b>{itemPrice ? `+${money(itemPrice)}`  : copy("includedInPackage")}</b></span></button>; })}
+                {identityOptions.filter(item=>item.id==="provided"||hasOption(item.id)).map((item) => { const configured = serverOptions.find((option) => option.code === item.id); const itemName=localizeOption(item.id,configured?.name ?? item.name); const itemDescription=localizeOption(item.id,configured?.description || item.description,"description"); const itemPrice = configured ? Number(configured.price) : item.price; return <button type="button" key={item.id} className={identity === item.id ? "select-card selected" : "select-card"} onClick={() => setIdentity(item.id)}><span className="select-mark">{identity === item.id ? "✓" : "+"}</span><span className="select-card-copy"><strong>{itemName}</strong><small>{itemDescription}</small><b>{itemPrice ? `+${money(itemPrice)}`  : copy("includedInPackage")}</b></span></button>; })}
                 {identity === "provided" && <label className="upload-zone"><input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,application/pdf" onChange={(event) => setLogoName(event.target.files?.[0]?.name ?? "")} /><span className="upload-icon">↑</span><strong>{logoName || copy("logoUploadLabel")}</strong><small>{copy("logoUploadFormats")}</small></label>}
               </div>}
 
               {(step === 3 || (pricingOnly&&step<5)) && <div className="form-stack">
-                <div className="choice-row"><div><strong>{copy("contentWritingTitle")}</strong><small>{copy("contentIncluded")}</small></div><div className="choice-toggle"><button type="button" className={content === "provided" ? "selected" : ""} onClick={() => setContent("provided")}>{copy("provideContent")}</button><button type="button" className={content === "writing" ? "selected" : ""} onClick={() => setContent("writing")}>{copy("requestWriting")} <b>+{money(Number(serverOptions.find(option=>option.code==="writing")?.price??250))} {copy("perPageSuffix")}</b></button></div></div>
+                {hasOption("writing")&&<div className="choice-row"><div><strong>{copy("contentWritingTitle")}</strong><small>{copy("contentIncluded")}</small></div><div className="choice-toggle"><button type="button" className={content === "provided" ? "selected" : ""} onClick={() => setContent("provided")}>{copy("provideContent")}</button><button type="button" className={content === "writing" ? "selected" : ""} onClick={() => setContent("writing")}>{copy("requestWriting")} <b>+{money(Number(serverOptions.find(option=>option.code==="writing")?.price??250))} {copy("perPageSuffix")}</b></button></div></div>}
                 <h4 className="subsection-title">{copy("addonsTitle")}</h4>
-                <div className="option-grid addon-grid">{addonOptions.map((item) => { const configured = serverOptions.find((option) => option.code === item.id); return <button type="button" key={item.id} className={addons.includes(item.id) ? "select-card selected" : "select-card"} onClick={() => toggleAddon(item.id)}><span className="select-mark">{addons.includes(item.id) ? "✓" : "+"}</span><span className="select-card-copy"><strong>{localizeOption(item.id,configured?.name ?? item.name)}</strong><small>{localizeOption(item.id,configured?.description || item.description,"description")}</small><b>+{money(Number(configured?.price ?? item.price))}</b></span></button>; })}
-                  {packageId&&<div className={pages>includedPages?"select-card selected":"select-card"} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+                <div className="option-grid addon-grid">{addonOptions.filter(item=>hasOption(item.id)).map((item) => { const configured = serverOptions.find((option) => option.code === item.id); return <button type="button" key={item.id} className={addons.includes(item.id) ? "select-card selected" : "select-card"} onClick={() => toggleAddon(item.id)}><span className="select-mark">{addons.includes(item.id) ? "✓" : "+"}</span><span className="select-card-copy"><strong>{localizeOption(item.id,configured?.name ?? item.name)}</strong><small>{localizeOption(item.id,configured?.description || item.description,"description")}</small><b>+{money(Number(configured?.price ?? item.price))}</b></span></button>; })}
+                  {packageId&&hasOption("extra_page")&&<div className={pages>includedPages?"select-card selected":"select-card"} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
                     <span className="select-card-copy"><strong>{t("صفحات إضافية","Additional pages")}</strong><small>{t("حتى خمس صفحات فوق الباقة","Up to five pages beyond the package")}</small><b>+{money(Number(serverOptions.find(option=>option.code==="extra_page")?.price??1000))} {t("/ صفحة","/ page")}</b></span>
                     <span className="page-quantity" aria-label={t("عدد الصفحات الإضافية","Additional page count")}><button type="button" disabled={pages<=includedPages} onClick={()=>setPages(current=>Math.max(includedPages,current-1))} aria-label={t("تقليل الصفحات","Remove a page")}>−</button><output aria-live="polite">{Math.max(0,pages-includedPages)}</output><button type="button" disabled={pages-includedPages>=5} onClick={()=>setPages(current=>Math.max(includedPages,current)+1)} aria-label={t("زيادة الصفحات","Add a page")}>+</button></span>
                   </div>}
@@ -606,8 +617,8 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
 
               {(step === 4 || (pricingOnly&&step<5)) && <div className="form-stack">
                 <div className="hosting-callout"><span className="hosting-icon">✓</span><div><strong>{copy("hostingCalloutTitle")}</strong><p>{copy("hostingCalloutText")}</p></div></div>
-                <button type="button" className={hosting ? "select-card selected" : "select-card"} onClick={() => setHosting((value) => !value)}><span className="select-mark">{hosting ? "✓" : "+"}</span><span className="select-card-copy"><strong>{serverOptions.find((option) => option.code === "hosting")?.name ?? copy("hostingOptionTitle")}</strong><small>{serverOptions.find((option) => option.code === "hosting")?.description || copy("hostingOptionDescription")}</small><b>+{money(Number(serverOptions.find((option) => option.code === "hosting")?.price ?? 600))} / {copy("yearUnit")}</b></span></button>
-                <button type="button" className={maintenance ? "select-card selected" : "select-card"} onClick={() => setMaintenance((value) => !value)}><span className="select-mark">{maintenance ? "✓" : "+"}</span><span className="select-card-copy"><strong>{serverOptions.find((option) => option.code === "maintenance")?.name ?? copy("maintenanceTitle")}</strong><small>{serverOptions.find((option) => option.code === "maintenance")?.description || copy("maintenanceDescription")}</small><b>+{money(Number(serverOptions.find((option) => option.code === "maintenance")?.price ?? 3600))} / {copy("yearUnit")}</b></span></button>
+                {hasOption("hosting")&&<button type="button" className={hosting ? "select-card selected" : "select-card"} onClick={() => setHosting((value) => !value)}><span className="select-mark">{hosting ? "✓" : "+"}</span><span className="select-card-copy"><strong>{serverOptions.find((option) => option.code === "hosting")?.name ?? copy("hostingOptionTitle")}</strong><small>{serverOptions.find((option) => option.code === "hosting")?.description || copy("hostingOptionDescription")}</small><b>+{money(Number(serverOptions.find((option) => option.code === "hosting")?.price ?? 600))} / {copy("yearUnit")}</b></span></button>}
+                {hasOption("maintenance")&&<button type="button" className={maintenance ? "select-card selected" : "select-card"} onClick={() => setMaintenance((value) => !value)}><span className="select-mark">{maintenance ? "✓" : "+"}</span><span className="select-card-copy"><strong>{serverOptions.find((option) => option.code === "maintenance")?.name ?? copy("maintenanceTitle")}</strong><small>{serverOptions.find((option) => option.code === "maintenance")?.description || copy("maintenanceDescription")}</small><b>+{money(Number(serverOptions.find((option) => option.code === "maintenance")?.price ?? 3600))} / {copy("yearUnit")}</b></span></button>}
               </div>}
 
               {step === 5 && <div className="form-stack customer-fields">

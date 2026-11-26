@@ -3,7 +3,7 @@ import {useEffect,useMemo,useState} from "react";
 import Link from "next/link";
 import {loadGuestWorkspace,saveGuestWorkspace} from "@/lib/customer-workspace";
 
-type Addon={code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"|"per_page"};
+type Addon={required?:boolean;code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"|"per_page"};
 type Catalog={slug:string;name:string;basePrice:number|null;pricedAddons?:Addon[];published?:boolean;archived?:boolean};
 export default function CatalogPricingClient({slug}:{slug:string}){
  const [catalog,setCatalog]=useState<Catalog|null>(null);
@@ -17,7 +17,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
  useEffect(()=>{
   setLocale(window.location.pathname.startsWith("/en/")||new URLSearchParams(window.location.search).get("lang")==="en"?"en":"ar");
   const saved=loadGuestWorkspace();
-  if(saved.sectorSlug===slug&&Array.isArray(saved.sectorAddonCodes))setSelected(saved.sectorAddonCodes.filter(code=>code!=="extra_page"));
+  if(saved.sectorSlug===slug&&Array.isArray(saved.sectorAddonCodes)){setSelected(saved.sectorAddonCodes.filter(code=>code!=="extra_page"));setPages(saved.sectorAddonCodes.includes("extra_page")?saved.sectorAddonQuantities?.extra_page??1:0);setWritingPages(Object.entries(saved.sectorAddonQuantities??{}).find(([code])=>code!=="extra_page")?.[1]??1);}
   let active=true;
   fetch("/api/site-content/catalog",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();return r.json()}).then(data=>{
    if(!active)return;
@@ -28,13 +28,13 @@ export default function CatalogPricingClient({slug}:{slug:string}){
   fetch("/api/catalog",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("Shared add-ons unavailable");return r.json()}).then(data=>{
    if(!active)return;
    const byCode=new Map<string,Addon>();
-   for(const option of data?.options??[]){
+   for(const option of data?.sharedOptions??data?.options??[]){
     if(!option?.code||option.visibility==="packages"||!Number.isFinite(Number(option.price))||["logo_design","visual_identity","domain_com","domain_eg"].includes(option.code))continue;
-    if(!byCode.has(option.code))byCode.set(option.code,{code:option.code,name:option.name,description:option.description??"",price:Number(option.price),pricingType:option.pricing_type==="monthly"?"monthly":option.pricing_type==="yearly"?"yearly":option.pricing_type==="per_page"?"per_page":"fixed"});
+    if(!byCode.has(option.code))byCode.set(option.code,{required:!!option.is_required,code:option.code,name:option.name,description:option.description??"",price:Number(option.price),pricingType:option.pricing_type==="monthly"?"monthly":option.pricing_type==="yearly"?"yearly":option.pricing_type==="per_page"?"per_page":"fixed"});
    }
-   if(!byCode.has("smart_bot"))byCode.set("smart_bot",{code:"smart_bot",name:"البوت الذكي",description:"ردود آلية محفوظة",price:500,pricingType:"fixed"});
-   if(!byCode.has("ai_assistant"))byCode.set("ai_assistant",{code:"ai_assistant",name:"المساعد الذكي",description:"شبيه بمساعد ATSH AI",price:2500,pricingType:"yearly"});
    setSharedAddons([...byCode.values()]);
+   setPages(old=>byCode.has("extra_page")?Math.max(byCode.get("extra_page")?.required?1:0,old):0);
+   setSelected(old=>[...new Set([...old.filter(code=>byCode.has(code)),...Array.from(byCode.values()).filter(a=>a.required&&a.code!=="extra_page").map(a=>a.code)])]);
   }).catch(()=>{if(active)setSharedAddons([]);});
   return()=>{active=false};
  },[slug]);
@@ -47,7 +47,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
  const monthly=addons.filter(a=>selected.includes(a.code)&&a.pricingType==="monthly").reduce((n,a)=>n+Number(a.price),0);
  const yearly=addons.filter(a=>selected.includes(a.code)&&a.pricingType==="yearly").reduce((n,a)=>n+Number(a.price),0);
  const money=(n:number)=>n.toLocaleString(en?"en-EG":"ar-EG",{maximumFractionDigits:2})+" "+t("ج.م","EGP");
- const save=()=>{if(!catalog)return;const items=[{name:catalog.name,amount:base??0,period:"fixed" as const},...addons.filter(a=>a.code!=="extra_page"&&selected.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="per_page"?"fixed" as const:a.pricingType})),...(pages>0&&pageAddon?[{name:`صفحات إضافية × ${pages}`,amount:pages*Number(pageAddon.price),period:"fixed" as const}]:[])];const subtotal=(base??0)+fixed+monthly+yearly;saveGuestWorkspace({sectorSlug:slug,sectorName:catalog.name,sectorAddonCodes:selected,source:"catalog",projectMode:"ready",businessDescription:[pages>0?`${pages} صفحات إضافية`:"",details].filter(Boolean).join(" — "),draftInvoice:{title:catalog.name,items,subtotal,vat:subtotal*.14,total:subtotal*1.14,fixed:(base??0)+fixed,monthly,yearly,currency:"EGP",savedAt:new Date().toISOString()}});};
+ const save=()=>{if(!catalog)return;const items=[{name:catalog.name,amount:base??0,period:"fixed" as const},...addons.filter(a=>a.code!=="extra_page"&&selected.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="per_page"?"fixed" as const:a.pricingType})),...(pages>0&&pageAddon?[{name:`صفحات إضافية × ${pages}`,amount:pages*Number(pageAddon.price),period:"fixed" as const}]:[])];const subtotal=(base??0)+fixed+monthly+yearly;saveGuestWorkspace({sectorSlug:slug,sectorName:catalog.name,sectorAddonCodes:[...selected,...(pages>0&&pageAddon?["extra_page"]:[])],sectorAddonQuantities:Object.fromEntries([...addons.filter(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&selected.includes(a.code)).map(a=>[a.code,writingPages] as const),...(pages>0&&pageAddon?[["extra_page",pages] as const]:[])]),source:"catalog",projectMode:"ready",businessDescription:[pages>0?`${pages} صفحات إضافية`:"",details].filter(Boolean).join(" — "),draftInvoice:{title:catalog.name,items,subtotal,vat:subtotal*.14,total:subtotal*1.14,fixed:(base??0)+fixed,monthly,yearly,currency:"EGP",savedAt:new Date().toISOString()}});};
  const cardStyle={border:"1px solid #d8e1eb",borderRadius:12,padding:"12px 14px",background:"#fff"} as const;
  return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:780,margin:"0 auto",padding:"18px 14px 70px",color:"#203958"}}>
   <Link href={en?"/en/catalog":"/catalog"} style={{color:"#203958"}}>{t("← العودة","← Back")}</Link>
@@ -56,8 +56,8 @@ export default function CatalogPricingClient({slug}:{slug:string}){
    <section style={cardStyle}><strong>{t("سعر النظام المخصص الأساسي","Catalog base price")}</strong><p style={{fontSize:24,fontWeight:800,margin:"7px 0"}}>{base===null?t("السعر يحدده المسؤول","Price pending admin setup"):money(base)}</p></section>
    <section className="catalog-addon-section"><h2 style={{fontSize:19,margin:"4px 0 12px"}}>{t("الإضافات والتكاملات","Add-ons and integrations")}</h2>
     <div className="option-grid addon-grid catalog-addon-grid">
-    {pageAddon&&<div className={pages>0?"select-card selected":"select-card"} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}><span className="select-card-copy"><strong>{t("صفحات إضافية","Additional pages")}</strong><small>{t("اختر عدد الصفحات الإضافية","Choose additional pages")}</small><b>+{money(Number(pageAddon.price))} {t("/ صفحة","/ page")}</b></span><span className="page-quantity"><button type="button" disabled={pages===0} onClick={()=>setPages(n=>Math.max(0,n-1))} aria-label={t("تقليل الصفحات","Remove page")}>−</button><output aria-live="polite">{pages}</output><button type="button" disabled={pages===5} onClick={()=>setPages(n=>Math.min(5,n+1))} aria-label={t("زيادة الصفحات","Add page")}>+</button></span></div>}
-    {addons.filter(a=>a.code!=="extra_page").map(a=><button key={a.code} type="button" onClick={()=>setSelected(old=>old.includes(a.code)?old.filter(c=>c!==a.code):[...old,a.code])} aria-pressed={selected.includes(a.code)} className={selected.includes(a.code)?"select-card selected":"select-card"} style={{textAlign:"start",cursor:"pointer"}}><span className="select-mark">{selected.includes(a.code)?"✓":"+"}</span><span className="select-card-copy"><strong>{a.name}</strong>{a.description&&<small>{a.description}</small>}<b>+{money(Number(a.price))} {a.pricingType==="monthly"?t("/ شهريًا","/ month"):a.pricingType==="yearly"?t("/ سنويًا","/ year"):a.pricingType==="per_page"?t("/ صفحة","/ page"):""}</b></span></button>)}
+    {pageAddon&&<div className={pages>0?"select-card selected":"select-card"} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}><span className="select-card-copy"><strong>{t("صفحات إضافية","Additional pages")}</strong><small>{t("اختر عدد الصفحات الإضافية","Choose additional pages")}</small><b>+{money(Number(pageAddon.price))} {t("/ صفحة","/ page")}</b></span><span className="page-quantity"><button type="button" disabled={pages<=(pageAddon.required?1:0)} onClick={()=>setPages(n=>Math.max(pageAddon.required?1:0,n-1))} aria-label={t("تقليل الصفحات","Remove page")}>−</button><output aria-live="polite">{pages}</output><button type="button" disabled={pages===5} onClick={()=>setPages(n=>Math.min(5,n+1))} aria-label={t("زيادة الصفحات","Add page")}>+</button></span></div>}
+    {addons.filter(a=>a.code!=="extra_page").map(a=><button key={a.code} type="button" disabled={a.required} onClick={()=>setSelected(old=>old.includes(a.code)?old.filter(c=>c!==a.code):[...old,a.code])} aria-pressed={selected.includes(a.code)} className={selected.includes(a.code)?"select-card selected":"select-card"} style={{textAlign:"start",cursor:"pointer"}}><span className="select-mark">{selected.includes(a.code)?"✓":"+"}</span><span className="select-card-copy"><strong>{a.name}</strong>{a.description&&<small>{a.description}</small>}<b>+{money(Number(a.price))} {a.pricingType==="monthly"?t("/ شهريًا","/ month"):a.pricingType==="yearly"?t("/ سنويًا","/ year"):a.pricingType==="per_page"?t("/ صفحة","/ page"):""}</b></span></button>)}
     </div>
     {addons.some(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&selected.includes(a.code))&&<label style={{display:"grid",gap:6,marginTop:12}}>{t("عدد صفحات المحتوى المطلوب","Number of content pages")}<input type="number" min={1} max={50} value={writingPages} onChange={e=>setWritingPages(Math.max(1,Math.min(50,Math.floor(Number(e.target.value)||1))))}/></label>}
    </section>

@@ -81,6 +81,7 @@ await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql
 await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_checkout_stage52.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/unified_pricing_stage53.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/shared_addons_20261126.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/order_submission_idempotency_stage54.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/site_demo_assets.sql",import.meta.url),"utf8"));
 await migrateDemoAssets(pool);
@@ -520,11 +521,12 @@ app.post("/api/visitor/assistant",
 );
 
 app.get("/api/catalog", route(async (_req,res) => {
-  const [p,o] = await Promise.all([
-    pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote FROM packages WHERE is_published=true ORDER BY sort_order,created_at"),
-    pool.query("SELECT o.id,o.package_id,o.code,o.name,o.description,o.price,o.pricing_type,o.unit_label,o.is_required,o.visibility FROM package_options o JOIN packages p ON p.id=o.package_id WHERE o.is_active=true AND p.is_published=true AND p.deleted_at IS NULL ORDER BY o.sort_order,p.sort_order,o.created_at")
+  const [p,o,shared] = await Promise.all([
+    pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote FROM packages WHERE is_published=true AND deleted_at IS NULL ORDER BY sort_order,created_at"),
+    pool.query("SELECT o.id,o.package_id,o.code,o.name,o.description,o.price,o.pricing_type,o.unit_label,o.is_required,o.visibility FROM package_options o JOIN packages p ON p.id=o.package_id WHERE o.is_active=true AND p.is_published=true AND p.deleted_at IS NULL ORDER BY o.sort_order,p.sort_order,o.created_at"),
+    pool.query("SELECT *,'both' AS visibility FROM shared_addons WHERE is_active=true ORDER BY sort_order,code")
   ]);
-  res.json({packages:p.rows,options:o.rows});
+  res.set("Cache-Control","no-store").json({packages:p.rows,options:o.rows,sharedOptions:shared.rows});
 }));
 // Unified template catalog. Previews are links to independently deployed builds, never invented demos.
 const templateWriteSchema=z.object({
@@ -589,7 +591,7 @@ app.get("/api/site-content/:slug", route(async(req,res)=>{
   const publishedPage=page.rows[0]||null;
   if(publishedPage&&!metadata)publishedPage.content=await expandDemoAssets(pool,req.params.slug,publishedPage.content);
   if(req.params.slug==="catalog"&&Array.isArray(publishedPage?.content?.items)){
-    publishedPage.content={...publishedPage.content,items:publishedPage.content.items.map(item=>{
+    publishedPage.content={...publishedPage.content,items:(await pricedSectorCatalog(pool,publishedPage.content.items)).map(item=>{
       if(!item||typeof item!=="object"||item.published!==false&&!item.archived)return item;
       const {previewHtml,previewHtmlName,hasPreviewHtml,previewAssetId,...rest}=item;return rest;
     })};
@@ -641,13 +643,17 @@ async function pricedSectorCatalog(db,items){
   if(!Array.isArray(items))return items;
   const result=await db.query("SELECT scope,owner_key,code,amount,pricing_type FROM unified_price_items WHERE scope IN ('sector','sector_addon')");
   const prices=new Map(result.rows.map(row=>[row.scope+":"+row.owner_key+":"+row.code,row]));
+  const shared=(await db.query("SELECT code,name,description,price,pricing_type,is_active,is_required FROM shared_addons ORDER BY sort_order,code")).rows;
+  const centralCodes=new Set(shared.map(a=>a.code));
+  const activeShared=shared.filter(a=>a.is_active).map(a=>({code:a.code,name:a.name,description:a.description,price:Number(a.price),pricingType:a.pricing_type,isRequired:a.is_required}));
   return items.map(item=>{
+    if(!item||typeof item!=="object")return item;
     const base=prices.get("sector:"+item.slug+":base");
     return {...item,basePrice:base?Number(base.amount):null,
-      pricedAddons:(Array.isArray(item.pricedAddons)?item.pricedAddons:[]).map(addon=>{
+      pricedAddons:[...activeShared,...(Array.isArray(item.pricedAddons)?item.pricedAddons:[]).filter(a=>!centralCodes.has(a.code)&&!reservedAddonCodes.has(a.code)).map(addon=>{
         const price=prices.get("sector_addon:"+item.slug+":"+addon.code);
-        return price?{...addon,price:Number(price.amount),pricingType:price.pricing_type}:{...addon,price:null};
-      })};
+        return price&&price.amount!==null?{...addon,price:Number(price.amount),pricingType:price.pricing_type}:null;
+      }).filter(Boolean)]};
   });
 }
 
@@ -657,7 +663,8 @@ app.get("/api/sector-price",route(async(req,res)=>{
     ? req.query.addons.split(","): [];
   const result=await pool.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true LIMIT 1");
   try{
-    const price=priceSectorSelection(await pricedSectorCatalog(pool,result.rows[0]?.content?.items),slug,addons);
+    const quantities=z.record(z.string().regex(/^[a-z0-9_-]{1,80}$/),z.number().int().min(1).max(50)).parse(typeof req.query.quantities==="string"?JSON.parse(req.query.quantities):{});
+    const price=priceSectorSelection(await pricedSectorCatalog(pool,result.rows[0]?.content?.items),slug,addons,quantities);
     res.set("Cache-Control","no-store").json(price);
   }catch{return res.status(400).json({error:"Sector unavailable or pricing not configured"});}
 }));
@@ -668,6 +675,7 @@ const orderSchema = z.object({
   optionQuantities:z.record(z.string().uuid(),z.number().int().min(1).max(50)).default({}),
   sectorSlug:z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100).optional(),
   sectorAddonCodes:z.array(z.string().regex(/^[a-z0-9_-]{1,80}$/)).max(30).default([]),
+  sectorAddonQuantities:z.record(z.string().regex(/^[a-z0-9_-]{1,80}$/),z.number().int().min(1).max(50)).default({}),
   projectDraftId:z.string().uuid().optional(),
   customerName:z.string().trim().min(2).max(120),
   phone:z.string().trim().min(7).max(30),
@@ -732,7 +740,7 @@ app.post("/api/orders", route(async (req,res) => {
     let sectorPrice=null;
     if(input.sectorSlug){
       const catalog=await client.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true FOR SHARE");
-      try{sectorPrice=priceSectorSelection(await pricedSectorCatalog(client,catalog.rows[0]?.content?.items),input.sectorSlug,input.sectorAddonCodes);}
+      try{sectorPrice=priceSectorSelection(await pricedSectorCatalog(client,catalog.rows[0]?.content?.items),input.sectorSlug,input.sectorAddonCodes,input.sectorAddonQuantities);}
       catch{await client.query("ROLLBACK");return res.status(400).json({error:"Selected sector or addon unavailable"});}
       if(sectorPrice.needsCustomQuote){await client.query("ROLLBACK");return res.status(409).json({error:"تخصيص هذا القطاع يتطلب اعتماد عرض سعر قبل تسجيل طلب شراء.",needsCustomQuote:true});}
     }
@@ -965,7 +973,7 @@ const packageSchema=z.object({
   sortOrder:z.number().int().min(-100000).max(100000).default(0)
 });
 const optionSchema=z.object({
-  packageId:z.string().uuid(),
+  packageId:z.string().uuid().optional(),
   code:z.string().regex(/^[a-z0-9_-]{2,80}$/),
   name:z.string().trim().min(2).max(160),
   description:z.string().trim().max(4000).default(""),
@@ -980,6 +988,15 @@ const optionSchema=z.object({
 const packageCreateSchema=packageSchema.extend({
   options:z.array(optionSchema.omit({packageId:true}).strict()).max(30).default([])
 }).strict();
+const reservedAddonCodes=new Set(["domain_com","domain_eg","domain","logo_design","visual_identity"]);
+const addonLock=client=>client.query("SELECT pg_advisory_xact_lock(20261126,13)");
+async function findSharedAddon(client,id){
+  return client.query("SELECT a.* FROM shared_addons a WHERE a.id=$1 OR a.code=(SELECT o.code FROM package_options o WHERE o.id=$1) FOR UPDATE",[id]);
+}
+async function insertSharedAddon(client,x,ignoreExisting=false){
+  if(reservedAddonCodes.has(x.code))throw Object.assign(new Error("Reserved add-on code"),{code:"RESERVED_ADDON"});
+  return client.query("INSERT INTO shared_addons(code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) "+(ignoreExisting?"ON CONFLICT(code) DO NOTHING ":"")+"RETURNING *",[x.code,x.name,x.description,x.price,x.pricingType,x.unitLabel,x.isRequired,x.isActive,x.sortOrder]);
+}
 async function auditChange(client,actor,action,type,id,before,after){
   await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,before_data,after_data) VALUES($1,$2,$3,$4,$5,$6)",[actor,action,type,id,before,after]);
 }
@@ -1376,24 +1393,26 @@ app.post("/api/admin/team/:id/purge",requireAdmin,requirePermission("team"),requ
 }));
 await pool.query("ALTER TABLE packages ADD COLUMN IF NOT EXISTS deleted_at timestamptz");
 app.get("/api/admin/packages",requireAdmin,requirePermission("products"),route(async(_req,res)=>{
-  const [p,o]=await Promise.all([
+  const [p,o,shared]=await Promise.all([
     pool.query("SELECT id,name,tagline,description,price,currency,features,is_featured,is_custom_quote,is_published,sort_order,created_at,updated_at FROM packages WHERE deleted_at IS NULL ORDER BY sort_order,created_at"),
-    pool.query("SELECT id,package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,created_at,visibility FROM package_options WHERE package_id IN (SELECT id FROM packages WHERE deleted_at IS NULL) ORDER BY sort_order,created_at")
+    pool.query("SELECT id,package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,created_at,visibility FROM package_options WHERE package_id IN (SELECT id FROM packages WHERE deleted_at IS NULL) ORDER BY sort_order,created_at"),
+    pool.query("SELECT *,'both' AS visibility FROM shared_addons ORDER BY sort_order,code")
   ]);
-  res.json({packages:p.rows,options:o.rows});
+  res.json({packages:p.rows,options:o.rows,sharedOptions:shared.rows});
 }));
 app.post("/api/admin/packages",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=packageCreateSchema.safeParse(req.body); if(!parsed.success)return res.status(400).json({error:"Invalid package",details:parsed.error.issues});
   const x=parsed.data,client=await pool.connect();
-  try{await client.query("BEGIN");
+  try{await client.query("BEGIN");await addonLock(client);
     const q=await client.query("INSERT INTO packages(name,tagline,description,price,currency,features,is_featured,is_custom_quote,is_published,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",[x.name,x.tagline,x.description,x.price,x.currency,JSON.stringify(x.features),x.isFeatured,x.isCustomQuote,x.isPublished,x.sortOrder]);
     await auditChange(client,req.admin.email,"package.created","package",q.rows[0].id,null,q.rows[0]);
-    const createdOptions=[];
+    // Legacy clients can send options, but cannot overwrite central definitions by copying them.
     for(const option of x.options){
-      const saved=await client.query("INSERT INTO package_options(package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,visibility) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",[q.rows[0].id,option.code,option.name,option.description,option.price,option.pricingType,option.unitLabel,option.isRequired,option.isActive,option.sortOrder,option.visibility]);
-      await auditChange(client,req.admin.email,"package_option.created","package_option",saved.rows[0].id,null,saved.rows[0]);
-      createdOptions.push(saved.rows[0]);
+      if(reservedAddonCodes.has(option.code))continue;
+      const saved=await insertSharedAddon(client,option,true);
+      if(saved.rowCount)await auditChange(client,req.admin.email,"shared_addon.created","shared_addon",saved.rows[0].id,null,saved.rows[0]);
     }
+    const createdOptions=(await client.query("SELECT * FROM package_options WHERE package_id=$1 ORDER BY sort_order,code",[q.rows[0].id])).rows;
     await client.query("COMMIT");res.status(201).json({package:q.rows[0],options:createdOptions});
   }catch(e){await client.query("ROLLBACK");if(e.code==="23505")return res.status(409).json({error:"An option with this code already exists in the package"});throw e;}finally{client.release();}
 }));
@@ -1414,22 +1433,37 @@ app.delete("/api/admin/packages/:id",requireAdmin,requirePermission("products"),
 }));
 app.post("/api/admin/options",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=optionSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:"Invalid option",details:parsed.error.issues});
-  const x=parsed.data,client=await pool.connect();try{await client.query("BEGIN");const p=await client.query("SELECT id FROM packages WHERE id=$1 AND deleted_at IS NULL FOR SHARE",[x.packageId]);if(!p.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
-    const q=await client.query("INSERT INTO package_options(package_id,code,name,description,price,pricing_type,unit_label,is_required,is_active,sort_order,visibility) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",[x.packageId,x.code,x.name,x.description,x.price,x.pricingType,x.unitLabel,x.isRequired,x.isActive,x.sortOrder,x.visibility]);
-    await auditChange(client,req.admin.email,"package_option.created","package_option",q.rows[0].id,null,q.rows[0]);await client.query("COMMIT");res.status(201).json({option:q.rows[0]});
-  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+  const x=parsed.data,client=await pool.connect();try{
+    await client.query("BEGIN");await addonLock(client);
+    if(reservedAddonCodes.has(x.code)){await client.query("ROLLBACK");return res.status(400).json({error:"Reserved add-on code"});}
+    if(x.packageId&&!(await client.query("SELECT id FROM packages WHERE id=$1 AND deleted_at IS NULL",[x.packageId])).rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Package not found"});}
+    const q=await insertSharedAddon(client,x);
+    await auditChange(client,req.admin.email,"shared_addon.created","shared_addon",q.rows[0].id,null,q.rows[0]);
+    const projection=x.packageId?(await client.query("SELECT * FROM package_options WHERE package_id=$1 AND code=$2",[x.packageId,x.code])).rows[0]:null;
+    await client.query("COMMIT");res.status(201).json({option:projection??{...q.rows[0],visibility:"both"},sharedOption:q.rows[0]});
+  }catch(e){await client.query("ROLLBACK");if(e.code==="23505")return res.status(409).json({error:"An add-on with this code already exists"});throw e;}finally{client.release();}
 }));
 app.patch("/api/admin/options/:id",requireAdmin,requirePermission("products"),route(async(req,res)=>{
-  const parsed=optionSchema.partial().omit({packageId:true,code:true}).strict().safeParse(req.body);if(!parsed.success||!Object.keys(req.body||{}).length||!Object.keys(parsed.data||{}).length)return res.status(400).json({error:"Invalid option update"});
-  const map={name:"name",description:"description",price:"price",pricingType:"pricing_type",unitLabel:"unit_label",isRequired:"is_required",isActive:"is_active",sortOrder:"sort_order",visibility:"visibility"};
-  const entries=Object.entries(parsed.data),client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM package_options WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Option not found"});}
-    const values=[],sets=[];for(const [k,v] of entries){values.push(v);sets.push(map[k]+"=$"+values.length);}values.push(req.params.id);
-    const q=await client.query("UPDATE package_options SET "+sets.join(",")+" WHERE id=$"+values.length+" RETURNING *",values);await auditChange(client,req.admin.email,"package_option.updated","package_option",req.params.id,before.rows[0],q.rows[0]);await client.query("COMMIT");res.json({option:q.rows[0]});
+  const parsed=optionSchema.partial().omit({packageId:true,code:true}).strict().safeParse(req.body);
+  if(!parsed.success||!Object.keys(parsed.data||{}).length)return res.status(400).json({error:"Invalid option update"});
+  const map={name:"name",description:"description",price:"price",pricingType:"pricing_type",unitLabel:"unit_label",isRequired:"is_required",isActive:"is_active",sortOrder:"sort_order"};
+  const entries=Object.entries(parsed.data).filter(([key])=>key!=="visibility"&&Object.hasOwn(req.body,key)),client=await pool.connect();try{
+    await client.query("BEGIN");await addonLock(client);const before=await findSharedAddon(client,req.params.id);
+    if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Option not found"});}
+    let saved=before.rows[0];
+    if(entries.length){const values=entries.map(([,v])=>v),sets=entries.map(([k],i)=>map[k]+"=$"+(i+1));values.push(saved.id);
+      const q=await client.query("UPDATE shared_addons SET "+sets.join(",")+" WHERE id=$"+values.length+" RETURNING *",values);saved=q.rows[0];}
+    await auditChange(client,req.admin.email,"shared_addon.updated","shared_addon",saved.id,before.rows[0],saved);
+    await client.query("COMMIT");res.json({option:{...saved,visibility:"both"}});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.delete("/api/admin/options/:id",requireAdmin,requirePermission("products"),route(async(req,res)=>{
-  const client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM package_options WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Option not found"});}
-    const q=await client.query("UPDATE package_options SET is_active=false WHERE id=$1 RETURNING *",[req.params.id]);await auditChange(client,req.admin.email,"package_option.deactivated","package_option",req.params.id,before.rows[0],q.rows[0]);await client.query("COMMIT");res.json({option:q.rows[0]});
+  const client=await pool.connect();try{
+    await client.query("BEGIN");await addonLock(client);const before=await findSharedAddon(client,req.params.id);
+    if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Option not found"});}
+    const q=await client.query("UPDATE shared_addons SET is_active=false WHERE id=$1 RETURNING *",[before.rows[0].id]);
+    await auditChange(client,req.admin.email,"shared_addon.deactivated","shared_addon",q.rows[0].id,before.rows[0],q.rows[0]);
+    await client.query("COMMIT");res.json({option:{...q.rows[0],visibility:"both"}});
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }));
 app.get("/api/admin/settings",requireAdmin,requirePermission("settings"),route(async(_req,res)=>{const q=await pool.query("SELECT vat_rate,theme,updated_at FROM site_settings WHERE id=1");res.json({settings:q.rows[0]||{vat_rate:14,theme:null}});}));
