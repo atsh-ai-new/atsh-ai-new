@@ -44,12 +44,11 @@ const nav: Array<{ id: View; label: string; icon: string }> = [
   { id: "theme", label: "تصميم المنصة", icon: "◉" }, { id: "inbox", label: "طلبات العملاء", icon: "✉" },
   { id: "team", label: "إدارة الفريق", icon: "♙" }, { id: "audit", label: "سجل التغييرات", icon: "≡" }
 ];
-const adminGroups: Array<{label:string;views:View[]}>= [
+const adminGroups: Array<{label:string;views:View[];showChildren?:boolean}>= [
  {label:"نظرة عامة",views:["overview"]},
  {label:"المراسلات",views:["messages"]},
  {label:"العملاء",views:["inbox","journey"]},
- {label:"محتوى المنصة",views:["pages","content-studio","videos"]},
- {label:"المنتجات",views:["options"]},
+ {label:"محتوى المنصة",views:["pages","content-studio","videos","options"],showChildren:true},
  {label:"الفريق",views:["team"]},
  {label:"المساعد الذكي",views:["assistant-knowledge"]}
 ];
@@ -365,7 +364,7 @@ export default function AdminPage() {
 
   return <main className="admin-page" dir="rtl" style={{ "--navy": theme.navy, "--navy-2": theme.blue, "--blue": theme.blue, "--gold": theme.gold, "--page": theme.page, "--site-font": `\"${theme.fontFamily}\", system-ui, sans-serif`, "--card-radius": `${theme.cardRadius}px` } as React.CSSProperties}>
     <div className="admin-layout">
-      <aside className="admin-sidebar"><a className="admin-brand" href="/"><img src={theme.logoUrl || "/images/atsh-logo.jpg"} alt="" /><span><strong>ATSH <b>AI</b></strong><small>مركز الإدارة</small></span></a><div className="admin-nav-label">إدارة المنصة</div><nav className="admin-nav" aria-label="أقسام لوحة الإدارة">{adminGroups.map(group=>{const allowed=visibleNav.filter(item=>group.views.includes(item.id));if(!allowed.length)return null;const active=allowed.some(item=>item.id===view);return <div key={group.label}><button type="button" className={active?"active":""} style={{fontWeight:800,marginTop:10}} onClick={()=>{setView(allowed[0].id);setError("");setNotice("");}}>{group.label}</button>{active&&allowed.length>1&&<div style={{paddingInlineStart:14}}>{allowed.map(item=><button type="button" key={item.id} className={view===item.id?"active":""} onClick={()=>{setView(item.id);setError("");setNotice("");}}><span>{item.icon}</span>{item.label}</button>)}</div>}</div>})}</nav><div className="admin-sidebar-bottom"><div className="connection-pill"><i />متصل بخادم ATSH AI</div></div></aside>
+      <aside className="admin-sidebar"><a className="admin-brand" href="/"><img src={theme.logoUrl || "/images/atsh-logo.jpg"} alt="" /><span><strong>ATSH <b>AI</b></strong><small>مركز الإدارة</small></span></a><div className="admin-nav-label">إدارة المنصة</div><nav className="admin-nav" aria-label="أقسام لوحة الإدارة">{adminGroups.map(group=>{const allowed=visibleNav.filter(item=>group.views.includes(item.id));if(!allowed.length)return null;const active=allowed.some(item=>item.id===view);return <div key={group.label}><button type="button" className={active?"active":""} style={{fontWeight:800,marginTop:10}} onClick={()=>{setView(allowed[0].id);setError("");setNotice("");}}>{group.label}</button>{active&&(allowed.length>1||group.showChildren)&&<div style={{paddingInlineStart:14}}>{allowed.map(item=><button type="button" key={item.id} className={view===item.id?"active":""} onClick={()=>{setView(item.id);setError("");setNotice("");}}><span aria-hidden="true">{item.icon}</span>{item.label}</button>)}</div>}</div>})}</nav><div className="admin-sidebar-bottom"><div className="connection-pill"><i />متصل بخادم ATSH AI</div></div></aside>
       <section className="admin-main">
         <header className="admin-topbar" style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:12}}><div style={{flex:"1 1 120px",minWidth:0}}><h1>{title}</h1></div><div className="admin-top-actions" style={{display:"flex",flexWrap:"wrap",alignItems:"center",justifyContent:"flex-start",gap:8,minWidth:0,maxWidth:"100%"}}><NotificationInbox /><a className="language-pill" href="/">الموقع</a><div className="admin-identity"><span className="admin-avatar">{user.email.slice(0, 1).toUpperCase()}</span><span><strong>{user.email}</strong><small>{roleLabels[user.role]}</small></span></div><button className="inline-add" onClick={logout}>خروج</button></div></header>
         
