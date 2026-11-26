@@ -1,4 +1,4 @@
-import {resolveOwnership,ownershipLabels,ownershipConflicts} from "./product-ownership.js";
+import {resolveOwnership,ownershipLabels} from "./product-ownership.js";
 import {MAX_ADDONS_PER_SELECTION} from "./addon-limits.js";
 import { calculateUnifiedPricing } from "./pricing-engine.js";
 // Server-owned sector pricing. Never accept numeric prices from browser input.
@@ -22,7 +22,6 @@ export function priceSectorSelection(catalog,slug,requestedCodes=[],quantities={
   }
   const lines=[{code:"sector-base",name:`تخصيص نظام ${item.name}${mode?" — "+ownershipLabels[mode]:""}`,price:selectedPrice?.price??item.basePrice,pricingType:selectedPrice?.period??"fixed"}];
   for(const code of new Set([...requestedCodes,...declared.filter(a=>a.isRequired).map(a=>a.code)])){
-    if(ownershipConflicts(mode,code)){if(requestedCodes.includes(code))throw Error("Hosting already included");continue;}
     const selected=byCode.get(code);
     if(!selected)throw new Error("Sector addon not published");
     const quantity=selected.pricingType==="per_page"?Number(quantities[code]??1):1;

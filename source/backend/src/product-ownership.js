@@ -1,6 +1,5 @@
 export const ownershipModes=['rent','copy','code','rent_monthly'];
 export const ownershipLabels={rent:'إيجار سنوي',rent_monthly:'إيجار شهري',copy:'نسخة تشغيلية',code:'ملكية الكود'};
-export const ownershipConflicts=(mode,code)=>(mode==='rent'||mode==='rent_monthly')&&code==='hosting';
 const money=n=>Math.round(n*100)/100;
 // Stable catalog slugs, not display names. Each amount is independently set.
 const sectorTariffs=Object.freeze({

@@ -35,7 +35,7 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  ]).then(([data,config])=>{if(!active)return;setCatalog(data);const rate=Number(config?.vatRate);setVat(Number.isFinite(rate)&&rate>=0&&rate<=100?rate:null);}).catch(()=>{if(active)setError(t("تعذر تحميل الأسعار المعتمدة. حاول مجددًا.","Unable to load current prices. Please retry."))});return()=>{active=false}},[en]);
  const pkg=catalog?.packages.find(p=>p.id===(aliases[params.packageId]??params.packageId));
  // Domain registration is requested via the live domain lookup above, not as a duplicate priced add-on.
- const options=useMemo(()=>catalog?.options.filter(o=>(!isRental(mode)||o.code!=="hosting")&&o.package_id===pkg?.id&&!(/(?:^|[_-])domain(?:[_-]|$)/i.test(o.code)||/^(?:نطاق|دومين)\s*\.(?:com|eg)\b/i.test(o.name)||/^(?:نطاق|دومين)\s+(?:com|eg)\b/i.test(o.name)))??[],[catalog,pkg?.id,mode]);
+ const options=useMemo(()=>catalog?.options.filter(o=>o.package_id===pkg?.id&&!(/(?:^|[_-])domain(?:[_-]|$)/i.test(o.code)||/^(?:نطاق|دومين)\s*\.(?:com|eg)\b/i.test(o.name)||/^(?:نطاق|دومين)\s+(?:com|eg)\b/i.test(o.name)))??[],[catalog,pkg?.id]);
  const lines=options.filter(o=>o.is_required||selected.includes(o.id)).map(o=>{const unit=Number(o.price);const quantity=o.pricing_type==="per_page"?Math.max(1,Math.min(o.code==="extra_page"?5:50,quantities[o.id]??1)):1;return {...o,quantity,amount:round(unit*quantity)};});
  const tariff=pkg?.ownershipPrices?.[mode];
  const invalid=!ready||Boolean(pkg&&!pkg.is_custom_quote&&(!tariff||!Number.isFinite(tariff.price)||tariff.price<0))||lines.some(l=>!Number.isFinite(l.amount)||l.amount<0);

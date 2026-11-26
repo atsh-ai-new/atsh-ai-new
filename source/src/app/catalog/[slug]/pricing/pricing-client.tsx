@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useMemo,useState} from "react";
+import {useEffect,useState} from "react";
 import Link from "next/link";
 import AddonPrice from "@/components/addon-price";
 import AddonGroups from "@/components/addon-groups";
@@ -52,7 +52,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
   return()=>{active=false};
  },[slug]);
  const en=locale==="en",t=(ar:string,english:string)=>en?english:ar;
- const addons=useMemo(()=>sharedAddons.filter(a=>!isRental(mode)||a.code!=="hosting"),[sharedAddons,mode]);
+ const addons=sharedAddons;
  const pageAddon=addons.find(a=>a.code==="extra_page");
  const base=catalog?.ownershipPrices?.[mode]?.price??null;
  const chosen=[...new Set([...selected.filter(code=>addons.some(a=>a.code===code)),...addons.filter(a=>a.required&&a.code!=="extra_page").map(a=>a.code)])];
