@@ -29,6 +29,7 @@ test.describe("Arabic device preference",()=>{
   await page.locator(".atsh-fab-language").click();
   await expect(page).toHaveURL(/\/en$/);
   expect((await context.cookies()).find(c=>c.name==="atsh_locale")?.value).toBe("en");
+  expect((await context.cookies()).find(c=>c.name==="atsh_locale_device")?.value).toBe("ar");
   await page.goto("/");
   await expect(page).toHaveURL(/\/en$/);
   await page.goto("/ar");
@@ -42,4 +43,17 @@ test.describe("Arabic device preference",()=>{
   await page.goto("/");
   await expect(page).toHaveURL(/\/ar$/);
  });
+});
+
+test("legacy manual cookie cannot override the device language",async({request})=>{
+ const response=await request.get("/",{headers:{"Accept-Language":"ar-EG","Cookie":"atsh_locale=en"},maxRedirects:0});
+ expect(response.status()).toBe(307);
+ expect(response.headers()["location"]).toMatch(/\/ar$/);
+});
+test("changing device language overrides a preference from the old device language",async({request})=>{
+ for(const [header,cookie,locale] of [["ar-EG","atsh_locale=en; atsh_locale_device=fr","ar"],["en-US","atsh_locale=ar; atsh_locale_device=ar","en"]]){
+  const response=await request.get("/",{headers:{"Accept-Language":header,"Cookie":cookie},maxRedirects:0});
+  expect(response.status()).toBe(307);
+  expect(response.headers()["location"]).toMatch(new RegExp("/"+locale+"$"));
+ }
 });

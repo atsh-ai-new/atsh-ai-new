@@ -2,6 +2,10 @@ name: ATSH Browser E2E (Desktop + Mobile)
 on:
   pull_request:
     paths:
+      - 'source/e2e/device-language.spec.ts'
+      - 'source/src/lib/browser-locale.ts'
+      - 'source/src/components/language-switch.tsx'
+      - 'source/src/proxy.ts'
       - 'source/e2e/mobile-uploaded-demo.spec.ts'
       - 'source/e2e/gallery-heading.spec.ts'
       - 'source/e2e/header-contact.spec.ts'
