@@ -3,6 +3,7 @@ export type AssistantMessage = {who:"assistant"|"customer";text:string};
 export type DraftInvoice = {title:string;items:{name:string;amount:number;period:"fixed"|"monthly"|"yearly"}[];subtotal:number;vat:number;total:number;fixed:number;monthly:number;yearly:number;currency:"EGP";savedAt:string};
 export type CustomerWorkspace = {
   draftInvoice?:DraftInvoice;
+  ownershipMode?:"rent"|"copy"|"code"; domainChoice?:string; optionQuantities?:Record<string,number>;
   assistantMessages?:AssistantMessage[];
   sectorSlug?:string; sectorName?:string; packageId?:string; businessName?:string;
   projectMode?:"ready"|"custom"; solutionType?:"website"|"store"|"mobile"|"management"|"ai"|"other"; requirements?:string;
@@ -26,7 +27,7 @@ function guestStorage():Storage|null{
     return window.sessionStorage;
   }catch{return null;}
 }
-const allowed=new Set(["sectorSlug","sectorName","packageId","businessName","businessDescription","brandColor","options","sectorAddonCodes","sectorAddonQuantities","projectMode","solutionType","requirements","deliveryMethod","domainName","source","assistantMessages","draftInvoice"]);
+const allowed=new Set(["ownershipMode","optionQuantities","domainChoice","sectorSlug","sectorName","packageId","businessName","businessDescription","brandColor","options","sectorAddonCodes","sectorAddonQuantities","projectMode","solutionType","requirements","deliveryMethod","domainName","source","assistantMessages","draftInvoice"]);
 export function loadGuestWorkspace():CustomerWorkspace {
   if(typeof window==="undefined")return {};
   try{
@@ -78,4 +79,28 @@ export function replaceGuestWorkspace(value:CustomerWorkspace):CustomerWorkspace
   try{guestStorage()?.setItem(WORKSPACE_KEY,JSON.stringify(next));window.dispatchEvent(new CustomEvent("atsh-workspace-updated",{detail:next}));}catch{/* restricted storage */}
  }
  return next;
+}
+
+// Explicit project edit path: never merge selections into an unrelated active project.
+export type PricingDraft={id:string;revision:number;draft:CustomerWorkspace;linked_journey_id?:string|null};
+export async function loadPricingDraft():Promise<PricingDraft|null>{
+ const id=new URLSearchParams(window.location.search).get("editProject");
+ if(!id)return null;
+ const r=await fetch("/api/customer/auth/project-drafts/"+encodeURIComponent(id),{credentials:"include",cache:"no-store"});
+ if(!r.ok)throw Error("تعذر فتح المشروع المحدد");
+ const d=(await r.json()).projectDraft as PricingDraft;
+ if(d.linked_journey_id)throw Error("لا يمكن تعديل طلب أرسل للإدارة");
+ return d;
+}
+export async function savePricingDraft(edit:PricingDraft|null,patch:CustomerWorkspace,locale:"ar"|"en"){
+ const base=locale==="en"?"/en":"";
+ if(edit){
+  const r=await fetch("/api/customer/auth/project-drafts/"+encodeURIComponent(edit.id),{method:"PATCH",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({expectedRevision:edit.revision,patch})});
+  if(!r.ok)throw Error("تعذر حفظ المشروع؛ تحقق من الحالة أو أعد تحميل الصفحة");
+  window.location.assign(base+"/account/dashboard?view=projects&project="+encodeURIComponent(edit.id));
+ }else{
+  replaceGuestWorkspace(patch);
+  const r=await fetch("/api/customer/auth/me",{credentials:"include",cache:"no-store"}).catch(()=>null);
+  window.location.assign(base+(r?.ok?"/account/dashboard?tab=invoices":"/account/register"));
+ }
 }

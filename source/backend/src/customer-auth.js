@@ -16,7 +16,7 @@ const sessionCookie='atsh_customer';
 const cookieOptions={httpOnly:true,secure:process.env.COOKIE_SECURE!=='false',sameSite:'lax',path:'/',maxAge:7*24*3600*1000};
 const safe=(handler)=>(req,res,next)=>Promise.resolve(handler(req,res,next)).catch(next);
 
-export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
+export function customerAuthRouter({pool,sendEmail,allowedOrigins=[],priceDraft=async(_db,draft)=>draft}){
  const router=Router();
  const publicUrl=process.env.PUBLIC_SITE_URL;
  const session=async(res,id)=>{const q=await pool.query('SELECT session_version FROM customer_accounts WHERE id=$1',[id]);res.cookie(sessionCookie,jwt.sign({sub:String(id),kind:'customer',ver:q.rows[0].session_version},process.env.JWT_SECRET,{issuer:'atsh-ai-api',audience:'atsh-customer',expiresIn:'7d'}),cookieOptions);};
@@ -131,6 +131,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  }).strict();
  const draftSchema=z.object({
   draftInvoice:draftInvoiceSchema.optional(),
+  ownershipMode:z.enum(["rent","copy","code"]).optional(),
   sectorSlug:z.string().regex(/^[a-z0-9-]{1,100}$/).optional(),
   sectorName:z.string().max(120).optional(),
   packageId:z.string().max(100).optional(),
@@ -219,7 +220,8 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  router.post('/project-drafts',requireCustomer,safe(async(req,res)=>{
   const parsed=z.object({title:z.string().trim().min(1).max(120).default('مشروع جديد'),draft:draftSchema.default({})}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:'Invalid project draft'});
-  const result=await pool.query("INSERT INTO customer_project_drafts(customer_id,title,draft) VALUES($1,$2,$3::jsonb) RETURNING id,title,draft,revision,linked_journey_id,updated_at",[req.customer.id,parsed.data.title,JSON.stringify(parsed.data.draft)]);
+  let priced;try{priced=await priceDraft(pool,parsed.data.draft);}catch{return res.status(422).json({error:"تعذر التحقق من الأسعار الحالية"});}
+  const result=await pool.query("INSERT INTO customer_project_drafts(customer_id,title,draft) VALUES($1,$2,$3::jsonb) RETURNING id,title,draft,revision,linked_journey_id,updated_at",[req.customer.id,parsed.data.title,JSON.stringify(priced)]);
   res.status(201).set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
  }));
  // Customer-initiated handoff: atomically create an admin-visible journey and link the owned draft.
@@ -234,6 +236,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
    const decision=submissionDecision(item);
    if(decision.kind==='existing'){await client.query('COMMIT');return res.json({projectId:decision.projectId,alreadySubmitted:true});}
    if(decision.kind==='invalid'){await client.query('ROLLBACK');return res.status(422).json({code:'PROJECT_REQUIREMENTS_INCOMPLETE',error:'Complete project requirements before submission'});}
+   if(item.draft.ownershipMode){try{item.draft=await priceDraft(client,item.draft);}catch{await client.query('ROLLBACK');return res.status(422).json({error:"تعذر التحقق من الأسعار الحالية"});}await client.query("UPDATE customer_project_drafts SET draft=$2::jsonb WHERE id=$1",[item.id,JSON.stringify(item.draft)]);}
    const customer=await client.query('SELECT email,name FROM customer_accounts WHERE id=$1',[req.customer.id]);
    const created=await createCustomerJourneyProject(client,{customerName:item.title,customerEmail:customer.rows[0]?.email??null,customerAccountId:req.customer.id,createdBy:'customer-portal'});
    const projectId=created.id;
@@ -244,7 +247,8 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
     'Sector: '+(item.draft.sectorName||item.draft.sectorSlug||'—'),
     'Solution: '+(item.draft.solutionType||'—'),
     'Features: '+[...(item.draft.options||[]),...(item.draft.sectorAddonCodes||[])].join(', '),
-    'Delivery: '+(item.draft.deliveryMethod||'undecided'),
+    'Delivery: '+(item.draft.ownershipMode||item.draft.deliveryMethod||'undecided'),
+    'Estimate: '+(item.draft.draftInvoice?.total??'—'),
     'Requirements: '+String(item.draft.requirements||'')
    ].join('\\n').slice(0,4000);
    await client.query('INSERT INTO customer_journey_messages(project_id,actor,body) VALUES($1,$2,$3)',[projectId,'customer',summary]);
@@ -289,11 +293,13 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Not found'});
   const parsed=z.object({expectedRevision:z.number().int().positive(),title:z.string().trim().min(1).max(120).optional(),patch:draftSchema.optional()}).strict().safeParse(req.body);
   if(!parsed.success||(!parsed.data.title&&!parsed.data.patch))return res.status(400).json({error:'Invalid project draft update'});
+  let patch=parsed.data.patch??{};
+  if(patch.ownershipMode){try{patch=await priceDraft(pool,patch);}catch{return res.status(422).json({error:"تعذر التحقق من الأسعار الحالية"});}}
   const result=await pool.query(`UPDATE customer_project_drafts SET
     title=COALESCE($3,title),draft=draft||$4::jsonb,revision=revision+1,updated_at=now()
     WHERE id=$1 AND customer_id=$2 AND revision=$5 AND linked_journey_id IS NULL
     RETURNING id,title,draft,revision,linked_journey_id,updated_at`,
-    [req.params.id,req.customer.id,parsed.data.title??null,JSON.stringify(parsed.data.patch??{}),parsed.data.expectedRevision]);
+    [req.params.id,req.customer.id,parsed.data.title??null,JSON.stringify(patch),parsed.data.expectedRevision]);
   if(!result.rowCount)return res.status(409).json({error:'Draft missing, already submitted, or changed on another device; reload before saving'});
   res.set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
  }));
@@ -389,12 +395,13 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[]}){
  router.patch('/workspace',requireCustomer,safe(async(req,res)=>{
   const parsed=draftSchema.safeParse(req.body);
   if(!parsed.success||!Object.keys(parsed.data).length)return res.status(400).json({error:'Invalid draft'});
+  let priced;try{priced=await priceDraft(pool,parsed.data);}catch{return res.status(422).json({error:"تعذر التحقق من الأسعار الحالية"});}
   // Atomic top-level merge, so entering through another section does not erase existing choices.
   const result=await pool.query(`INSERT INTO customer_workspace_drafts(customer_id,draft)
    VALUES($1,$2::jsonb)
    ON CONFLICT(customer_id) DO UPDATE SET draft=customer_workspace_drafts.draft||EXCLUDED.draft,
       revision=customer_workspace_drafts.revision+1,updated_at=now()
-   RETURNING draft,revision,updated_at`,[req.customer.id,JSON.stringify(parsed.data)]);
+   RETURNING draft,revision,updated_at`,[req.customer.id,JSON.stringify(priced)]);
   res.set('Cache-Control','no-store').json({workspace:result.rows[0]});
  }));
 

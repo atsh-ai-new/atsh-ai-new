@@ -1,4 +1,5 @@
 "use client";
+import OwnershipAdmin from "@/components/ownership-admin";
 import { useEffect, useMemo, useState, type FormEvent, type ChangeEvent } from "react";
 import { isolatedDemoHtml, MAX_DEMO_HTML_BYTES, MAX_DEMO_PAGE_BYTES } from "@/lib/sector-catalog";
 import { createPagePreviewUrl } from "@/lib/page-preview";
@@ -412,7 +413,8 @@ export default function CatalogManager() {
         <div className="admin-actions"><button type="button" className="button button-outline" disabled={uploading||busy} onClick={showLivePreview}>معاينة تفاعلية قبل الحفظ</button>{(draft.previewHtml||draft.previewAssetId)&&<button type="button" className="button button-outline" onClick={()=>{setDraft(d=>({...d,previewHtml:"",previewHtmlName:"",previewAssetId:undefined,hasPreviewHtml:false}));setHtmlPreview(false);}}>إزالة ملف HTML والعودة للمعاينة المدمجة</button>}</div>
         {htmlPreview&&draft.previewHtml&&<div id="catalog-html-preview" style={{gridColumn:"1 / -1"}}><div className="admin-actions"><button type="button" onClick={()=>setPreviewDevice("desktop")}>كمبيوتر</button><button type="button" onClick={()=>setPreviewDevice("mobile")}>موبايل</button><button type="button" onClick={()=>setHtmlPreview(false)}>إغلاق المعاينة</button></div><iframe title="معاينة HTML قبل الحفظ" srcDoc={isolatedDemoHtml(draft.previewHtml)} sandbox="allow-scripts allow-modals" referrerPolicy="no-referrer" style={{width:previewDevice==="mobile"?390:"100%",maxWidth:"100%",height:"65vh",border:0}}/></div>}
         {field("رابط النظام التفاعلي المنشور HTTPS — الصق رابط المعاينة هنا",draft.previewUrl,v=>update("previewUrl",v))}
-        <label className="admin-field">سعر بيع النظام المخصص الأساسي (جنيه) — قبل إضافات محرك التسعير<input type="number" min="0" step="0.01" value={draft.basePrice??""} onChange={e=>update("basePrice",e.target.value===""?null:Number(e.target.value))}/></label>
+        <label className="admin-field">مرجع السعر القديم / سعر تأسيس منتج جديد (جنيه)<input type="number" min="0" step="0.01" value={draft.basePrice??""} onChange={e=>update("basePrice",e.target.value===""?null:Number(e.target.value))}/></label>
+        {originalSlug&&<OwnershipAdmin key={originalSlug} scope="sector" productKey={originalSlug} base={draft.basePrice}/>}
         <p className="field-hint" style={{gridColumn:"1 / -1"}}>تُدار الإضافات وأسعارها من قسم الإضافات المركزي في لوحة الإدارة؛ لا توجد أسعار منفصلة لهذا النظام.</p>
         <label className="admin-field">ترتيب الظهور<input type="number" value={draft.sortOrder} onChange={e=>update("sortOrder",Number(e.target.value))}/></label>
         <label className="check-row"><input type="checkbox" checked={draft.published} onChange={e=>update("published",e.target.checked)}/> منشور في المعرض</label>

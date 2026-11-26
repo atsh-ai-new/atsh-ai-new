@@ -17,7 +17,7 @@ export function deriveQuoteFromOrder(order){
   if(total>0)lines.push({label,quantity:1,unitPricePiasters:total,period});
   return true;
  };
- if(!add(`الباقة: ${s.package.name||"مشروع"}`,s.package.price))throw Error("Invalid package line");
+ if(!add(`الباقة: ${s.package.name||"مشروع"}`,s.package.price,s.package.pricingPeriod??"fixed"))throw Error("Invalid package line");
  for(const option of s.options){
   const period=option.pricing_type==="monthly"?"monthly":option.pricing_type==="yearly"?"yearly":"fixed";
   if(!add(option.name||"إضافة",option.lineTotal,period,1))throw Error("Invalid option line");
