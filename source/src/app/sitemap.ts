@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { absolute, homePath, localPath, type Locale } from "@/lib/seo";
 import { publicCatalog, publicPages } from "@/lib/public-seo-data";
+import {serviceSlugs} from "@/lib/seo-services";
 export const dynamic="force-dynamic";
 export default async function sitemap():Promise<MetadataRoute.Sitemap> {
   const [catalog,arPages,enPages]=await Promise.all([publicCatalog("ar"),publicPages("ar"),publicPages("en")]);
@@ -16,9 +17,11 @@ export default async function sitemap():Promise<MetadataRoute.Sitemap> {
     add(homePath(locale),homePath(other),locale);
     add(localPath(locale,"/catalog"),localPath(other,"/catalog"),locale,catalog?.updatedAt);
     for(const item of catalog?.items??[])add(localPath(locale,"/catalog/"+item.slug),localPath(other,"/catalog/"+item.slug),locale,catalog?.updatedAt);
+    add(localPath(locale,"/services"),localPath(other,"/services"),locale);
+    for(const slug of serviceSlugs)add(localPath(locale,"/services/"+slug),localPath(other,"/services/"+slug),locale);
     const pages=locale==="ar"?arPages:enPages;
     const alternates=locale==="ar"?enPages:arPages;
-    for(const page of pages)add(localPath(locale,"/"+page.slug),alternates.some(x=>x.slug===page.slug)?localPath(other,"/"+page.slug):undefined,locale,page.updatedAt);
+    for(const page of pages.filter(x=>x.slug!=="services"))add(localPath(locale,"/"+page.slug),alternates.some(x=>x.slug===page.slug)?localPath(other,"/"+page.slug):undefined,locale,page.updatedAt);
   }
   return result;
 }

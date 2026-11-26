@@ -36,6 +36,9 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
     assert.match((await get("/catalog/hadnty/pricing")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/ar")).body,/<h1[^>]*>شركة تطوير المواقع في مصر<\/h1>/);
     assert.match((await get("/about")).body,/<h1[^>]*>عن شركتنا<\/h1>/);
+    assert.match((await get("/ar/services/ecommerce")).body,/<h1[^>]*>برمجة المتاجر الإلكترونية وأنظمة المبيعات<\/h1>/);
+    assert.match((await get("/en/services/ecommerce")).body,/<h1[^>]*>E-commerce &amp; sales software development<\/h1>/);
+    assert.match(map.body,/<loc>https:\/\/atsh-ai\.com\/services\/ai-solutions<\/loc>/);
     items=[...items,{...item,slug:"new-school"}];
     assert.match((await get("/sitemap.xml")).body,/<loc>https:\/\/atsh-ai\.com\/catalog\/new-school<\/loc>/);
   }finally{next.kill("SIGTERM");backend.close();}
