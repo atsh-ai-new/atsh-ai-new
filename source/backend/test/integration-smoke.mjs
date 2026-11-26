@@ -22,7 +22,18 @@ try{
  assert.equal(starter.result.page?.slug,"catalog");
  assert.equal(starter.result.page?.content?.items?.length,4);
  assert.equal(starter.result.page?.content?.sectors?.length,3);
- assert.ok(starter.result.page.content.items.every(x=>x.published===true&&x.basePrice===null));
+ // Known catalog slugs now receive approved system-only tariffs from code,
+ // even when their old CMS base price was empty; the demo status is unchanged.
+ const starterTariffs={eyadaty:[1490,2490,7490],agzakhana:[2490,4490,10900],supermarket:[1090,2290,6490],avocato:[1790,3490,8490]};
+ for(const item of starter.result.page.content.items){
+  assert.equal(item.published,true);
+  const [rent,copy,code]=starterTariffs[item.slug];
+  assert.equal(item.basePrice,copy);
+  assert.equal(item.ownershipPrices.rent.price,rent);
+  assert.equal(item.ownershipPrices.rent_monthly.price,rent/10);
+  assert.equal(item.ownershipPrices.copy.price,copy);
+  assert.equal(item.ownershipPrices.code.price,code);
+ }
  const readiness=await req("/api/admin/integrations/status",{cookie:`atsh_admin=${ownerToken}`});
  assert.equal(readiness.status,200,JSON.stringify(readiness));
  assert.equal(readiness.result.catalog.total,4);
