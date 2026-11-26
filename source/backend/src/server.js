@@ -27,6 +27,7 @@ import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
 import { buildVisitorInstructions } from "./visitor-assistant.js";
 import { priceSectorSelection } from "./sector-pricing.js";
+import { ensureOwnership,resolveOwnership,ownershipModes,ownershipLabels,ownershipConflicts } from "./product-ownership.js";
 import { calculateUnifiedPricing } from "./pricing-engine.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
@@ -89,6 +90,7 @@ await pool.query(await readFile(new URL("../db/shared_addons_20261126.sql", impo
 await pool.query(await readFile(new URL("../db/addon_categories_20261126.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/approved_addon_prices_20261126.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/package_discounts_20261126.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/product_ownership_20261126.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/order_submission_idempotency_stage54.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/site_demo_assets.sql",import.meta.url),"utf8"));
 await pool.query(await readFile(new URL("../db/content_studio_assets_20261126.sql",import.meta.url),"utf8"));
@@ -203,7 +205,7 @@ async function sendTransactionalEmail({to,toName,subject,textContent}) {
 // visitor behind a shared reverse-proxy address. Do not log or persist the email.
 // Customer account routes are not subject to a shared-IP login quota.
 // Session identity and ownership checks remain enforced by customerAuthRouter.
-app.use("/api/customer/auth",customerAuthRouter({pool,sendEmail:sendTransactionalEmail,allowedOrigins:origins}));
+app.use("/api/customer/auth",customerAuthRouter({pool,sendEmail:sendTransactionalEmail,allowedOrigins:origins,priceDraft:priceOwnershipDraft}));
 app.use("/api/customer/deliverables",deliveryCustomerRouter({pool,allowedOrigins:origins}));
 app.use("/api/admin/deliverables",requireAdmin,requireRole("owner","admin","editor"),deliveryAdminRouter({pool}));
 app.use("/api/admin/operations",requireAdmin,requireRole("owner","admin"),deliveryAdminRouter({pool,operationsOnly:true}));
@@ -541,7 +543,7 @@ app.get("/api/catalog", route(async (_req,res) => {
     pool.query("SELECT a.*,'both' AS visibility,c.sort_order AS category_sort_order FROM shared_addons a JOIN addon_categories c ON c.code=a.category_code WHERE a.is_active=true ORDER BY c.sort_order,a.sort_order,a.code"),
     pool.query("SELECT * FROM addon_categories ORDER BY sort_order,code")
   ]);
-  res.set("Cache-Control","no-store").json({packages:p.rows,options:o.rows,sharedOptions:shared.rows,addonCategories:categories.rows});
+  res.set("Cache-Control","no-store").json({packages:await Promise.all(p.rows.map(async p=>({...p,ownershipPrices:p.is_custom_quote?null:await ensureOwnership(pool,"package",p.id,p.name,p.list_price)}))),options:o.rows,sharedOptions:shared.rows,addonCategories:categories.rows});
 }));
 // Unified template catalog. Previews are links to independently deployed builds, never invented demos.
 const templateWriteSchema=z.object({
@@ -661,17 +663,51 @@ async function pricedSectorCatalog(db,items){
   const shared=(await db.query("SELECT code,name,description,price,pricing_type,is_active,is_required,list_price,discount_percent FROM shared_addons ORDER BY sort_order,code")).rows;
   const centralCodes=new Set(shared.map(a=>a.code));
   const activeShared=shared.filter(a=>a.is_active).map(a=>({code:a.code,name:a.name,description:a.description,price:Number(a.price),list_price:Number(a.list_price),discount_percent:Number(a.discount_percent),pricingType:a.pricing_type,isRequired:a.is_required}));
-  return items.map(item=>{
+  return Promise.all(items.map(async item=>{
     if(!item||typeof item!=="object")return item;
     const base=prices.get("sector:"+item.slug+":base");
-    return {...item,basePrice:base?Number(base.amount):null,
+    const ownershipPrices=await ensureOwnership(db,"sector",item.slug,item.name,base?.amount??null);
+    return {...item,basePrice:base?Number(base.amount):null,ownershipPrices,
       pricedAddons:[...activeShared,...(Array.isArray(item.pricedAddons)?item.pricedAddons:[]).filter(a=>!centralCodes.has(a.code)&&!reservedAddonCodes.has(a.code)).map(addon=>{
         const price=prices.get("sector_addon:"+item.slug+":"+addon.code);
         return price&&price.amount!==null?{...addon,price:Number(price.amount),pricingType:price.pricing_type}:null;
       }).filter(Boolean)]};
-  });
+  }));
 }
 
+// A customer draft carries identifiers, not trusted browser amounts. Use the
+// same pricing engine and tariff registry on creation, edits and submission.
+async function priceOwnershipDraft(db,draft){
+ if(!draft.ownershipMode)return draft;
+ const mode=draft.ownershipMode;
+ let price, title, calculated;
+ if(draft.source==="catalog"&&draft.sectorSlug){
+  const catalog=await db.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true");
+  const quote=priceSectorSelection(await pricedSectorCatalog(db,catalog.rows[0]?.content?.items),draft.sectorSlug,draft.sectorAddonCodes??[],draft.sectorAddonQuantities??{},mode);
+  if(quote.needsCustomQuote)throw Error("System price unavailable");
+  title=quote.sectorName; calculated={sectorQuote:quote};
+ }else if(draft.packageId){
+  const result=await db.query("SELECT id,name,list_price,is_custom_quote FROM packages WHERE id::text=$1 AND is_published=true AND deleted_at IS NULL",[draft.packageId]);
+  const pkg=result.rows[0];if(!pkg||pkg.is_custom_quote)throw Error("Package price unavailable");
+  title=pkg.name;
+  price=resolveOwnership(await ensureOwnership(db,"package",pkg.id,pkg.name,pkg.list_price),mode);
+  const requested=new Set(draft.options??[]);
+  const found=await db.query("SELECT id,code,name,price,pricing_type,is_required FROM package_options WHERE package_id=$1 AND is_active=true",[pkg.id]);
+  if([...requested].some(id=>!found.rows.some(x=>x.id===id)))throw Error("Addon unavailable");
+  const options=found.rows.filter(x=>(requested.has(x.id)||x.is_required)&&!ownershipConflicts(mode,x.code)).map(x=>{
+   const q=x.pricing_type==="per_page"?Number(draft.optionQuantities?.[x.id]??1):1;
+   if(!Number.isInteger(q)||q<1||q>50||(x.code==="extra_page"&&q>5))throw Error("Invalid quantity");
+   return {...x,lineTotal:Math.round(Number(x.price)*q*100)/100};
+  });
+  draft.options=options.map(x=>x.id);
+  calculated={packagePrice:price.price,packagePeriod:price.period,packageOptions:options};
+ }else throw Error("Product unavailable");
+ const settings=await db.query("SELECT vat_rate FROM site_settings WHERE id=1");
+ const vatRate=Number(settings.rows[0]?.vat_rate??0);
+ const result=calculateUnifiedPricing({...calculated,vatRate});
+ const items=result.lines.filter(x=>x.code!=="package"||price).map(x=>({name:x.code==="package"?title+" — "+ownershipLabels[mode]:x.name,amount:x.amount,period:x.period}));
+ return {...draft,draftInvoice:{title,items,subtotal:result.subtotal,vat:result.vatAmount??0,total:result.total,...result.billing,currency:"EGP",savedAt:new Date().toISOString()}};
+}
 app.get("/api/sector-price",route(async(req,res)=>{
   const slug=typeof req.query.slug==="string"?req.query.slug:"";
   const addons=typeof req.query.addons==="string"&&req.query.addons
@@ -679,12 +715,13 @@ app.get("/api/sector-price",route(async(req,res)=>{
   const result=await pool.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true LIMIT 1");
   try{
     const quantities=z.record(z.string().regex(/^[a-z0-9_-]{1,80}$/),z.number().int().min(1).max(50)).parse(typeof req.query.quantities==="string"?JSON.parse(req.query.quantities):{});
-    const price=priceSectorSelection(await pricedSectorCatalog(pool,result.rows[0]?.content?.items),slug,addons,quantities);
+    const price=priceSectorSelection(await pricedSectorCatalog(pool,result.rows[0]?.content?.items),slug,addons,quantities,typeof req.query.ownershipMode==="string"?req.query.ownershipMode:undefined);
     res.set("Cache-Control","no-store").json(price);
   }catch{return res.status(400).json({error:"Sector unavailable or pricing not configured"});}
 }));
 
 const orderSchema = z.object({
+  ownershipMode:z.enum(["rent","copy","code"]).optional(),
   packageId:z.string().uuid(),
   optionIds:z.array(z.string().uuid()).max(MAX_ADDONS_PER_SELECTION).default([]),
   optionQuantities:z.record(z.string().uuid(),z.number().int().min(1).max(50)).default({}),
@@ -734,9 +771,11 @@ app.post("/api/orders", route(async (req,res) => {
       if(!ownedDraft.rowCount){await client.query("ROLLBACK");return res.status(403).json({error:"Project draft is not owned by this account"});}
       if(ownedDraft.rows[0].linked_journey_id){await client.query("ROLLBACK");return res.status(409).json({error:"This project draft already has an order or submission"});}
     }
-    const p=await client.query("SELECT p.id,p.name,p.description,u.amount AS price,p.currency,p.is_custom_quote FROM packages p JOIN unified_price_items u ON u.scope='package' AND u.owner_key=p.id::text AND u.code='base' WHERE p.id=$1 AND p.is_published=true AND p.deleted_at IS NULL FOR SHARE OF p",[input.packageId]);
+    const p=await client.query("SELECT p.id,p.name,p.description,u.amount AS price,p.list_price,p.currency,p.is_custom_quote FROM packages p JOIN unified_price_items u ON u.scope='package' AND u.owner_key=p.id::text AND u.code='base' WHERE p.id=$1 AND p.is_published=true AND p.deleted_at IS NULL FOR SHARE OF p",[input.packageId]);
     if(!p.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"Package unavailable"});}
     const pkg=p.rows[0];
+    let packagePeriod="fixed";
+    if(input.ownershipMode&&!input.sectorSlug&&!pkg.is_custom_quote){const price=resolveOwnership(await ensureOwnership(client,"package",pkg.id,pkg.name,pkg.list_price),input.ownershipMode);pkg.price=price.price;pkg.ownershipMode=input.ownershipMode;packagePeriod=price.period;pkg.pricingPeriod=packagePeriod;}
     // Never interpret SQL NULL custom-price packages as free (Number(null) === 0).
     if(pkg.is_custom_quote||pkg.price===null||pkg.price===undefined||!Number.isFinite(Number(pkg.price))||Number(pkg.price)<0){
       await client.query("ROLLBACK");return res.status(409).json({error:"هذه الباقة تحتاج عرض سعر معتمد قبل تسجيل شراء.",needsCustomQuote:true});
@@ -750,18 +789,19 @@ app.post("/api/orders", route(async (req,res) => {
     if(o.rows.length!==input.optionIds.length){await client.query("ROLLBACK");return res.status(400).json({error:"One or more options are unavailable"});}
     const selected = new Set(o.rows.map(x=>x.id));
     if(required.rows.some(x=>!selected.has(x.id))){await client.query("ROLLBACK");return res.status(400).json({error:"All required package options must be selected"});}
+    if(input.ownershipMode&&o.rows.some(x=>ownershipConflicts(input.ownershipMode,x.code))){await client.query("ROLLBACK");return res.status(400).json({error:"Hosting already included in rental"});}
     const pricedOptions=o.rows.map(x=>{const quantity=x.pricing_type==="per_page"?Number(input.optionQuantities[x.id]||1):1;return {...x,quantity,lineTotal:Number(x.price)*quantity};});
     if(!input.sectorSlug && input.sectorAddonCodes.length){await client.query("ROLLBACK");return res.status(400).json({error:"Sector addons require a sector"});}
     let sectorPrice=null;
     if(input.sectorSlug){
       const catalog=await client.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true FOR SHARE");
-      try{sectorPrice=priceSectorSelection(await pricedSectorCatalog(client,catalog.rows[0]?.content?.items),input.sectorSlug,input.sectorAddonCodes,input.sectorAddonQuantities);}
+      try{sectorPrice=priceSectorSelection(await pricedSectorCatalog(client,catalog.rows[0]?.content?.items),input.sectorSlug,input.sectorAddonCodes,input.sectorAddonQuantities,input.ownershipMode);}
       catch{await client.query("ROLLBACK");return res.status(400).json({error:"Selected sector or addon unavailable"});}
       if(sectorPrice.needsCustomQuote){await client.query("ROLLBACK");return res.status(409).json({error:"تخصيص هذا القطاع يتطلب اعتماد عرض سعر قبل تسجيل طلب شراء.",needsCustomQuote:true});}
     }
     const settings=await client.query("SELECT vat_rate FROM site_settings WHERE id=1");
     const vatRate=settings.rows[0]?.vat_rate==null?null:Number(settings.rows[0].vat_rate);
-    const unified=calculateUnifiedPricing({packagePrice:Number(pkg.price),packageOptions:pricedOptions,sectorQuote:sectorPrice,vatRate});
+    const unified=calculateUnifiedPricing({packagePrice:Number(pkg.price),packagePeriod,packageOptions:pricedOptions,sectorQuote:sectorPrice,vatRate});
     const {subtotal,vatAmount,total}=unified;
     const reference="ATSH-"+new Date().toISOString().slice(0,10).replaceAll("-","")+"-"+crypto.randomUUID().slice(0,8).toUpperCase();
     const breakdownItems=unified.lines.map(line=>line.code==="package"?{...line,name:pkg.name}:line);
@@ -1419,6 +1459,47 @@ app.post("/api/admin/team/:id/purge",requireAdmin,requirePermission("team"),requ
  }catch(e){await client.query("ROLLBACK");if(e.code==="23503")return res.status(409).json({error:"تعذر حذف العضو بسبب بيانات مرتبطة؛ أوقف الحساب بدلًا من الحذف."});throw e;}finally{client.release();}
 }));
 await pool.query("ALTER TABLE packages ADD COLUMN IF NOT EXISTS deleted_at timestamptz");
+// Independent tariff administration for both product types.
+async function ownershipProduct(db,scope,key){
+ if(scope==="package"){
+  if(!z.string().uuid().safeParse(key).success)return null;
+  const r=await db.query("SELECT name,list_price AS base,is_custom_quote FROM packages WHERE id=$1 AND deleted_at IS NULL",[key]);
+  return r.rows[0]&&!r.rows[0].is_custom_quote?r.rows[0]:null;
+ }
+ if(scope==="sector"&&/^[a-z0-9-]{1,100}$/.test(key)){
+  const r=await db.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar'");
+  const item=r.rows[0]?.content?.items?.find(x=>x.slug===key);
+  return item?{name:item.name,base:item.basePrice}:null;
+ }
+ return null;
+}
+app.get("/api/admin/ownership-prices/:scope/:key",requireAdmin,requirePermission("products"),route(async(req,res)=>{
+ const {scope,key}=req.params,p=await ownershipProduct(pool,scope,key);
+ if(!p)return res.status(404).json({error:"Product unavailable"});
+ res.json({prices:await ensureOwnership(pool,scope,key,p.name,p.base)});
+}));
+app.patch("/api/admin/ownership-prices/:scope/:key",requireAdmin,requirePermission("products"),route(async(req,res)=>{
+ const {scope,key}=req.params;
+ const tariff=z.object({list_price:z.number().finite().min(0).max(99999999),discount_percent:z.number().finite().min(0).max(100)}).strict();
+ const parsed=z.object({rent:tariff,copy:tariff,code:tariff}).strict().safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:"Invalid prices"});
+ const client=await pool.connect();try{
+  await client.query("BEGIN");
+  const p=await ownershipProduct(client,scope,key);
+  if(!p){await client.query("ROLLBACK");return res.status(404).json({error:"Product unavailable"});}
+  const before=await ensureOwnership(client,scope,key,p.name,p.base??parsed.data.copy.list_price);
+  for(const mode of ownershipModes){const x=parsed.data[mode];await client.query("UPDATE product_ownership_prices SET list_price=$4,discount_percent=$5 WHERE scope=$1 AND owner_key=$2 AND mode=$3",[scope,key,mode,x.list_price,x.discount_percent]);}
+  const prices=await ensureOwnership(client,scope,key,p.name,p.base??parsed.data.copy.list_price);
+  await auditChange(client,req.admin.email,"ownership.prices_updated",scope,scope==="package"?key:"00000000-0000-4000-8000-000000000001",{key,prices:before},{key,prices});
+  await client.query("COMMIT");res.json({prices});
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}));
+app.post("/api/admin/ownership-prices/:scope/:key/reset",requireAdmin,requirePermission("products"),route(async(req,res)=>{
+ const {scope,key}=req.params,p=await ownershipProduct(pool,scope,key);
+ if(!p)return res.status(404).json({error:"Product unavailable"});
+ await pool.query("UPDATE product_ownership_prices SET list_price=initial_price,discount_percent=0 WHERE scope=$1 AND owner_key=$2",[scope,key]);
+ res.json({prices:await ensureOwnership(pool,scope,key,p.name,p.base)});
+}));
 app.get("/api/admin/packages",requireAdmin,requirePermission("products"),route(async(_req,res)=>{
   const [p,o,shared,categories]=await Promise.all([
     pool.query("SELECT id,name,tagline,description,price,list_price,initial_price,discount_percent,currency,features,is_featured,is_custom_quote,is_published,sort_order,created_at,updated_at FROM packages WHERE deleted_at IS NULL ORDER BY sort_order,created_at"),
@@ -1426,7 +1507,7 @@ app.get("/api/admin/packages",requireAdmin,requirePermission("products"),route(a
     pool.query("SELECT a.*,'both' AS visibility,c.sort_order AS category_sort_order FROM shared_addons a JOIN addon_categories c ON c.code=a.category_code ORDER BY c.sort_order,a.sort_order,a.code"),
     pool.query("SELECT * FROM addon_categories ORDER BY sort_order,code")
   ]);
-  res.json({packages:p.rows,options:o.rows,sharedOptions:shared.rows,addonCategories:categories.rows});
+  res.json({packages:await Promise.all(p.rows.map(async p=>({...p,ownershipPrices:p.is_custom_quote?null:await ensureOwnership(pool,"package",p.id,p.name,p.list_price)}))),options:o.rows,sharedOptions:shared.rows,addonCategories:categories.rows});
 }));
 app.post("/api/admin/packages",requireAdmin,requirePermission("products"),route(async(req,res)=>{
   const parsed=packageCreateSchema.safeParse(req.body); if(!parsed.success)return res.status(400).json({error:"Invalid package",details:parsed.error.issues});
@@ -1459,6 +1540,8 @@ for(const action of ["discount","reset-prices"]){
     const changed=action==="discount"
       ? await client.query("UPDATE packages SET discount_percent=$2,updated_at=now() WHERE id=ANY($1::uuid[]) AND discount_percent IS DISTINCT FROM $2::numeric RETURNING *",[ids,parsed.data.discountPercent])
       : await client.query("UPDATE packages SET list_price=initial_price,discount_percent=0,updated_at=now() WHERE id=ANY($1::uuid[]) AND (list_price,discount_percent) IS DISTINCT FROM (initial_price,0) RETURNING *",[ids]);
+    for(const p of before.rows)await ensureOwnership(client,"package",p.id,p.name,p.list_price);
+    await client.query(action==="discount"?"UPDATE product_ownership_prices SET discount_percent=$2 WHERE scope='package' AND owner_key=ANY($1::text[])":"UPDATE product_ownership_prices SET list_price=initial_price,discount_percent=0 WHERE scope='package' AND owner_key=ANY($1::text[])",action==="discount"?[ids,parsed.data.discountPercent]:[ids]);
     const prior=new Map(before.rows.map(p=>[p.id,p]));
     for(const row of changed.rows)await auditChange(client,req.admin.email,action==="discount"?"package.discount_updated":"package.price_reset","package",row.id,prior.get(row.id),row);
     await client.query("COMMIT");res.json({updated:changed.rowCount});
@@ -1938,14 +2021,14 @@ app.get("/api/admin/commercial/project-drafts/eligible",requireAdmin,requirePerm
 const customQuoteInput=z.object({items:z.array(z.object({
  label:z.string().trim().min(3).max(250),quantity:z.number().int().min(1).max(100),
  unitPricePiasters:z.number().int().min(0).max(100000000000),period:z.enum(["fixed","monthly","yearly"]).optional()
-}).strict()).min(1).max(MAX_ADDON_INVOICE_LINES),validUntil:z.string().datetime({offset:true}).optional()}).strict();
+}).strict()).min(1).max(MAX_ADDON_INVOICE_LINES).optional(),useSavedPricing:z.literal(true).optional(),validUntil:z.string().datetime({offset:true}).optional()}).strict().refine(x=>Boolean(x.items)!==Boolean(x.useSavedPricing));
 app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
  if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid draft id"});
  const parsed=customQuoteInput.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Invalid priced line items"});
- if(Buffer.byteLength(JSON.stringify(parsed.data.items),"utf8")>192*1024)return res.status(400).json({error:"Quote too large"});
- let total;try{total=quoteTotal(parsed.data.items);}catch(e){return res.status(422).json({error:e.message});}
- if(total<1)return res.status(422).json({error:"Custom projects require a reviewed nonzero price"});
+ if(Buffer.byteLength(JSON.stringify(parsed.data.items??[]),"utf8")>192*1024)return res.status(400).json({error:"Quote too large"});
+ let quoteItems=parsed.data.items,total=0;
+ if(quoteItems){try{total=quoteTotal(quoteItems);}catch(e){return res.status(422).json({error:e.message});}if(total<1)return res.status(422).json({error:"Custom projects require a reviewed nonzero price"});}
  if(parsed.data.validUntil&&new Date(parsed.data.validUntil).getTime()<=Date.now())return res.status(400).json({error:"Quote validity must be in the future"});
  const client=await pool.connect();
  try{
@@ -1958,6 +2041,16 @@ app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requirePe
   if(!d?.is_active||!d.email_verified_at){await client.query("ROLLBACK");return res.status(409).json({error:"Verified customer draft required"});}
   const latest=await client.query("SELECT approval_status,snapshot->>'sourceRevision' AS source_revision FROM customer_preview_versions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 1",[d.id]);
   if(latest.rows[0]?.approval_status!=="approved"||Number(latest.rows[0]?.source_revision)!==Number(d.revision)){await client.query("ROLLBACK");return res.status(409).json({error:"Latest preview must be approved before issuing a custom quote"});}
+  if(d.draft?.ownershipMode){
+    if(!parsed.data.useSavedPricing){await client.query("ROLLBACK");return res.status(422).json({error:"Use the verified ownership price lines for this project"});}
+    try{
+      const verified=(await priceOwnershipDraft(client,d.draft)).draftInvoice;
+      quoteItems=verified.items.map(x=>({label:x.name,quantity:1,unitPricePiasters:Math.round(x.amount*100),period:x.period}));
+      total=quoteTotal(quoteItems);
+      if(total<1)throw Error("Invalid amount");
+    }catch{await client.query("ROLLBACK");return res.status(422).json({error:"تعذر التحقق من تسعير التملك الحالي"});}
+  }else if(parsed.data.useSavedPricing){await client.query("ROLLBACK");return res.status(422).json({error:"No saved ownership selection"});}
+
   const active=await client.query(`SELECT 1 FROM commercial_custom_quote_links WHERE draft_id=$1 AND is_current=true
    UNION ALL SELECT 1 FROM commercial_order_quote_links WHERE draft_id=$1 AND is_current=true LIMIT 1`,[d.id]);
   if(active.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"An active quote already exists for this draft"});}
@@ -1976,7 +2069,7 @@ app.post("/api/admin/commercial/project-drafts/:id/quote",requireAdmin,requirePe
   const vatRate=config.rows[0]?.vat_rate===null?0:Number(config.rows[0]?.vat_rate??0);
   if(!Number.isFinite(vatRate)||vatRate<0||vatRate>100)throw Error("Invalid VAT configuration");
   const tax=Math.round(total*vatRate/100);
-  const pricedItems=[...parsed.data.items,...(tax>0?[{label:`ضريبة القيمة المضافة (${vatRate}%)`,quantity:1,unitPricePiasters:tax,period:"fixed"}]:[])];
+  const pricedItems=[...quoteItems,...(tax>0?[{label:`ضريبة القيمة المضافة (${vatRate}%)`,quantity:1,unitPricePiasters:tax,period:"fixed"}]:[])];
   const grossTotal=total+tax;
   if(!Number.isSafeInteger(grossTotal))throw Error("Quote amount overflow");
   const q=await client.query(`INSERT INTO commercial_quotes(customer_email,customer_account_id,items,total_piasters,currency,valid_until)

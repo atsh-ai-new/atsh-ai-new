@@ -1,4 +1,5 @@
 "use client";
+import OwnershipAdmin from "@/components/ownership-admin";
 import AddonPrice from "@/components/addon-price";
 import NotificationInbox from "../../components/notification-inbox";
 
@@ -20,7 +21,7 @@ import CommercialManager from "./commercial-manager";
 
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
 type View = "videos" | "messages" | "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "theme" | "inbox" | "team" | "audit";
-type Package = { list_price?:number|string;initial_price?:number|string;discount_percent?:number|string; id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
+type Package = { ownershipPrices?:import("@/components/ownership-selector").OwnershipPrices|null; list_price?:number|string;initial_price?:number|string;discount_percent?:number|string; id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
 type Option = { list_price?:number|string;discount_percent?:number|string;initial_price?:number|string;initial_pricing_type?:Option["pricing_type"];initial_unit_label?:string;category_code?:AddonCategoryCode;category_sort_order?:number; id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
 type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; linked_project_id?: string | null; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
 type JourneyProject = { id:string; customer_name:string; customer_email:string|null; status:string; created_at:string };
@@ -287,7 +288,7 @@ export default function AdminPage() {
     if(!window.confirm(item?`إعادة سعر "${item.name}" للسعر الأساسي وإلغاء الخصم؟`:"إعادة ضبط جميع أسعار الباقات وإلغاء الخصومات؟ لن تتغير الطلبات السابقة."))return;
     void save(()=>api("packages/reset-prices",{method:"POST",body:JSON.stringify(item?{id:item.id}:{})}),"تمت إعادة ضبط أسعار الباقات.");
   };
-  const packagePriceFields=(item:Package)=><><label className="admin-field">السعر قبل الخصم<input type="number" min="0" step="0.01" disabled={item.is_custom_quote} value={item.list_price??item.price} onChange={e=>changePackage(item.id,"list_price",Number(e.target.value))}/></label><label className="admin-field">نسبة الخصم (%)<input type="number" min="0" max="100" step="0.01" disabled={item.is_custom_quote} value={item.discount_percent??0} onChange={e=>changePackage(item.id,"discount_percent",Math.min(100,Math.max(0,Number(e.target.value))))}/></label><div className="admin-field">السعر بعد الخصم{item.is_custom_quote?<strong>حسب الطلب</strong>:<AddonPrice item={item}/>}</div></>;
+  const packagePriceFields=(item:Package)=>item.ownershipPrices&&!item.is_custom_quote?<OwnershipAdmin scope="package" productKey={item.id} base={Number(item.list_price??item.price)} initial={item.ownershipPrices}/>:<><label className="admin-field">السعر قبل الخصم<input type="number" min="0" step="0.01" disabled={item.is_custom_quote} value={item.list_price??item.price} onChange={e=>changePackage(item.id,"list_price",Number(e.target.value))}/></label><label className="admin-field">نسبة الخصم (%)<input type="number" min="0" max="100" step="0.01" disabled={item.is_custom_quote} value={item.discount_percent??0} onChange={e=>changePackage(item.id,"discount_percent",Math.min(100,Math.max(0,Number(e.target.value))))}/></label><div className="admin-field">السعر بعد الخصم{item.is_custom_quote?<strong>حسب الطلب</strong>:<AddonPrice item={item}/>}</div></>;
   const removePackage = async (item: Package) => {
     if (!window.confirm(`حذف الباقة "${item.name}" من المنتجات والموقع؟ ستظل الطلبات السابقة محفوظة.`)) return;
     setBusy(true);setError("");setNotice("");

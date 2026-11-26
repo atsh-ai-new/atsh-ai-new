@@ -21,7 +21,7 @@ function candidatesFromInput(value:string):string[] {
  return DOMAIN_EXTENSIONS.map(extension=>name+extension);
 }
 
-export default function DomainLookup({onDomainChange,locale="ar",source="configurator"}:{onDomainChange?:(value:string)=>void;locale?:"ar"|"en";source?:"configurator"|"catalog"}){
+export default function DomainLookup({onDomainChange,locale="ar",source="configurator",value}:{onDomainChange?:(value:string)=>void;locale?:"ar"|"en";source?:"configurator"|"catalog";value?:string}){
  const en=locale==="en";
  const t=(ar:string,english:string)=>en?english:ar;
  const [name,setName]=useState("");
@@ -30,19 +30,19 @@ export default function DomainLookup({onDomainChange,locale="ar",source="configu
  const [message,setMessage]=useState("");
  const [selectedDomain,setSelectedDomain]=useState("");
  useEffect(()=>{
-  const existing=loadGuestWorkspace().domainName;
-  if(existing){setName(existing);if(existing.includes(".")){setSelectedDomain(existing);onDomainChange?.(existing);}}
- },[]);
+  const existing=value??loadGuestWorkspace().domainName;
+  if(existing){setName(existing);if(existing.includes(".")){setSelectedDomain(existing);if(value===undefined)onDomainChange?.(existing);}}else if(value!==undefined)setSelectedDomain("");
+ },[value]);
  const change=(value:string)=>{
   setName(value);setResults([]);setMessage("");setSelectedDomain("");
   // Never send a bare business name ("atsh") to the project-order domain field.
   onDomainChange?.("");
-  saveGuestWorkspace({domainName:"",source});
+  if(value===undefined)saveGuestWorkspace({domainName:"",source});
  };
  const select=(domain:string)=>{
   setSelectedDomain(domain);setName(domain);setMessage(t("تم حفظ الاسم كاختيار مفضل، وليس حجزًا.", "Saved as your preferred domain, not reserved."));
   onDomainChange?.(domain);
-  saveGuestWorkspace({domainName:domain,source});
+  if(value===undefined)saveGuestWorkspace({domainName:domain,source});
  };
  const check=async()=>{
   const names=candidatesFromInput(name);

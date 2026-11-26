@@ -1,0 +1,45 @@
+import assert from "node:assert/strict";
+import pg from "pg";
+import jwt from "jsonwebtoken";
+import {randomUUID} from "node:crypto";
+const db=new pg.Client({connectionString:process.env.DATABASE_URL});
+await db.connect();
+const key=randomUUID(),account=randomUUID(),foreign=randomUUID();
+const base="http://127.0.0.1:3017";
+const ownerVersion=Number((await db.query("SELECT session_version FROM owner_password_overrides WHERE id=1")).rows[0]?.session_version??0);
+const admin="atsh_admin="+jwt.sign({role:"owner",email:"ci-owner@example.test",ownerVersion},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-admin",expiresIn:"10m"});
+const cookie=id=>"atsh_customer="+jwt.sign({sub:id,kind:"customer",ver:0},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-customer",expiresIn:"10m"});
+const api=async(path,method="GET",body,auth=admin)=>{const r=await fetch(base+path,{method,headers:{origin:base,cookie:auth,...(body?{"content-type":"application/json"}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()};};
+try{
+ await db.query("INSERT INTO packages(id,name,price,is_published) VALUES($1,'Ownership test',1250,true)",[key]);
+ await db.query("INSERT INTO customer_accounts(id,name,email,password_hash,email_verified_at) VALUES($1,'Pricing Test',$2,'ci-test',now()),($3,'Other Test',$4,'ci-test',now())",[account,account+"@example.test",foreign,foreign+"@example.test"]);
+ const endpoint="/api/admin/ownership-prices/package/"+key;
+ const original=await api(endpoint);assert.equal(original.status,200,JSON.stringify(original));
+ assert.equal(original.data.prices.rent.price,750);
+ assert.equal(original.data.prices.copy.price,1250);
+ const tariff={rent:{list_price:1800,discount_percent:10},copy:{list_price:2100,discount_percent:0},code:{list_price:5000,discount_percent:5}};
+ assert.equal((await api(endpoint,"PATCH",tariff,"")).status,401);
+ const updated=await api(endpoint,"PATCH",tariff);assert.equal(updated.status,200,JSON.stringify(updated));assert.equal(updated.data.prices.rent.price,1620);assert.equal(updated.data.prices.code.price,4750);
+ const options=(await db.query("SELECT id,code FROM package_options WHERE package_id=$1 AND is_active=true AND code IN ('hosting','payment_gateway')",[key])).rows;
+ const host=options.find(x=>x.code==="hosting").id,addon=options.find(x=>x.code==="payment_gateway").id;
+ const customerPath="/api/customer/auth/project-drafts";
+ const selection={packageId:key,source:"configurator",ownershipMode:"rent",options:[host,addon],domainName:"example.test"};
+ const created=await api(customerPath,"POST",{title:"Ownership test",draft:selection},cookie(account));assert.equal(created.status,201,JSON.stringify(created));
+ const d=created.data.projectDraft;
+ assert.equal(d.draft.draftInvoice.yearly,1620);assert.ok(!d.draft.options.includes(host));
+ const edit={expectedRevision:d.revision,patch:{...selection,ownershipMode:"code"}};
+ const denied=await api(customerPath+"/"+d.id,"PATCH",edit,cookie(foreign));assert.equal(denied.status,409);
+ const patched=await api(customerPath+"/"+d.id,"PATCH",edit,cookie(account));assert.equal(patched.status,200,JSON.stringify(patched));
+ assert.equal(patched.data.projectDraft.id,d.id);assert.equal(patched.data.projectDraft.revision,d.revision+1);
+ assert.equal(patched.data.projectDraft.draft.ownershipMode,"code");assert.equal(patched.data.projectDraft.draft.draftInvoice.yearly,225);
+ assert.ok(patched.data.projectDraft.draft.draftInvoice.fixed>=4750);
+ assert.equal((await api(customerPath+"/"+d.id,"PATCH",edit,cookie(account))).status,409);
+ const reset=await api(endpoint+"/reset","POST",{});assert.equal(reset.status,200,JSON.stringify(reset));assert.equal(reset.data.prices.copy.price,1250);assert.equal(reset.data.prices.rent.discount_percent,0);
+ console.log("PASS: tariff persistence, independent discounts, reset, server repricing and owner-only same-project edit");
+}finally{
+ await db.query("DELETE FROM customer_project_drafts WHERE customer_id=ANY($1::uuid[])",[[account,foreign]]);
+ await db.query("DELETE FROM customer_accounts WHERE id=ANY($1::uuid[])",[[account,foreign]]);
+ await db.query("DELETE FROM product_ownership_prices WHERE scope='package' AND owner_key=$1",[key]);
+ await db.query("DELETE FROM packages WHERE id=$1",[key]);
+ await db.end();
+}

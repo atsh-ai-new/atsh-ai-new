@@ -8,7 +8,7 @@ import {normalizeCatalogSectors,resolvePlacement,type CatalogSector} from "@/lib
 import {loadGuestWorkspace,saveGuestWorkspace} from "@/lib/customer-workspace";
 import SystemThumbnail from "@/components/system-thumbnail";
 import {englishCatalogSectors,englishTemplateLabel,englishTemplateFeatures} from "@/lib/sector-en";
-type Item=SectorTemplate&{published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;previewUrl?:string;previewHtml?:string;hasPreviewHtml?:boolean;previewAssetId?:string;sectorId?:string;subcategoryId?:string;basePrice?:number|null};
+type Item=SectorTemplate&{published?:boolean;archived?:boolean;sortOrder?:number;imageUrl?:string;previewUrl?:string;previewHtml?:string;hasPreviewHtml?:boolean;previewAssetId?:string;sectorId?:string;subcategoryId?:string;basePrice?:number|null;ownershipPrices?:import("@/components/ownership-selector").OwnershipPrices|null};
 function GalleryDemo({item,base,title}:{item:Item;base:string;title:string}){
  return <Link prefetch={false} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} aria-label={title} style={{display:"block",overflow:"hidden",borderRadius:12}}>
  <SystemThumbnail slug={item.slug} name={item.name} assetId={item.previewAssetId} imageUrl={item.imageUrl}/>
@@ -86,7 +86,7 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
      <h3 style={{margin:"2px 0",color:"#203958"}}>{en?englishTemplateLabel(item.slug,item.name):item.name}</h3>
      <Link prefetch={false} onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("جرّب النظام بملء الشاشة ←","Try full-screen demo →")}</Link>
      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",borderTop:"1px solid #e2e8f0",paddingTop:12}}>
-      <span style={{fontWeight:800,color:"#203958"}}>{typeof item.basePrice==="number"&&Number.isFinite(item.basePrice)&&item.basePrice>=0? t("السعر الأساسي: ","Base price: ")+item.basePrice.toLocaleString(en?"en-EG":"ar-EG")+t(" ج.م"," EGP"):t("السعر يُحدد من لوحة الإدارة","Price pending admin setup")}</span>
+      <span style={{fontWeight:800,color:"#203958"}}>{item.ownershipPrices?t("إيجار سنوي من: ","Annual rental from: ")+item.ownershipPrices.rent.price.toLocaleString(en?"en-EG":"ar-EG")+t(" ج.م"," EGP"):typeof item.basePrice==="number"&&Number.isFinite(item.basePrice)&&item.basePrice>=0? t("السعر الأساسي: ","Base price: ")+item.basePrice.toLocaleString(en?"en-EG":"ar-EG")+t(" ج.م"," EGP"):t("السعر يُحدد من لوحة الإدارة","Price pending admin setup")}</span>
       <Link onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}/pricing`} style={{fontSize:14,color:"#203958",textDecoration:"underline",fontWeight:700}}>{t("أضف المواصفات واحسب الإجمالي ←","Add options & calculate total →")}</Link>
      </div>
      {item.previewUrl?.startsWith("https://")&&<a href={item.previewUrl} target="_blank" rel="noopener noreferrer" style={{textAlign:"center",fontSize:14,fontWeight:600,color:"#1e749b"}}>{t("افتح نسخة تجريبية منشورة خارجيًا ↗","Open external demo ↗")}</a>}

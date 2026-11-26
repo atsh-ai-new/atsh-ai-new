@@ -2,7 +2,9 @@ import {test,expect} from "@playwright/test";
 import {addonCategories} from "../src/lib/addon-categories";
 
 test("central add-on categories reorder, move and appear in both pricing flows",async({page})=>{
- const pkg={id:"11111111-1111-4111-8111-111111111111",name:"باقة تجريبية",description:"",tagline:"",price:5000,currency:"EGP",features:[],is_featured:false,is_custom_quote:false,is_published:true,sort_order:1};
+ const tier=(price:number,period:"fixed"|"yearly")=>({price,list_price:price,initial_price:price,discount_percent:0,period});
+ const ownershipPrices={rent:tier(3000,"yearly"),copy:tier(5000,"fixed"),code:tier(12000,"fixed")};
+ const pkg={ownershipPrices,id:"11111111-1111-4111-8111-111111111111",name:"باقة تجريبية",description:"",tagline:"",price:5000,currency:"EGP",features:[],is_featured:false,is_custom_quote:false,is_published:true,sort_order:1};
  const categories=addonCategories.map((c,i)=>({code:c.code,sort_order:(i+1)*10}));
  const options=[{id:"a",code:"language",category_code:"foundation",name:"اللغة الإضافية",price:500,sort_order:10},{id:"b",code:"payment_gateway",category_code:"integrations",name:"الدفع الإلكتروني",price:1000,sort_order:10},{id:"c",code:"social_links",category_code:"marketing",name:"روابط السوشيال",price:200,sort_order:10},{id:"d",code:"hosting",category_code:"hosting",name:"استضافة مُدارة",price:225,sort_order:10}].map(o=>({...o,description:"",pricing_type:o.code==="hosting"?"yearly":"fixed",unit_label:"",is_required:false,is_active:true,visibility:"both"}));
  const catalog=()=>({packages:[pkg],addonCategories:categories,sharedOptions:options.map(o=>({...o,category_sort_order:categories.find(c=>c.code===o.category_code)?.sort_order})),options:options.map(o=>({...o,package_id:pkg.id,category_sort_order:categories.find(c=>c.code===o.category_code)?.sort_order}))});
@@ -21,7 +23,7 @@ test("central add-on categories reorder, move and appear in both pricing flows",
   return route.fulfill({json:{}});
  });
  await page.route("**/api/catalog",route=>route.fulfill({json:catalog()}));
- await page.route("**/api/site-content/**",route=>route.fulfill({json:{vatRate:14,page:{content:{items:[{slug:"test-system",name:"نظام تجريبي",basePrice:5000,published:true}]}}}}));
+ await page.route("**/api/site-content/**",route=>route.fulfill({json:{vatRate:14,page:{content:{items:[{slug:"test-system",name:"نظام تجريبي",basePrice:5000,ownershipPrices,published:true}]}}}}));
  await page.goto("/admin");
  const nav=page.getByRole("navigation",{name:"أقسام لوحة الإدارة"});
  await nav.getByRole("button",{name:"محتوى المنصة",exact:true}).click();
@@ -53,9 +55,10 @@ test("central add-on categories reorder, move and appear in both pricing flows",
  await expect.poll(()=>options[1].category_code).toBe("marketing");
  const publicPage=await page.context().newPage();
  await publicPage.route("**/api/catalog",route=>route.fulfill({json:catalog()}));
- await publicPage.route("**/api/site-content/**",route=>route.fulfill({json:{vatRate:14,page:{content:{items:[{slug:"test-system",name:"نظام تجريبي",basePrice:5000,published:true}]}}}}));
+ await publicPage.route("**/api/site-content/**",route=>route.fulfill({json:{vatRate:14,page:{content:{items:[{slug:"test-system",name:"نظام تجريبي",basePrice:5000,ownershipPrices,published:true}]}}}}));
  for(const path of ["/configure?package=landing","/catalog/test-system/pricing"]){
   await publicPage.goto(path);
+  await publicPage.locator('input[value="copy"]').check();
   const group=publicPage.locator('[data-addon-category="marketing"]');
   await expect(group).toBeVisible();
   await expect(group.locator(".select-card").first()).toBeHidden();
