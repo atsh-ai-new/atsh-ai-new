@@ -510,7 +510,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
   return (
     <main className="platform" lang={locale} dir={isEnglish?"ltr":"rtl"} style={{ "--navy": siteConfig.theme?.navy, "--navy-2": siteConfig.theme?.blue, "--blue": siteConfig.theme?.blue, "--gold": siteConfig.theme?.gold, "--page": siteConfig.theme?.page, "--site-font": siteConfig.theme?.fontFamily ? `\"${siteConfig.theme.fontFamily}\", system-ui, sans-serif` : undefined, "--card-radius": siteConfig.theme?.cardRadius === undefined ? undefined : `${siteConfig.theme.cardRadius}px`, backgroundImage: siteConfig.theme?.backgroundImageUrl ? `linear-gradient(rgba(250,249,245,.94), rgba(250,249,245,.94)), url(${JSON.stringify(siteConfig.theme.backgroundImageUrl)})` : undefined, backgroundSize: siteConfig.theme?.backgroundImageUrl ? "cover" : undefined, backgroundAttachment: siteConfig.theme?.backgroundImageUrl ? "fixed" : undefined } as CSSProperties}>
       {!configuratorOnly&&<header className="platform-header platform-header-with-contact">
-        <a className="platform-header-contact" href="tel:+201007735321" lang="ar" dir="rtl">1 ش النقطة القديمة منيل شيحة جيزة مصر <bdi dir="ltr">01007735321</bdi></a>
+        <a className="platform-header-contact" href="tel:+201007735321" lang="ar" dir="rtl">شارع النقطة القديمة منيل شيحة أبو النمرس الجيزة <bdi dir="ltr">01007735321</bdi></a>
         <a className="platform-brand" href="#top" aria-label={copy("homeAriaLabel")}>
           <img src={siteConfig.theme?.logoUrl || "/images/atsh-logo.jpg"} alt={copy("logoAlt")} />
           <span><strong>ATSH <b>AI</b></strong><small>{copy("brandTagline")}</small></span>
