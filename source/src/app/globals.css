@@ -872,12 +872,14 @@ body:has(.admin-page) .atsh-global-language{display:none!important}
 .atsh-social-inline-slot > .atsh-social-header{flex-direction:row;flex-wrap:nowrap;white-space:nowrap;width:max-content}
 .atsh-social-inline-slot > .atsh-social-header > :is(a,span){flex-shrink:0}
 
-/* Global typography contract: all routes, forms, overlays and generated text. */
-html:root, html:root body, html:root body :is(*):not(svg,svg *,i[class*="icon"],[class*="icon-font"]){font-weight:700 !important;font-synthesis:weight style !important;}
-html:root body :is(input,textarea,select,button,option,optgroup)::placeholder{font-weight:700 !important;}
-html:root body :is(input,textarea,select,button,option,optgroup){font-weight:700 !important;}
-html:root body :is(*):not(svg,svg *,i[class*="icon"],[class*="icon-font"])::before,html:root body :is(*):not(svg,svg *,i[class*="icon"],[class*="icon-font"])::after{font-weight:700 !important;}
-html:root body input::file-selector-button{font-weight:700 !important;}
+/* Shared typography hierarchy: normal text is medium, action labels semibold,
+   headings bold. Inheritance preserves deliberate component-specific emphasis. */
+html:root{font-synthesis:weight style}
+html:root body{font-weight:500}
+:where(h1,h2,h3,h4,h5,h6,strong,b){font-weight:700}
+button,input[type="button"],input[type="submit"],input::file-selector-button{font-weight:600}
+input,textarea,select,option,optgroup{font-weight:500}
+:where(input,textarea)::placeholder{font-weight:500}
 
 /* Desktop administration and team share the same compact header. */
 @media (min-width: 1024px) {
