@@ -153,6 +153,11 @@ test("products are nested under platform content while package and add-on pricin
  const nav=page.getByRole("navigation",{name:"أقسام لوحة الإدارة"});
  await expect(nav.getByRole("button",{name:"المنتجات",exact:true})).toHaveCount(0);
  await nav.getByRole("button",{name:"محتوى المنصة",exact:true}).click();
+ const contentButtons=nav.getByRole("button",{name:"محتوى المنصة",exact:true}).locator("..").locator(":scope > div > button");
+ await expect(contentButtons).toHaveCount(4);
+ for(const [index,label] of ["صفحات المنصة","المنتجات","منشئ المحتوى","إدارة الفيديوهات"].entries()){
+  await expect(contentButtons.nth(index)).toHaveAccessibleName(label);
+ }
  await expect(nav.getByRole("button",{name:"منشئ المحتوى",exact:true})).toBeVisible();
  await expect(nav.getByRole("button",{name:"إدارة الفيديوهات",exact:true})).toBeVisible();
  await nav.getByRole("button",{name:"المنتجات",exact:true}).click();
