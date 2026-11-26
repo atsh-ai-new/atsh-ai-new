@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, type FormEvent, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ChangeEvent } from "react";
 import { isolatedDemoHtml, MAX_DEMO_HTML_BYTES, MAX_DEMO_PAGE_BYTES } from "@/lib/sector-catalog";
 import { createPagePreviewUrl } from "@/lib/page-preview";
 import { sectorTemplates, interactiveDemoPaths, type SectorTemplate } from "@/lib/sector-catalog";
@@ -19,6 +19,12 @@ const normalize = (v: unknown): CatalogItem[] => Array.isArray(v) ? v.filter(x=>
 export default function CatalogManager() {
   const [items,setItems]=useState<CatalogItem[]>([]);
   const [sectors,setSectors]=useState<CatalogSector[]>(normalizeCatalogSectors(undefined));
+  const [search,setSearch]=useState("");
+  const [sectorFilter,setSectorFilter]=useState("");
+  const [subcategoryFilter,setSubcategoryFilter]=useState("");
+  const [statusFilter,setStatusFilter]=useState<"all"|"published"|"draft"|"archived">("all");
+  const [pageSize,setPageSize]=useState(10);
+  const [page,setPage]=useState(1);
   const [sectorDraft,setSectorDraft]=useState({id:"",name:"",icon:"📁",description:""});
   const [subDraft,setSubDraft]=useState({sectorId:"",id:"",name:""});
   const [draft,setDraft]=useState<CatalogItem>(empty());
@@ -211,6 +217,39 @@ export default function CatalogManager() {
     if(!window.confirm("حذف التصنيف الفرعي غير المستخدم؟"))return;
     await saveAll(items,"تم حذف التصنيف غير المستخدم.",sectors.map(s=>s.id===sector.id?{...s,subcategories:s.subcategories.filter(c=>c.id!==subId)}:s));
   };
+  // Browsing is read-only. All persistence actions still use the entire catalog.
+  const searchable=(value:string)=>value.normalize("NFKC").replace(/[\u064b-\u065f\u0670\u0640]/g,"").replace(/[أإآ]/g,"ا").toLowerCase().trim();
+  const catalogRows=useMemo(()=>items.map(item=>({item,...resolvePlacement(item,sectors),status:item.archived?"archived" as const:item.published?"published" as const:"draft" as const})),[items,sectors]);
+  const counts=useMemo(()=>{
+    const status={all:catalogRows.length,published:0,draft:0,archived:0};
+    const bySector=new Map<string,number>();
+    const bySubcategory=new Map<string,number>();
+    for(const row of catalogRows){
+      status[row.status]++;
+      if(row.sector){bySector.set(row.sector.id,(bySector.get(row.sector.id)||0)+1);
+        if(row.subcategory){const key=row.sector.id+"/"+row.subcategory.id;bySubcategory.set(key,(bySubcategory.get(key)||0)+1);}}
+    }
+    return {status,bySector,bySubcategory};
+  },[catalogRows]);
+  const filteredRows=useMemo(()=>{
+    const query=searchable(search);
+    return catalogRows.filter(row=>
+      (!sectorFilter||(sectorFilter==="__unassigned"? !row.sector : row.sector?.id===sectorFilter))&&
+      (!subcategoryFilter||(subcategoryFilter==="__unassigned"? !row.subcategory : row.subcategory?.id===subcategoryFilter))&&
+      (statusFilter==="all"||row.status===statusFilter)&&
+      (!query||searchable([row.item.name,row.item.slug,row.item.category,row.sector?.name,row.subcategory?.name].filter(Boolean).join(" ")).includes(query))
+    ).sort((a,b)=>a.item.sortOrder-b.item.sortOrder);
+  },[catalogRows,search,sectorFilter,subcategoryFilter,statusFilter]);
+  const lastPage=Math.max(1,Math.ceil(filteredRows.length/pageSize));
+  const activePage=Math.min(page,lastPage);
+  const shownRows=filteredRows.slice((activePage-1)*pageSize,activePage*pageSize);
+  useEffect(()=>{setPage(p=>Math.min(p,lastPage));},[lastPage]);
+  // Reset stale selection after a sector or subcategory is removed.
+  useEffect(()=>{
+    if(sectorFilter&&sectorFilter!=="__unassigned"&&!sectors.some(s=>s.id===sectorFilter)){setSectorFilter("");setSubcategoryFilter("");setPage(1);}
+    else if(subcategoryFilter&&subcategoryFilter!=="__unassigned"&&!sectors.find(s=>s.id===sectorFilter)?.subcategories.some(sub=>sub.id===subcategoryFilter)){setSubcategoryFilter("");setPage(1);}
+  },[sectors,sectorFilter,subcategoryFilter]);
+  const clearFilters=()=>{setSearch("");setSectorFilter("");setSubcategoryFilter("");setStatusFilter("all");setPage(1);};
   const field=(label:string,value:string,onChange:(value:string)=>void,area=false)=> <label className="admin-field">{label}{area?<textarea value={value} onChange={e=>onChange(e.target.value)} rows={3}/>:<input value={value} onChange={e=>onChange(e.target.value)} maxLength={2000}/>}</label>;
 
   return <div className="cms-workspace">
@@ -227,25 +266,48 @@ export default function CatalogManager() {
         <label className="check-row"><input type="checkbox" checked={pageWasPublished} onChange={e=>setPageWasPublished(e.target.checked)}/> نشر صفحة المعرض بالكامل</label>
         <button type="button" className="inline-add" disabled={busy} onClick={()=>void saveAll(items,pageWasPublished?"تم نشر المعرض":"تم حفظ المعرض كمسودة")}>حفظ حالة نشر المعرض</button>
         {!pageWasPublished&&<p className="api-notice">المعرض مخفي من الواجهة العامة حتى تنشر الصفحة بالكامل، حتى لو كانت بطاقات النماذج منشورة.</p>}
-        <div className="admin-team-list">{items.map(item=><article className="admin-team-row" key={item.slug} style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-          <strong>{item.icon} {item.name}</strong><span>{item.category}</span><span>{item.archived?"مؤرشف":item.published?"منشور":"مسودة"}</span>
-          <button type="button" className="inline-add" disabled={busy||uploading} onClick={()=>edit(item)}>تعديل</button>
-          <button type="button" className="inline-add" disabled={busy||uploading} onClick={()=>editCover(item)}>تغيير الغلاف</button>
-          {item.published&&!item.archived&&<a className="inline-add" href={`/catalog/${encodeURIComponent(item.slug)}`} target="_blank" rel="noopener noreferrer">معاينة العميل ↗</a>}
-          <button type="button" className="inline-add" disabled={busy||item.archived} onClick={()=>void toggle(item,{published:!item.published})}>{item.published?"إخفاء":"نشر"}</button>
-          <button type="button" className="inline-add" style={{color:"#b42318"}} disabled={busy||uploading} onClick={()=>void deleteItem(item)}>حذف نهائي</button>
-          {item.archived?<button type="button" className="inline-add" disabled={busy} onClick={()=>void toggle(item,{archived:false})}>استعادة</button>:<button type="button" className="inline-add" disabled={busy} onClick={()=>void archive(item)}>أرشفة</button>}
-        </article>)}</div>
+        <div className="catalog-admin-browser">
+          <div className="catalog-admin-stats" aria-label="حالة الأنظمة المخصصة">
+            {([{value:"all",label:"كل الأنظمة"},{value:"published",label:"منشور"},{value:"draft",label:"غير منشور"},{value:"archived",label:"مؤرشف"}] as const).map(status=><button type="button" key={status.value} aria-pressed={statusFilter===status.value} onClick={()=>{setStatusFilter(status.value);setPage(1);}}><strong>{counts.status[status.value]}</strong><span>{status.label}</span></button>)}
+          </div>
+          <div className="catalog-admin-filters">
+            <label className="catalog-admin-search">بحث عن نظام<input type="search" placeholder="اسم النظام أو التصنيف…" value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/></label>
+            <label>تصفية القطاع<select value={sectorFilter} onChange={e=>{setSectorFilter(e.target.value);setSubcategoryFilter("");setPage(1);}}><option value="">كل القطاعات</option>{[...sectors].sort((a,b)=>a.sortOrder-b.sortOrder).map(s=><option key={s.id} value={s.id}>{s.icon} {s.name} ({counts.bySector.get(s.id)||0})</option>)}<option value="__unassigned">غير مصنف</option></select></label>
+            <label>تصفية التصنيف الفرعي<select value={subcategoryFilter} disabled={!sectorFilter||sectorFilter==="__unassigned"} onChange={e=>{setSubcategoryFilter(e.target.value);setPage(1);}}><option value="">كل التصنيفات</option>{sectors.find(s=>s.id===sectorFilter)?.subcategories.map(sub=><option key={sub.id} value={sub.id}>{sub.name}</option>)}<option value="__unassigned">بدون تصنيف فرعي</option></select></label>
+            <button type="button" className="catalog-reset" onClick={clearFilters}>مسح الفلاتر</button>
+          </div>
+          <div className="catalog-admin-list-head"><strong>الأنظمة المخصصة</strong><span role="status" aria-live="polite" data-testid="catalog-result-count">{filteredRows.length?((activePage-1)*pageSize+1)+"–"+Math.min(activePage*pageSize,filteredRows.length):"0"} من {filteredRows.length} نظام</span></div>
+          <div className="admin-team-list catalog-admin-list">
+            {shownRows.length===0?<p className="catalog-admin-empty">لا توجد أنظمة مطابقة. جرّب تغيير البحث أو الفلاتر.</p>:shownRows.map(({item,sector,subcategory,status})=><article className="admin-team-row catalog-system-row" key={item.slug}>
+              <div className="catalog-system-info"><span className="catalog-system-icon" aria-hidden="true">{item.icon||"📁"}</span><div><strong>{item.name}</strong><small>{[sector?.name,subcategory?.name].filter(Boolean).join(" / ")||item.category||"غير مصنف"}</small></div><span className={"catalog-system-status "+status}>{status==="archived"?"مؤرشف":status==="published"?"منشور":"مسودة"}</span></div>
+              <div className="catalog-system-actions">
+                <button type="button" className="inline-add" disabled={busy||uploading} onClick={()=>edit(item)}>تعديل</button>
+                <button type="button" className="inline-add" disabled={busy||uploading} onClick={()=>editCover(item)}>تغيير الغلاف</button>
+                {item.published&&!item.archived&&<a className="inline-add" href={`/catalog/${encodeURIComponent(item.slug)}`} target="_blank" rel="noopener noreferrer">معاينة العميل ↗</a>}
+                <button type="button" className="inline-add" disabled={busy||item.archived} onClick={()=>void toggle(item,{published:!item.published})}>{item.published?"إخفاء":"نشر"}</button>
+                {item.archived?<button type="button" className="inline-add" disabled={busy} onClick={()=>void toggle(item,{archived:false})}>استعادة</button>:<button type="button" className="inline-add" disabled={busy} onClick={()=>void archive(item)}>أرشفة</button>}
+                <button type="button" className="inline-add catalog-danger" disabled={busy||uploading} onClick={()=>void deleteItem(item)}>حذف نهائي</button>
+              </div>
+            </article>)}
+          </div>
+          <div className="catalog-admin-pager" aria-label="صفحات الأنظمة">
+            <label>عدد الأنظمة في الصفحة<select value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1);}}>{[10,20,50].map(size=><option key={size} value={size}>{size}</option>)}</select></label>
+            <div><button type="button" disabled={activePage<=1} onClick={()=>setPage(activePage-1)}>السابق</button><span aria-live="polite">صفحة {activePage} من {lastPage}</span><button type="button" disabled={activePage>=lastPage} onClick={()=>setPage(activePage+1)}>التالي</button></div>
+          </div>
+        </div>
       </>}
     </section>
     {previewUrlLocal&&<section className="admin-content-card"><div className="admin-content-title"><h2>المعاينة التفاعلية للنظام مخصص قبل النشر</h2><div className="admin-actions"><button type="button" className="button button-outline" onClick={()=>setPreviewDevice("desktop")}>كمبيوتر</button><button type="button" className="button button-outline" onClick={()=>setPreviewDevice("mobile")}>موبايل</button><button type="button" className="button button-outline" onClick={()=>setPreviewUrlLocal("")}>رجوع للتعديل</button><button type="button" className="button" onClick={showLivePreview}>تحديث المعاينة</button></div></div><div style={{display:"flex",justifyContent:"center",overflowX:"auto",padding:12,background:"#e8edf2"}}><iframe title="معاينة النظام المخصص التفاعلية" src={previewUrlLocal} style={{width:previewDevice==="mobile"?390:"100%",maxWidth:"100%",height:"75vh",minHeight:480,border:"1px solid #d8dde5",borderRadius:12,background:"white"}} sandbox="allow-scripts allow-same-origin"/></div><p>هذه معاينة للمسودة؛ لا يتم نشر أي تعديل تلقائيًا.</p></section>}
     {ready&&<section className="admin-content-card">
       <h2>إدارة القطاعات الرئيسية والتصنيفات الفرعية</h2>
       <p>الترتيب: قطاع رئيسي ← تصنيف فرعي ← نظام مخصص تفاعلي. أسماء الأقسام قابلة للتعديل من هنا دون تعديل الكود، والحذف لا يمس أي نظام مخصص مرتبط.</p>
-      <div className="admin-team-list">
-        {[...sectors].sort((a,b)=>a.sortOrder-b.sortOrder).map(sector=><article key={sector.id} style={{padding:14,marginBottom:12,border:"1px solid #d9e2ec",borderRadius:12}}>
+      <div className="catalog-sector-list">
+        {[...sectors].sort((a,b)=>a.sortOrder-b.sortOrder).map(sector=><details key={sector.id} className="catalog-sector-details">
+          <summary><span>{sector.icon} {sector.name}</span><span className="catalog-sector-metrics">{counts.bySector.get(sector.id)||0} نظام · {sector.subcategories.length} تصنيف · {sector.isPublished?"منشور":"مخفي"}</span></summary>
+          <div className="catalog-sector-body">
           <div style={{display:"flex",gap:9,alignItems:"center",flexWrap:"wrap"}}>
-            <strong>{sector.icon} {sector.name}</strong><small>{sector.isPublished?"منشور":"مخفي"} · {sector.id}</small>
+            <small>{sector.id}</small>
+            <button type="button" className="inline-add" onClick={()=>{clearFilters();setSectorFilter(sector.id);document.querySelector(".catalog-admin-browser")?.scrollIntoView({block:"start"});}}>عرض أنظمة القطاع</button>
             <button disabled={busy} type="button" className="inline-add" onClick={()=>void renameSector(sector)}>تسمية</button>
             <button disabled={busy} type="button" className="inline-add" onClick={()=>void editSectorDetails(sector)}>الأيقونة والوصف</button>
             <button disabled={busy} type="button" className="inline-add" aria-label={`رفع ترتيب ${sector.name}`} onClick={()=>void moveSector(sector.id,-1)}>↑</button>
@@ -255,7 +317,7 @@ export default function CatalogManager() {
           </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:10}}>
             {[...sector.subcategories].sort((a,b)=>a.sortOrder-b.sortOrder).map(sub=><div key={sub.id} style={{padding:10,borderRadius:10,background:"#f3f6fa",display:"flex",flexWrap:"wrap",alignItems:"center",gap:7}}>
-              <span>{sub.name} {sub.isPublished?"":"(مخفي)"}</span>
+              <span>{sub.name} ({counts.bySubcategory.get(sector.id+"/"+sub.id)||0}) {sub.isPublished?"":"(مخفي)"}</span>
               <button disabled={busy} type="button" className="inline-add" onClick={()=>void renameSubcategory(sector,sub.id)}>تعديل</button>
               <button disabled={busy} type="button" className="inline-add" aria-label={`رفع ترتيب ${sub.name}`} onClick={()=>void moveSubcategory(sector,sub.id,-1)}>↑</button>
               <button disabled={busy} type="button" className="inline-add" aria-label={`خفض ترتيب ${sub.name}`} onClick={()=>void moveSubcategory(sector,sub.id,1)}>↓</button>
@@ -263,8 +325,10 @@ export default function CatalogManager() {
               <button disabled={busy} type="button" className="inline-add" onClick={()=>void deleteSubcategory(sector,sub.id)}>حذف</button>
             </div>)}
           </div>
-        </article>)}
+          </div>
+        </details>)}
       </div>
+      <details className="catalog-sector-details catalog-add-sector"><summary>+ إضافة قطاع رئيسي أو تصنيف فرعي</summary><div className="catalog-sector-body">
       <form onSubmit={e=>void saveSector(e)} className="admin-form-grid" style={{marginBottom:20}}>
         <h3 style={{gridColumn:"1/-1"}}>إضافة قطاع رئيسي</h3>
         <label className="admin-field">الرمز الإنجليزي<input required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={sectorDraft.id} onChange={e=>setSectorDraft(x=>({...x,id:e.target.value.toLowerCase()}))}/></label>
@@ -280,6 +344,7 @@ export default function CatalogManager() {
         <label className="admin-field">اسم التصنيف<input required value={subDraft.name} onChange={e=>setSubDraft(x=>({...x,name:e.target.value}))}/></label>
         <button className="button" disabled={busy}>إضافة التصنيف</button>
       </form>
+      </div></details>
     </section>}
     {ready&&<section id="catalog-item-editor" tabIndex={-1} className="admin-content-card"><h2>{originalSlug?"تعديل النظام المخصص":"إضافة نظام مخصص"}</h2>
       {error&&<p role="alert" className="error-message">{error}</p>}{notice&&<p role="status" className="success-message">{notice}</p>}
