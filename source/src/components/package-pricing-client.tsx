@@ -8,7 +8,7 @@ import type {CategorizedAddon} from "@/lib/addon-categories";
 import DomainLookup from "@/components/domain-lookup";
 import {saveGuestWorkspace} from "@/lib/customer-workspace";
 
-type Package={id:string;name:string;description:string;price:number|string;is_custom_quote:boolean;features?:string[]};
+type Package={list_price?:number|string;discount_percent?:number|string;id:string;name:string;description:string;price:number|string;is_custom_quote:boolean;features?:string[]};
 type Option=CategorizedAddon & {list_price?:number|string;discount_percent?:number|string;id:string;package_id:string;code:string;name:string;description:string;price:number|string;pricing_type:string;unit_label?:string;is_required:boolean};
 const aliases:Record<string,string>={landing:"11111111-1111-4111-8111-111111111111",multi:"22222222-2222-4222-8222-222222222222",dynamic:"33333333-3333-4333-8333-333333333333",enterprise:"44444444-4444-4444-8444-444444444444"};
 const round=(n:number)=>Math.round(n*100)/100;
@@ -57,7 +57,7 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
      {!!pkg.features?.length&&<ul style={{paddingInlineStart:22}}>{pkg.features.map((feature,i)=><li key={i}>{feature}</li>)}</ul>}
      <h2 style={{marginTop:24}}>{t("الإضافات والتخصيص","Add-ons and customization")}</h2>
      {!options.length&&<p>{t("لا توجد إضافات مسجلة لهذه الباقة.","No add-ons configured for this package.")}</p>}
-     <AddonGroups addons={options} locale={locale} grid={false} render={o=>{const checked=o.is_required||selected.includes(o.id);const perPage=o.pricing_type==="per_page";return <div key={o.id} style={{padding:"15px 0",borderBottom:"1px solid #e4e9ef"}}>
+     <AddonGroups addons={options} locale={locale} grid={false} isSelected={o=>o.is_required||selected.includes(o.id)} render={o=>{const checked=o.is_required||selected.includes(o.id);const perPage=o.pricing_type==="per_page";return <div key={o.id} style={{padding:"15px 0",borderBottom:"1px solid #e4e9ef"}}>
       <label style={{display:"flex",gap:12,alignItems:"flex-start",cursor:o.is_required?"default":"pointer"}}>
        <input type="checkbox" checked={checked} disabled={o.is_required} onChange={()=>toggle(o.id)} style={{width:20,height:20,marginTop:3}}/>
        <span style={{flex:1}}><strong>{o.name}</strong>{o.is_required&&<small> ({t("إلزامية","required")})</small>}<small style={{display:"block",marginTop:4,color:"#64748b"}}>{o.description}</small><AddonPrice item={o} locale={locale} suffix={o.pricing_type==="monthly"?t(" / شهر"," / month"):o.pricing_type==="yearly"?t(" / سنة"," / year"):perPage?t(" / وحدة"," / unit"):""}/></span>
@@ -67,7 +67,7 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
     </section>
     <aside style={{background:"#edf3fa",padding:22,borderRadius:18,border:"1px solid #cfdeee",position:"sticky",top:12}}>
      <h2>{t("ملخص التكلفة التقديرية المباشر (ليس فاتورة)","Live cost estimate (not an invoice)")}</h2>
-     <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:12}}><span>{pkg.name}</span><b>{pkg.is_custom_quote?t("حسب الطلب","Custom quote"):money(base)}</b></div>
+     <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:12}}><span>{pkg.name}</span><span>{pkg.is_custom_quote?t("حسب الطلب","Custom quote"):<AddonPrice item={pkg} locale={locale}/>}</span></div>
      {lines.map(l=><div key={l.id} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"9px 0",borderTop:"1px solid #d5e0eb"}}><span>{l.name}{l.quantity>1?` × ${l.quantity}`:""}</span><b>{money(l.amount)}</b></div>)}
      <hr style={{border:0,borderTop:"1px solid #bdccda",margin:"18px 0"}}/>
      <p>{t("تنفيذ لمرة واحدة","One-time charges")}: <strong>{money(oneTime)}</strong></p>
