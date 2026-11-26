@@ -15,6 +15,8 @@ const secret=()=>randomBytes(32).toString('hex');
 const sessionCookie='atsh_customer';
 const cookieOptions={httpOnly:true,secure:process.env.COOKIE_SECURE!=='false',sameSite:'lax',path:'/',maxAge:7*24*3600*1000};
 const safe=(handler)=>(req,res,next)=>Promise.resolve(handler(req,res,next)).catch(next);
+// PostgreSQL bigint revisions arrive as strings; expose a consistent JSON integer to clients.
+const projectDraftJson=row=>({...row,revision:Number(row.revision)});
 
 export function customerAuthRouter({pool,sendEmail,allowedOrigins=[],priceDraft=async(_db,draft)=>draft}){
  const router=Router();
@@ -180,7 +182,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[],priceDraft=
  }));
  router.get('/project-drafts',requireCustomer,safe(async(req,res)=>{
   const result=await pool.query("SELECT d.id,d.title,d.draft,d.revision,d.linked_journey_id,d.updated_at,d.created_at FROM customer_project_drafts d WHERE d.customer_id=$1 AND d.deleted_at IS NULL AND (d.linked_journey_id IS NULL OR EXISTS (SELECT 1 FROM customer_journey_projects p WHERE p.id=d.linked_journey_id AND p.status<>'archived')) ORDER BY d.updated_at DESC",[req.customer.id]);
-  res.set('Cache-Control','private, no-store').json({drafts:result.rows});
+  res.set('Cache-Control','private, no-store').json({drafts:result.rows.map(projectDraftJson)});
  }));
  // Delete a customer-owned project atomically. Never remove commercial or active service records.
  router.delete('/project-drafts/:id',requireCustomer,safe(async(req,res)=>{
@@ -222,7 +224,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[],priceDraft=
   if(!parsed.success)return res.status(400).json({error:'Invalid project draft'});
   let priced;try{priced=await priceDraft(pool,parsed.data.draft);}catch{return res.status(422).json({error:"تعذر التحقق من الأسعار الحالية"});}
   const result=await pool.query("INSERT INTO customer_project_drafts(customer_id,title,draft) VALUES($1,$2,$3::jsonb) RETURNING id,title,draft,revision,linked_journey_id,updated_at",[req.customer.id,parsed.data.title,JSON.stringify(priced)]);
-  res.status(201).set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
+  res.status(201).set('Cache-Control','private, no-store').json({projectDraft:projectDraftJson(result.rows[0])});
  }));
  // Customer-initiated handoff: atomically create an admin-visible journey and link the owned draft.
  router.post('/project-drafts/:id/submit',requireCustomer,safe(async(req,res)=>{
@@ -287,11 +289,11 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[],priceDraft=
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Not found'});
   const result=await pool.query("SELECT id,title,draft,revision,linked_journey_id,updated_at FROM customer_project_drafts WHERE id=$1 AND customer_id=$2",[req.params.id,req.customer.id]);
   if(!result.rowCount)return res.status(404).json({error:'Not found'});
-  res.set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
+  res.set('Cache-Control','private, no-store').json({projectDraft:projectDraftJson(result.rows[0])});
  }));
  router.patch('/project-drafts/:id',requireCustomer,safe(async(req,res)=>{
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(404).json({error:'Not found'});
-  const parsed=z.object({expectedRevision:z.number().int().positive(),title:z.string().trim().min(1).max(120).optional(),patch:draftSchema.optional()}).strict().safeParse(req.body);
+  const parsed=z.object({expectedRevision:z.union([z.number().int().positive(),z.string().regex(/^[1-9]\d*$/).transform(Number).pipe(z.number().int().positive())]),title:z.string().trim().min(1).max(120).optional(),patch:draftSchema.optional()}).strict().safeParse(req.body);
   if(!parsed.success||(!parsed.data.title&&!parsed.data.patch))return res.status(400).json({error:'Invalid project draft update'});
   let patch=parsed.data.patch??{};
   if(patch.ownershipMode){try{patch=await priceDraft(pool,patch);}catch{return res.status(422).json({error:"تعذر التحقق من الأسعار الحالية"});}}
@@ -301,7 +303,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[],priceDraft=
     RETURNING id,title,draft,revision,linked_journey_id,updated_at`,
     [req.params.id,req.customer.id,parsed.data.title??null,JSON.stringify(patch),parsed.data.expectedRevision]);
   if(!result.rowCount)return res.status(409).json({error:'Draft missing, already submitted, or changed on another device; reload before saving'});
-  res.set('Cache-Control','private, no-store').json({projectDraft:result.rows[0]});
+  res.set('Cache-Control','private, no-store').json({projectDraft:projectDraftJson(result.rows[0])});
  }));
  // Immutable preview revision generated from an account-owned project draft.
  router.post('/project-drafts/:id/previews',requireCustomer,safe(async(req,res)=>{
