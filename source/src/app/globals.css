@@ -1045,3 +1045,36 @@ html:root body .platform-header .platform-header-contact,html:root body .platfor
  .platform-header .platform-brand small{white-space:normal;max-width:100px;line-height:1.35}
  .platform[lang="ar"] .platform-header-actions .button,.platform[lang="en"] .platform-header-actions .button{font-size:12px}
 }
+
+
+/* Administration only: emphasis and a one/two-pixel increase for smaller text. */
+.admin-page :is(.admin-brand small,.admin-nav-label,.admin-sidebar-bottom,.admin-identity small,.admin-avatar){
+  font-size:14px;font-weight:600
+}
+.admin-page .admin-nav button{font-size:15px;font-weight:600}
+.admin-page .admin-nav button span{font-size:13px}
+.admin-page :is(.admin-topbar p,.admin-preview-banner,.admin-content-title p,.admin-stat span,.admin-stat small,.admin-table th){
+  font-size:14px;font-weight:600
+}
+.admin-page :is(.admin-field,.field-label,.check-row){font-size:14px;font-weight:600}
+.admin-page :is(.admin-field,.field-label) :is(input,textarea,select),
+.admin-page :is(.admin-table,.admin-team-row,.admin-package-row) :is(input,select,textarea),
+.admin-page .cms-inline-card input,
+.admin-page .cartoon-panel :is(input,select,textarea){font-size:15px}
+.admin-page :is(.admin-content-card,.cartoon-studio) :is(button,.button,.inline-add){font-size:15px;font-weight:600}
+.admin-page :is(.admin-table,.admin-team-row){font-size:15px}
+.admin-page :is(.admin-package-row strong,.admin-team-row strong,.option-admin-heading,.cms-section-editor>header,.cms-home-card>strong,.studio-draft-item strong,.studio-scene>header>strong){font-size:15px;font-weight:600}
+.admin-page :is(.admin-content-card small,.admin-image-setting>small,.admin-field small,.studio-draft-item span,.studio-draft-item small,.field-hint,.option-admin-heading code,.option-admin-heading small,.cms-project-cover,.theme-swatch,.atsh-chat .atsh-chat-person small,.atsh-chat .atsh-bubble span,.atsh-chat .atsh-bubble small){
+  font-size:14px;font-weight:600;line-height:1.5
+}
+.admin-page :is(.status-chip,.connection-pill,.studio-connection,.studio-consent,.studio-question-box,.admin-empty,.cms-empty,.api-notice,.error-message,.success-message){
+  font-size:14px;font-weight:600
+}
+.admin-page .cartoon-stage>small{font-size:14px;font-weight:600}
+@media(max-width:1023px){
+  .admin-page .admin-topbar .admin-identity strong{font-size:14px!important}
+  .admin-page .admin-topbar .admin-top-actions button,.admin-page .admin-topbar .language-pill{font-size:14px}
+}
+@media(max-width:767px){
+  .admin-page :is(.admin-field,.field-label) :is(input,textarea,select){font-size:16px}
+}
