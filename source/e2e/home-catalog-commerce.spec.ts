@@ -127,3 +127,21 @@ test("admin order preview completes customer flow without creating a real order"
  await expect(page.getByRole("status").filter({hasText:"هذه تجربة معاينة فقط"})).toBeVisible();
  expect(orderPosts).toBe(0);
 });
+
+// Compact estimate typography is deliberately exempt from the platform-wide font scale.
+for (const locale of ['ar', 'en']) {
+ test(`homepage estimate retains original compact font sizes (${locale})`, async ({page})=>{
+  await page.route('**/api/catalog', route=>route.fulfill({json:{packages:[{id:'multi',name:'موقع متعدد الصفحات',price:'1990',currency:'EGP',features:[],description:'',tagline:'',is_featured:false,is_custom_quote:false}],options:[],sharedOptions:[{id:'hosting',package_id:'multi',code:'hosting',name:'استضافة',price:'225',pricing_type:'yearly',description:'',is_required:false,is_active:true,sort_order:1}]}}));
+  await page.goto('/'+locale);
+  const card=page.locator('.hero-price-card');
+  await expect(card).toBeVisible();
+  const mobile=(page.viewportSize()?.width??1280)<=640;
+  await expect(card.locator('.price-card-top')).toHaveCSS('font-size',mobile?'9px':'10px');
+  await expect(card.locator('.price-preview-line').first()).toHaveCSS('font-size',mobile?'9px':'10px');
+  await expect(card.locator('.price-preview-total strong')).toHaveCSS('font-size',mobile?'12px':'18px');
+  await expect(card.locator('small')).toHaveCSS('font-size',mobile?'8px':'9px');
+  await expect(card.locator('.addon-price-current')).toContainText(locale==='ar'?'12 شهرًا':'12 months');
+  expect(await card.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  await expect(page.locator('.trust-strip')).toHaveCSS('font-size','14px');
+ });
+}
