@@ -14,12 +14,12 @@ const publicUrl = (value: string) => {
   try { const url = new URL(value); return url.protocol === "https:" ? url.toString() : ""; } catch { return ""; }
 };
 
-export default function ManagedPage({locale="ar"}:{locale?:"ar"|"en"}) { const en=locale==="en"; const home=en?"/en":"/";
+export default function ManagedPage({locale="ar",initialPayload,initialLinks}:{locale?:"ar"|"en";initialPayload?:PagePayload;initialLinks?:PageLink[]}) { const en=locale==="en"; const home=en?"/en":"/";
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
-  const [payload, setPayload] = useState<PagePayload | null>(null);
-  const [links, setLinks] = useState<PageLink[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [payload, setPayload] = useState<PagePayload | null>(initialPayload??null);
+  const [links, setLinks] = useState<PageLink[]>(initialLinks??[]);
+  const [loading, setLoading] = useState(!initialPayload);
   useEffect(() => {
     let active = true;
     const preview=readPagePreview(slug,locale);

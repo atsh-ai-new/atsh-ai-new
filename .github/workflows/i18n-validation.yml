@@ -23,6 +23,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: node --experimental-strip-types --test tests/live-domain-rdap.test.mjs
+      - run: node --test tests/seo-http.test.mjs
       - run: npm run build
   backend:
     runs-on: ubuntu-latest

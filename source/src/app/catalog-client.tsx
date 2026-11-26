@@ -15,12 +15,12 @@ function GalleryDemo({item,base,title}:{item:Item;base:string;title:string}){
  </Link>;
 }
 const defaults:Item[]=sectorTemplates.map((s,i)=>({...s,published:true,sortOrder:i*10}));
-export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
- const [items,setItems]=useState<Item[]>(defaults);
+export default function CatalogPage({locale="ar",initialCatalog}:{locale?:"ar"|"en";initialCatalog?:{items:Item[];sectors:CatalogSector[]}}){const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
+ const [items,setItems]=useState<Item[]>(initialCatalog?.items??defaults);
  const [marketing,setMarketing]=useState<Record<string,unknown>>({});
  useEffect(()=>{let active=true;fetch("/api/site-content/home?metadata=1&locale="+locale,{cache:"no-store"}).then(r=>r.ok?r.json():null).then(d=>{if(active)setMarketing(d?.page?.content??{})}).catch(()=>{});return()=>{active=false}},[locale]);
  const marketingCopy=(key:string)=>typeof marketing[key]==="string"?String(marketing[key]):(en?siteCopyEn:siteCopyDefaults)[key]??"";
- const [sectors,setSectors]=useState<CatalogSector[]>(locale==="en"?englishCatalogSectors(normalizeCatalogSectors(undefined)):normalizeCatalogSectors(undefined));
+ const [sectors,setSectors]=useState<CatalogSector[]>(initialCatalog?.sectors??(locale==="en"?englishCatalogSectors(normalizeCatalogSectors(undefined)):normalizeCatalogSectors(undefined)));
  const [query,setQuery]=useState("");
  const [sectorId,setSectorId]=useState("all");
  const [subId,setSubId]=useState("all");
@@ -83,7 +83,8 @@ export default function CatalogPage({locale="ar"}:{locale?:"ar"|"en"}){const en=
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,245px),1fr))",gap:15}}>
     {records.map(item=>{const place=resolvePlacement(item,sectors);return <article key={item.slug} style={{background:"white",padding:12,borderRadius:16,border:"1px solid #e2e8f0",display:"flex",flexDirection:"column",gap:10,minWidth:0}}>
      <GalleryDemo item={item} base={base} title={t("معاينة تفاعلية: ","Interactive preview: ")+item.name}/>
-     <h3 style={{margin:"2px 0",color:"#203958"}}>{en?englishTemplateLabel(item.slug,item.name):item.name}</h3>
+     <h3 style={{margin:"2px 0",color:"#203958"}}><Link href={`${base}/catalog/${encodeURIComponent(item.slug)}`}>{en?englishTemplateLabel(item.slug,item.name):item.name}</Link></h3>
+     {item.description&&<p style={{margin:0,color:"#64748b",fontSize:14,lineHeight:1.5}}>{item.description}</p>}
      <Link prefetch={false} onClick={()=>choose(item)} href={`${base}/catalog/${encodeURIComponent(item.slug)}?fullscreen=1`} style={{padding:"11px 12px",background:"#203958",color:"white",textAlign:"center",borderRadius:9,fontWeight:700}}>{t("جرّب النظام بملء الشاشة ←","Try full-screen demo →")}</Link>
      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",borderTop:"1px solid #e2e8f0",paddingTop:12}}>
       <span style={{fontWeight:800,color:"#203958"}}>{item.ownershipPrices?t("إيجار سنوي من: ","Annual rental from: ")+item.ownershipPrices.rent.price.toLocaleString(en?"en-EG":"ar-EG")+t(" ج.م"," EGP"):typeof item.basePrice==="number"&&Number.isFinite(item.basePrice)&&item.basePrice>=0? t("السعر الأساسي: ","Base price: ")+item.basePrice.toLocaleString(en?"en-EG":"ar-EG")+t(" ج.م"," EGP"):t("السعر يُحدد من لوحة الإدارة","Price pending admin setup")}</span>

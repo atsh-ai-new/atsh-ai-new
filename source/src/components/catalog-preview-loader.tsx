@@ -6,9 +6,9 @@ import Link from "next/link";
 import {englishTemplateLabel} from "@/lib/sector-en";
 import { readPagePreview } from "@/lib/page-preview";
 type Item=SectorTemplate & {published?:boolean;archived?:boolean;previewUrl?:string;previewHtml?:string;demoDocumentUrl?:string;hasPreviewHtml?:boolean;demoSlug?:string;pricedAddons?:Array<{code:string;name:string;price:number;pricingType:"fixed"|"monthly"|"yearly"|"per_page";isRequired?:boolean}>;basePrice?:number|null};
-export default function CatalogPreviewLoader({slug,locale="ar"}:{slug:string;locale?:"ar"|"en"}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
- const [item,setItem]=useState<Item|undefined>(undefined);
- const [ready,setReady]=useState(false);
+export default function CatalogPreviewLoader({slug,locale="ar",initialItem}:{slug:string;locale?:"ar"|"en";initialItem?:Item}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
+ const [item,setItem]=useState<Item|undefined>(initialItem?{...initialItem,demoDocumentUrl:initialItem.hasPreviewHtml?"/api/site-content/catalog?demo="+encodeURIComponent(slug)+"&document=1":undefined}:undefined);
+ const [ready,setReady]=useState(Boolean(initialItem));
  useEffect(()=>{
    let active=true;
    const preview=readPagePreview("catalog",locale);
