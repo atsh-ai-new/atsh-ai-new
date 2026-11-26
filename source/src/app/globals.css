@@ -909,3 +909,12 @@ html:root body input::file-selector-button{font-weight:700 !important;}
  .admin-page .admin-topbar .language-pill { padding:4px 6px; font-size:10px; }
  .admin-page .admin-topbar .admin-identity small { display:none; }
 }
+
+/* Compact, single-line contact link above the existing homepage header controls. */
+.platform-header.platform-header-with-contact{height:98px;padding-block-start:22px}
+.platform-header-contact{position:absolute;inset-block-start:4px;inset-inline:0;width:max-content;max-width:100%;margin-inline:auto;font-size:clamp(10px,2.8vw,12px);line-height:1.5;white-space:nowrap;color:#345f91;text-decoration:underline;text-underline-offset:2px}
+html:root body .platform-header .platform-header-contact,html:root body .platform-header .platform-header-contact bdi{font-weight:500!important}
+.platform-header-contact:hover{color:var(--navy)}
+@media(max-width:640px){
+ .platform[lang] .platform-header.platform-header-with-contact{height:auto;min-height:86px;padding-block-start:31px}
+}
