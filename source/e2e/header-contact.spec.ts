@@ -34,7 +34,7 @@ test("localized administration links resolve to their existing canonical pages",
  for(const path of ["/admin","/admin/builder","/admin/deliverables"]){
   const response=await request.get("/en"+path+"?test=1",{maxRedirects:0});
   expect(response.status()).toBe(307);
-  expect(new URL(response.headers()["location"]).pathname).toBe(path);
-  expect(new URL(response.headers()["location"]).search).toBe("?test=1");
+  expect(new URL(response.headers()["location"],response.url()).pathname).toBe(path);
+  expect(new URL(response.headers()["location"],response.url()).search).toBe("?test=1");
  }
 });
