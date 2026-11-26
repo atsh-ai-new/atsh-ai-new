@@ -118,8 +118,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .select-mark{display:grid;place-items:center;flex:0 0 21px;width:21px;height:21px;border:1px solid #cdd1d4;border-radius:50%;color:#68819d;font:600 13px Inter,sans-serif}
 .selected .select-mark{background:var(--navy);border-color:var(--navy);color:#fff}
 .select-card-copy{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
-.select-card-copy strong{font-size:13px;color:#354355}
-.select-card-copy small{font-size:12px;line-height:1.7;color:#80858a}
+.select-card-copy strong{font-size:14px;color:#354355}
+.select-card-copy small{font-size:13px;line-height:1.7;color:#80858a}
 .select-card-copy b{font-size:13px;color:#496d94}
 .included-chip{align-self:flex-start;padding:5px 7px;border:1px solid #e1e5e8;border-radius:99px;background:#fff;color:#647487;font-size:12px;white-space:nowrap}
 .form-stack{display:flex;flex-direction:column;gap:12px}
@@ -662,9 +662,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .catalog-addon-section .catalog-addon-grid .select-card{width:100%;min-height:94px;padding:15px 17px;gap:12px;border-radius:16px;align-items:center;box-sizing:border-box}
 .catalog-addon-section .catalog-addon-grid .select-card-copy{gap:5px;text-align:start}
 .catalog-addon-section .catalog-addon-grid .select-card-copy strong{font-size:14px;line-height:1.5}
-.catalog-addon-section .catalog-addon-grid .select-card-copy small{font-size:12px;line-height:1.5}
+.catalog-addon-section .catalog-addon-grid .select-card-copy small{font-size:13px;line-height:1.5}
 .catalog-addon-section .catalog-addon-grid .select-card-copy b{font-size:13px;line-height:1.5}
-@media(max-width:620px){.catalog-addon-section .catalog-addon-grid{gap:10px}.catalog-addon-section .catalog-addon-grid .select-card{min-height:88px;padding:12px 14px}.catalog-addon-section .catalog-addon-grid .select-card-copy strong{font-size:13px}.catalog-addon-section .catalog-addon-grid .select-card-copy small{font-size:13px}}
+@media(max-width:620px){.catalog-addon-section .catalog-addon-grid{gap:10px}.catalog-addon-section .catalog-addon-grid .select-card{min-height:88px;padding:12px 14px}.catalog-addon-section .catalog-addon-grid .select-card-copy strong{font-size:14px}.catalog-addon-section .catalog-addon-grid .select-card-copy small{font-size:13px}}
 
 /* Signed-in customer shortcut in the public site header. */
 .atsh-signed-in-badge{display:inline-flex;align-items:center;gap:6px;max-width:170px;min-width:0;padding:6px 9px;border-radius:999px;background:#e7f1ff;border:1px solid #b6d3f2;color:#17446d;text-decoration:none;font-size:13px;font-weight:700;white-space:nowrap}
