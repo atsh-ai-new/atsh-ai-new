@@ -41,6 +41,31 @@ test("real HTTP POST /api/orders is idempotent under concurrent retries", {timeo
     assert.equal(fresh.status,201);
     const after=await pool.query("SELECT count(*)::int AS n FROM orders WHERE package_id=$1",[body.packageId]);
     assert.equal(after.rows[0].n,2,"different key must allow a legitimate repeat order");
+    // 45 actual selectable shared entries in an isolated database; production drafts remain untouched.
+    const codes=Array.from({length:45},(_,i)=>"http_test_"+i);
+    await pool.query("INSERT INTO shared_addons(code,name,price,pricing_type,is_active) SELECT code,code,10,'fixed',true FROM unnest($1::text[]) code",[codes]);
+    const options=(await pool.query("SELECT id,code FROM package_options WHERE package_id=$1 AND code=ANY($2::text[])",[body.packageId,codes])).rows;
+    assert.equal(options.length,45);
+    const large=await send({...body,optionIds:options.map(x=>x.id)},randomUUID());
+    assert.equal(large.status,201,JSON.stringify(large));
+    const snapshot=(await pool.query("SELECT snapshot FROM orders WHERE id=$1",[large.data.order.id])).rows[0].snapshot;
+    assert.equal(snapshot.options.length,45);
+    assert.equal(snapshot.subtotal,550);
+    const sector={slug:"http-test-sector",name:"HTTP Test Sector",published:true,basePrice:300,pricedAddons:[]};
+    await pool.query("UPDATE site_pages SET content=jsonb_set(content,'{items}',$1::jsonb) WHERE slug='catalog' AND locale='ar'",[JSON.stringify([sector])]);
+    const quoteResponse=await fetch(base+"/api/sector-price?slug="+sector.slug+"&addons="+codes.join(","));
+    const quote=await quoteResponse.json();
+    assert.equal(quoteResponse.status,200,JSON.stringify(quote));
+    assert.equal(quote.items.length,46);
+    assert.equal(quote.subtotal,750);
+    const sectorOrder=await send({...body,sectorSlug:sector.slug,sectorAddonCodes:codes},randomUUID());
+    assert.equal(sectorOrder.status,201,JSON.stringify(sectorOrder));
+    const sectorSnapshot=(await pool.query("SELECT snapshot FROM orders WHERE id=$1",[sectorOrder.data.order.id])).rows[0].snapshot;
+    assert.equal(sectorSnapshot.sector.items.length,46);
+    assert.equal(sectorSnapshot.subtotal,850);
+    await pool.query("UPDATE shared_addons SET is_active=false WHERE code=$1",[codes[0]]);
+    assert.equal((await send({...body,optionIds:options.map(x=>x.id)},randomUUID())).status,400);
+    assert.equal((await send({...body,sectorSlug:sector.slug,sectorAddonCodes:codes},randomUUID())).status,400);
   }finally{
     child.kill("SIGTERM");
     await pool.end();

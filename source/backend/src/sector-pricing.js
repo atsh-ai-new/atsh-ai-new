@@ -1,3 +1,4 @@
+import {MAX_ADDONS_PER_SELECTION} from "./addon-limits.js";
 import { calculateUnifiedPricing } from "./pricing-engine.js";
 // Server-owned sector pricing. Never accept numeric prices from browser input.
 const types=new Set(["fixed","monthly","yearly","per_page"]);
@@ -9,7 +10,7 @@ export function priceSectorSelection(catalog,slug,requestedCodes=[],quantities={
   if(!Array.isArray(catalog))throw new Error("Sector catalog unavailable");
   const item=catalog.find(x=>x?.slug===slug && x.published===true && !x.archived);
   if(!item)throw new Error("Sector is not published");
-  if(!Array.isArray(requestedCodes) || requestedCodes.length>30 || new Set(requestedCodes).size!==requestedCodes.length)throw new Error("Invalid sector extras");
+  if(!Array.isArray(requestedCodes) || requestedCodes.length>MAX_ADDONS_PER_SELECTION || new Set(requestedCodes).size!==requestedCodes.length)throw new Error("Invalid sector extras");
   if(!validMoney(item.basePrice))return {sectorSlug:slug,sectorName:item.name,needsCustomQuote:true,items:[],subtotal:0,monthly:0,yearly:0};
   const declared=Array.isArray(item.pricedAddons)?item.pricedAddons:[];
   const byCode=new Map();
