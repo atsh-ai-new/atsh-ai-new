@@ -135,3 +135,48 @@ test("default ticker starts above the complete administration and customer porta
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2)).toBe(true);
  }
 });
+
+test("private portal ticker stays above the actual signed-in layouts even when public placement is below the header",async({page})=>{
+ await page.route("**/api/site-content/home?locale=*",route=>route.fulfill({json:{page:{content:{newsTicker:{enabled:true,text:"Portal news",speed:25,position:"below_header"}}}}}));
+ await page.route("**/api/admin/**",route=>route.fulfill({json:new URL(route.request().url()).pathname==="/api/admin/me"?{email:"staff@example.test",role:"admin",permissions:{products:true,content:true}}:{}}));
+ await page.route("**/api/customer/auth/**",route=>route.fulfill({json:new URL(route.request().url()).pathname.endsWith("/me")?{customer:{name:"عميل تجريبي",email:"client@example.test"}}:{}}));
+ for(const path of ["/admin","/account/dashboard"]){
+  await page.goto(path);
+  const ticker=page.locator("body > .atsh-news-slot:first-child .atsh-news-ticker");
+  await expect(ticker).toBeVisible();
+  expect(Math.abs((await ticker.boundingBox())!.y)).toBeLessThan(2);
+  await expect(page.locator(".atsh-news-ticker")).toHaveCount(1);
+ }
+});
+
+for(const role of ["admin","owner"] as const){
+ test("dashboard respects team permission and reports real failures: "+role,async({page})=>{
+  let calls=0;
+  const forbidden:string[]=[];
+  await page.route("**/api/admin/**",route=>{
+   const path=new URL(route.request().url()).pathname;
+   if(path==="/api/admin/me")return route.fulfill({json:{email:"staff@example.test",role,permissions:{products:true,content:true,customers:true,settings:true,audit:true,team:false}}});
+   if(path==="/api/admin/team"){
+    calls++;
+    return route.fulfill({status:role==="owner"?503:403,json:{error:"Team unavailable"}});
+   }
+   if(path==="/api/admin/packages")return route.fulfill({json:{packages:[],sharedOptions:[]}});
+   return route.fulfill({json:{}});
+  });
+  page.on("response",r=>{if(r.status()===403&&r.url().includes("/api/admin/team"))forbidden.push(r.url())});
+  await page.goto("/admin");
+  const card=page.locator(".admin-stat").filter({hasText:"أعضاء الفريق"});
+  await expect(card).toBeVisible();
+  if(role==="admin"){
+   await expect(card).toContainText("غير متاح لصلاحياتك");
+   await expect(page.getByText("تعذر تحديث بعض أقسام الإدارة",{exact:false})).toHaveCount(0);
+   expect(calls).toBe(0);
+   expect(forbidden).toHaveLength(0);
+  }else{
+   await expect(page.getByText("تعذر تحديث بعض أقسام الإدارة: team",{exact:false})).toBeVisible();
+   await expect(card).toContainText("تعذر تحميل البيانات");
+   expect(calls).toBe(1);
+  }
+  await expect(card.locator("strong")).toHaveText("—");
+ });
+}

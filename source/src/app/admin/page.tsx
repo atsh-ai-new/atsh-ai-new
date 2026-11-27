@@ -29,6 +29,8 @@ type Member = { id: string; email: string; display_name: string; role: Exclude<R
 type Theme = { navy: string; blue: string; gold: string; page: string; logoUrl: string; heroImageUrl: string; backgroundImageUrl: string; fontFamily: "IBM Plex Sans Arabic" | "Cairo" | "Tajawal"; cardRadius: number };
 type Audit = { id: number; actor: string; action: string; entity_type: string; created_at: string };
 type AdminUser = { email: string; role: Role; permissions?: Record<string, boolean> };
+const canAccess = (user: AdminUser | null, key: string) => user?.role === "owner" || user?.permissions?.[key] === true;
+const canReadTeam = (user: AdminUser | null) => (user?.role === "owner" || user?.role === "admin") && canAccess(user, "team");
 type EmailStatus = { configured: boolean; from: string; replyTo: string };
 type PageContent = Record<string, string>;
 type ApiPayload = Record<string, any>;
@@ -103,6 +105,7 @@ export default function AdminPage() {
   const [journeyError, setJourneyError] = useState("");
   const [emailStatus, setEmailStatus] = useState<EmailStatus>({ configured: false, from: "info@atsh-ai.com", replyTo: "sales@atsh-ai.com" });
   const [members, setMembers] = useState<Member[]>([]);
+  const [teamLoaded, setTeamLoaded] = useState(false);
   const [audit, setAudit] = useState<Audit[]>([]);
   const [page, setPage] = useState<PageContent>(siteCopyDefaults);
   const [hiddenHomeFields, setHiddenHomeFields] = useState<Set<string>>(new Set());
@@ -115,10 +118,12 @@ export default function AdminPage() {
   const [packageDraft, setPackageDraft] = useState<PackageDraft>({ name: "", tagline: "", description: "", price: "", features: "", copyFromPackageId: "", isFeatured: false, isCustomQuote: false, isPublished: false });
   const [optionDraft, setOptionDraft] = useState<OptionDraft>({ categoryCode:"foundation",sortOrder:10,packageId: "", code: "", name: "", description: "", price: "", pricingType: "fixed", unitLabel: "", isRequired: false, isActive: true, visibility: "both" as const });
 
-  const loadData = useCallback(async (role: Role = "viewer") => {
-    // Keep independent admin sections usable when one backend endpoint fails.
+  const loadData = useCallback(async (session: AdminUser) => {
+    // A valid session is not permission to read every administrative endpoint.
+    // Match the API's permission (and team role) checks, including on refresh.
     const endpoints = ["packages", "orders", "settings", "pages", "team", "audit", "email-status", "journey/projects"] as const;
-    const results = await Promise.allSettled(endpoints.map((endpoint) => (endpoint === "audit" && role !== "owner" && role !== "admin") ? Promise.resolve({ logs: [] }) : (endpoint === "team" && role !== "owner" && role !== "admin") ? Promise.resolve({ members: [] }) : api(endpoint)));
+    const allowed = [canAccess(session,"products"), canAccess(session,"customers"), canAccess(session,"settings"), canAccess(session,"content"), canReadTeam(session), canAccess(session,"audit"), canAccess(session,"settings"), canAccess(session,"customers")];
+    const results = await Promise.allSettled(endpoints.map((endpoint,index) => allowed[index] ? api(endpoint) : Promise.resolve(null)));
     const failed: string[] = [];
     const getResult = (index: number): ApiPayload | null => {
       const result = results[index];
@@ -151,7 +156,8 @@ export default function AdminPage() {
       setPage({ ...siteCopyDefaults, ...publishedArabicHome });
       setHiddenHomeFields(new Set(Object.entries(publishedArabicHome).filter(([, value]) => typeof value === "string" && value.trim() === "").map(([key]) => key)));
     }
-    if (team) setMembers(team.members ?? []);
+    if (team) { setMembers(team.members ?? []); setTeamLoaded(true); }
+    else if (!allowed[4]) { setMembers([]); setTeamLoaded(false); }
     if (changes) setAudit(changes.logs ?? []);
     if (email) setEmailStatus({
       configured: Boolean(email.configured),
@@ -161,8 +167,10 @@ export default function AdminPage() {
     if (journeys) {
       setJourneyProjects(journeys.projects ?? []);
       setJourneyError("");
-    } else {
+    } else if (allowed[7]) {
       setJourneyError("تعذر تحميل مشروعات العملاء. حاول تحديث البيانات لاحقًا.");
+    } else {
+      setJourneyError("");
     }
     if (failed.length) {
       setError(`تعذر تحديث بعض أقسام الإدارة: ${failed.join("، ")}. تم عرض البيانات المتاحة دون حذف البيانات المحفوظة.`);
@@ -173,7 +181,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     let active = true;
-    api("me").then((data) => { if (!active) return; setUser({ email: data.email, role: data.role, permissions: data.permissions }); return loadData(data.role); })
+    api("me").then((data) => { if (!active) return; const session: AdminUser = { email: data.email, role: data.role, permissions: data.permissions }; setUser(session); return loadData(session); })
       .catch((reason) => {
         if (!active) return;
         // An expired session is normal; server/rate-limit failures must not masquerade as logout.
@@ -185,7 +193,8 @@ export default function AdminPage() {
     return () => { active = false; };
   }, [loadData]);
 
-  const permitted = (key: string) => user?.role === "owner" || user?.permissions?.[key] === true;
+  const permitted = (key: string) => canAccess(user, key);
+  const refreshData = () => user ? loadData(user) : Promise.resolve();
   const canEditCatalog = permitted("products");
   const canEditContent = permitted("content");
   const canEditOrders = permitted("customers");
@@ -196,7 +205,7 @@ export default function AdminPage() {
     works:"content", videos:"content", "content-studio":"assistant", journey:"customers",
     commercial:"customers", inbox:"customers"
   };
-  const visibleNav = nav.filter(item => !viewPermissions[item.id] || permitted(viewPermissions[item.id]!));
+  const visibleNav = nav.filter(item => item.id === "team" ? canReadTeam(user) : !viewPermissions[item.id] || permitted(viewPermissions[item.id]!));
   const newOrders = useMemo(() => orders.filter((order) => order.status === "new").length, [orders]);
   const title = nav.find((item) => item.id === view)?.label ?? "إدارة المنصة";
 
@@ -204,7 +213,7 @@ export default function AdminPage() {
     event.preventDefault(); setBusy(true); setError("");
     try {
       const result = await api("login", { method: "POST", body: JSON.stringify({ email: loginEmail, password: loginPassword }) });
-      const session = await api("me"); setUser({ email: session.email, role: session.role, permissions: session.permissions }); setLoginPassword(""); await loadData(session.role);
+      const data = await api("me"); const session: AdminUser = { email: data.email, role: data.role, permissions: data.permissions }; setUser(session); setLoginPassword(""); await loadData(session);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر تسجيل الدخول."); }
     finally { setBusy(false); }
   };
@@ -236,7 +245,7 @@ export default function AdminPage() {
       await action();
       setNotice(success);
       // A secondary dashboard refresh must not report a successful publish as failed.
-      try { await loadData(); }
+      try { await refreshData(); }
       catch { setNotice(`${success} تعذر تحديث بعض بيانات لوحة الإدارة؛ أعد فتحها لاحقًا.`); }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر حفظ التغييرات."); }
     finally { setBusy(false); }
@@ -252,6 +261,7 @@ export default function AdminPage() {
     setOrders([]);
     setJourneyProjects([]);
     setMembers([]);
+    setTeamLoaded(false);
     setAudit([]);
     setPage({ ...siteCopyDefaults });
     setHiddenHomeFields(new Set());
@@ -321,7 +331,7 @@ export default function AdminPage() {
       setOptions(verified.sharedOptions ?? []);
       setNotice("تم التحقق من إيقاف الإضافة للطلبات الجديدة مع الاحتفاظ بسجل الطلبات السابقة.");
       // Other dashboard sections are secondary to the verified catalog mutation.
-      try { await loadData(); } catch { setNotice("تم إيقاف الإضافة والتحقق من ذلك، لكن تعذر تحديث بعض أقسام اللوحة."); }
+      try { await refreshData(); } catch { setNotice("تم إيقاف الإضافة والتحقق من ذلك، لكن تعذر تحديث بعض أقسام اللوحة."); }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر إيقاف الإضافة."); }
     finally { setBusy(false); }
   };
@@ -376,7 +386,7 @@ export default function AdminPage() {
     try {
 
       await api("packages", { method: "POST", body: JSON.stringify({ name: packageDraft.name, tagline: packageDraft.tagline, description: packageDraft.description, price: packageDraft.isCustomQuote ? 0 : Number(packageDraft.price), currency: "EGP", features: packageDraft.features.split("\n").map((feature) => feature.trim()).filter(Boolean), isFeatured: packageDraft.isFeatured, isCustomQuote: packageDraft.isCustomQuote, isPublished: packageDraft.isPublished, sortOrder: packages.length * 10 + 10, options: [] }) });
-      setPackageDraft({ name: "", tagline: "", description: "", price: "", features: "", copyFromPackageId: "", isFeatured: false, isCustomQuote: false, isPublished: false }); await loadData(); setNotice("تم إنشاء الباقة وربط جميع الإضافات المشتركة تلقائيًا.");
+      setPackageDraft({ name: "", tagline: "", description: "", price: "", features: "", copyFromPackageId: "", isFeatured: false, isCustomQuote: false, isPublished: false }); await refreshData(); setNotice("تم إنشاء الباقة وربط جميع الإضافات المشتركة تلقائيًا.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر إنشاء الباقة."); }
     finally { setBusy(false); }
   };
@@ -388,7 +398,7 @@ export default function AdminPage() {
     try {
       const {packageId: _ignoredPackage, ...sharedDraft}=optionDraft;
       await api("options", { method: "POST", body: JSON.stringify({ ...sharedDraft, visibility:"both", price: Number(optionDraft.price), sortOrder: optionDraft.sortOrder }) });
-      setOptionDraft((current) => ({ ...current, code: "", name: "", description: "", price: "", unitLabel: "",sortOrder:current.sortOrder+10 })); await loadData(); setNotice("تمت إضافة الخيار لجميع الباقات والأنظمة المخصصة.");
+      setOptionDraft((current) => ({ ...current, code: "", name: "", description: "", price: "", unitLabel: "",sortOrder:current.sortOrder+10 })); await refreshData(); setNotice("تمت إضافة الخيار لجميع الباقات والأنظمة المخصصة.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذرت إضافة الخيار."); }
     finally { setBusy(false); }
   };
@@ -397,7 +407,7 @@ export default function AdminPage() {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
       await api("team", { method: "POST", body: JSON.stringify({ email: memberEmail, displayName: memberName, role: "viewer", permissions: memberPermissions, password: memberPassword }) });
-      setMemberEmail(""); setMemberName(""); setMemberPassword(""); await loadData(); setNotice("تم إنشاء حساب العضو. شارك كلمة المرور معه عبر قناة آمنة.");
+      setMemberEmail(""); setMemberName(""); setMemberPassword(""); await refreshData(); setNotice("تم إنشاء حساب العضو. شارك كلمة المرور معه عبر قناة آمنة.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر إضافة عضو الفريق."); }
     finally { setBusy(false); }
   };
@@ -415,7 +425,7 @@ export default function AdminPage() {
 
         {view === "messages" && <InternalMessaging key={chatSequence} target={chatTarget} canCustomers={canEditOrders} />}
         {view === "overview" && user && user.role !== "owner" && <AssignedTaskChat />}
-        {view === "overview" && <><div className="admin-stats"><article className="admin-stat"><span>كل الطلبات</span><strong>{orders.length + journeyProjects.length}</strong><small>محفوظة على خادم المنصة</small></article><article className="admin-stat"><span>طلبات جديدة</span><strong>{newOrders + journeyProjects.filter(project => project.status === "draft" || project.status === "configured").length}</strong><small>تحتاج إلى متابعة</small></article><article className="admin-stat"><span>الباقات المنشورة</span><strong>{packages.filter((item) => item.is_published).length}</strong><small>بالجنيه المصري</small></article><article className="admin-stat"><span>أعضاء الفريق</span><strong>{members.filter((item) => item.is_active).length}</strong><small>حسابات نشطة</small></article>{(user?.role==="owner"||user?.role==="admin") && <VisitorAnalyticsPanel />}</div><section className="admin-content-card"><div className="admin-content-title"><div><h2>أحدث الطلبات</h2><p>تصل بيانات العميل والبريد والهاتف إلى صندوق الإدارة.</p></div><button className="inline-add" onClick={() => setView("inbox")}>فتح الطلبات ←</button></div>{journeyProjects.length>0&&<div style={{display:"grid",gap:8,marginBottom:14}}>{journeyProjects.slice(0,6).map(project=><article key={project.id} style={{display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap",padding:12,border:"1px solid #dce4ef",borderRadius:10}}><strong>{project.customer_name}</strong><span>{project.status}</span><button type="button" className="inline-add" onClick={()=>setView("inbox")}>عرض الطلب</button></article>)}</div>}<OrderTable orders={orders.slice(0, 6)} members={members} onChange={updateOrder} onSendEmail={sendCustomerEmail} canSend={canEditOrders && emailStatus.configured} readOnly={!canEditOrders} /></section></>}
+        {view === "overview" && <><div className="admin-stats"><article className="admin-stat"><span>كل الطلبات</span><strong>{orders.length + journeyProjects.length}</strong><small>محفوظة على خادم المنصة</small></article><article className="admin-stat"><span>طلبات جديدة</span><strong>{newOrders + journeyProjects.filter(project => project.status === "draft" || project.status === "configured").length}</strong><small>تحتاج إلى متابعة</small></article><article className="admin-stat"><span>الباقات المنشورة</span><strong>{packages.filter((item) => item.is_published).length}</strong><small>بالجنيه المصري</small></article><article className="admin-stat"><span>أعضاء الفريق</span><strong>{canReadTeam(user) && teamLoaded ? members.filter((item) => item.is_active).length : "—"}</strong><small>{!canReadTeam(user) ? "غير متاح لصلاحياتك" : teamLoaded ? "حسابات نشطة" : "تعذر تحميل البيانات"}</small></article>{(user?.role==="owner"||user?.role==="admin") && <VisitorAnalyticsPanel />}</div><section className="admin-content-card"><div className="admin-content-title"><div><h2>أحدث الطلبات</h2><p>تصل بيانات العميل والبريد والهاتف إلى صندوق الإدارة.</p></div><button className="inline-add" onClick={() => setView("inbox")}>فتح الطلبات ←</button></div>{journeyProjects.length>0&&<div style={{display:"grid",gap:8,marginBottom:14}}>{journeyProjects.slice(0,6).map(project=><article key={project.id} style={{display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap",padding:12,border:"1px solid #dce4ef",borderRadius:10}}><strong>{project.customer_name}</strong><span>{project.status}</span><button type="button" className="inline-add" onClick={()=>setView("inbox")}>عرض الطلب</button></article>)}</div>}<OrderTable orders={orders.slice(0, 6)} members={members} onChange={updateOrder} onSendEmail={sendCustomerEmail} canSend={canEditOrders && emailStatus.configured} readOnly={!canEditOrders} /></section></>}
 
         {view === "content" && <section className="admin-content-card"><div className="admin-content-title"><div><h2>نصوص الصفحة الرئيسية</h2><p>كل العناوين والأوصاف والأزرار والشارات الظاهرة في الواجهة الحالية قابلة للتحرير.</p></div></div><div className="admin-form-grid">{siteCopyFields.filter(([key]) => !hiddenHomeFields.has(key)).map(([key, label, multiline]) => <label className="admin-field" key={key} style={multiline ? { gridColumn: "1 / -1" } : undefined}>{label}{multiline ? <textarea rows={3} value={page[key] ?? ""} onChange={(event) => setPage({ ...page, [key]: event.target.value })} /> : <input value={page[key] ?? ""} onChange={(event) => setPage({ ...page, [key]: event.target.value })} />}</label>)}</div><div className="admin-actions"><button className="button" disabled={busy} onClick={savePage}>حفظ ونشر النصوص ✓</button><button className="button button-outline" onClick={() => setView("pages")}>تحرير البطاقات والأقسام ←</button></div></section>}
 
@@ -423,8 +433,8 @@ export default function AdminPage() {
         
         {view === "assistant-knowledge" && canEditContent && <AssistantKnowledge />}
         {view === "videos" && canEditContent && <VideoManager />}
-        {view === "pages" && <ContentManager onSaved={loadData} logoEditor={<><ImageSetting label="الشعار" value={theme.logoUrl} onChange={value=>setTheme(current=>({...current,logoUrl:value}))} onUpload={event=>void uploadThemeImage(event,"logoUrl")} busy={busy}/><button type="button" className="button button-small" disabled={busy} onClick={saveTheme}>حفظ الشعار</button></>} heroImageEditor={<><ImageSetting label="صورة الواجهة" value={theme.heroImageUrl} onChange={value=>setTheme(current=>({...current,heroImageUrl:value}))} onUpload={event=>void uploadThemeImage(event,"heroImageUrl")} busy={busy}/><button type="button" className="button button-small" disabled={busy} onClick={saveTheme}>حفظ صورة الواجهة</button></>} />}
-        {view === "works" && <ContentManager initialSlug="works" onSaved={loadData} />}
+        {view === "pages" && <ContentManager onSaved={refreshData} logoEditor={<><ImageSetting label="الشعار" value={theme.logoUrl} onChange={value=>setTheme(current=>({...current,logoUrl:value}))} onUpload={event=>void uploadThemeImage(event,"logoUrl")} busy={busy}/><button type="button" className="button button-small" disabled={busy} onClick={saveTheme}>حفظ الشعار</button></>} heroImageEditor={<><ImageSetting label="صورة الواجهة" value={theme.heroImageUrl} onChange={value=>setTheme(current=>({...current,heroImageUrl:value}))} onUpload={event=>void uploadThemeImage(event,"heroImageUrl")} busy={busy}/><button type="button" className="button button-small" disabled={busy} onClick={saveTheme}>حفظ صورة الواجهة</button></>} />}
+        {view === "works" && <ContentManager initialSlug="works" onSaved={refreshData} />}
         {view === "content-studio" && canEditContent && <ContentStudio />}
         {view === "journey" && <><JourneyManager mode="projects" showMyTasks={user.role!=="owner"} canManageTasks={canEditOrders} canArchive={user.role === "owner" || user.role === "admin"} canDelete={user.role === "owner"} />{(user.role === "owner" || user.role === "admin") && <CustomerServicesAdmin canEdit={true} />}</>}
       {view === "commercial" && <CommercialManager />}

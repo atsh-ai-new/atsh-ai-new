@@ -12,7 +12,9 @@ export default function SocialHeader(){
  const pathname=usePathname();
  useEffect(()=>{const locale=pathname.startsWith("/en")?"en":"ar";let live=true;setTicker(null);const valid=(t:any)=>t?.enabled&&typeof t.text==="string"&&t.text.trim();const apply=(t:any)=>{if(live)setTicker(valid(t)?t:null);};const preview=readPagePreview("home",locale);if(preview){apply(preview.content.newsTicker);return()=>{live=false;};}const load=async(lang:string)=>{try{const r=await fetch("/api/site-content/home?locale="+lang,{cache:"no-store"});return r.ok?(await r.json())?.page?.content?.newsTicker:null;}catch{return null;}};void (async()=>{const local=await load(locale);if(valid(local)){apply(local);return;}const other=await load(locale==="en"?"ar":"en");apply(valid(other)?{...other,text:locale==="en"?"Explore ATSH AI websites and apps ✦ Customize your system now":"اكتشف مواقع وتطبيقات ATSH AI ✦ خصص نظامك الآن"}:null);})();return()=>{live=false;};},[pathname]);
  const [host,setHost]=useState<HTMLElement|null>(null);
- const position=normalizeNewsTickerPosition(ticker?.position);
+ // Private workspaces always retain the requested top-of-page placement.
+ const portal=/^\/(?:ar\/|en\/)?(?:admin|account|team)(?:\/|$)/.test(pathname);
+ const position=portal?"top":normalizeNewsTickerPosition(ticker?.position);
  useEffect(()=>{
   const holder=document.createElement("div");holder.className="atsh-social-inline-slot";if(!/^\/(?:ar|en)?\/?$/.test(pathname)&&!/^\/(?:ar\/|en\/)?(?:admin|account|team)(?:\/|$)/.test(pathname))holder.dataset.internalPublic="true";const bar=document.createElement("div");bar.className="atsh-news-slot";
   const placeAtPageTop=()=>{if(document.body.firstElementChild!==bar)document.body.prepend(bar);};
