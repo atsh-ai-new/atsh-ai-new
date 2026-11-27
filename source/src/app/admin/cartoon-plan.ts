@@ -1,4 +1,4 @@
-export type ArtPose="stand"|"walk-a"|"walk-b"|"talk-open"|"sit"|"enter"|"exit"|"eat"|"wave"|"point"|"explain"|"closed"|"open";
+export type ArtPose="stand"|"walk-a"|"walk-b"|"talk-open"|"sit"|"enter"|"exit"|"eat"|"wave"|"point"|"explain"|"think"|"tablet"|"closed"|"open";
 export type ArtImage={pose:ArtPose;image:string};
 export type RigPart="torso"|"head"|"left-arm"|"right-arm"|"left-leg"|"right-leg"|"mouth-open"|"eyes-closed";
 export type RigLayer={part:RigPart;image:string;pivotX:number;pivotY:number};
@@ -7,7 +7,7 @@ export type ArtSnapshot={id:string;revision:number;images:ArtImage[];rig?:RigLay
 export type SceneArtwork={id:string;revision:number;image:string;mode:"background"|"full";framing?:"fit"|"fill"};
 export type PropArtwork={id:string;revision:number;image:string;x:number;y:number;size:number;foreground:boolean;stateImage?:string;motion?:"static"|"open"|"close"|"drive";motionStart?:number};
 export type ScreenText={text:string;start:number;end:number;position:"top"|"middle"|"bottom"};
-export type ArtAction="stand"|"walk"|"sit"|"stairs-up"|"stairs-down"|"enter"|"exit"|"eat";
+export type ArtAction="stand"|"walk"|"sit"|"stairs-up"|"stairs-down"|"enter"|"exit"|"eat"|"think"|"tablet";
 export type VoiceId="local-msa"|"egyptian-male"|"egyptian-female"|"egyptian-child-male"|"egyptian-child-female"|"egyptian-teen-male"|"egyptian-teen-female"|"alexandrian-male"|"alexandrian-female"|"alexandrian-child-male"|"alexandrian-child-female"|"alexandrian-teen-male"|"alexandrian-teen-female"|"saidi-male"|"saidi-female"|"saidi-child-male"|"saidi-child-female"|"saidi-teen-male"|"saidi-teen-female"|"saudi-male"|"saudi-female"|"gulf-male"|"gulf-female";
 export type Voice = {voiceId?:VoiceId;engine:"tiny-ar-msa";pitch:number;speed:number;intonation:number};
 export type Character={id:string;name:string;skin:string;shirt:string;hairColor:string;hair:"short"|"long"|"bald";glasses:boolean;beard:boolean;voice:Voice;artwork?:ArtSnapshot};
@@ -50,3 +50,4 @@ export function validateCartoon(p:CartoonPlan):string[]{
  if(a.shots.reduce((n,s)=>n+s.dialogue.length,0)>12)err.push("الحد الأقصى 12 جملة.");
  return err;
 }
+

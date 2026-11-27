@@ -25,7 +25,7 @@ export function layeredInput(plan){
    const action=p.action||p.pose||"stand";
    const poses=new Set(art.images.map(i=>i.pose));
    if(action.startsWith("stairs")||action==="walk"){if(!art.rig&&!(poses.has("walk-a")&&poses.has("walk-b")))throw Error("المشي يحتاج طبقات التحريك أو صورتين للخطوات.");}
-   if(["sit","enter","exit","eat"].includes(action)&&!poses.has(action)&&!(art.rig&&action==="sit"))throw Error("أضف صورة الوضعية المطلوبة.");
+   if(["sit","enter","exit","eat","think","tablet"].includes(action)&&!poses.has(action)&&!(art.rig&&action==="sit"))throw Error("أضف صورة الوضعية المطلوبة.");
    if(shot.dialogue.some(l=>l.speakerId===c.id)&&!art.rig&&!poses.has("talk-open"))throw Error("أضف وضعية الفم المفتوح للبطل المتكلم أو جهزه بطبقات التحريك.");
   }
  }
@@ -81,3 +81,4 @@ export function registerLayeredRoutes(app,{pool,auth,route,rateLimit,auditChange
   }catch{return res.status(502).end();}
  }));
 }
+

@@ -14,9 +14,9 @@ export function validWebp(s){
  return w>0&&h>0&&w<=1920&&h<=1920&&w*h<=2073600;
 }
 export const artImage=z.string().max(245760).refine(validWebp,"صورة WebP غير صالحة أو أكبر من الحد المسموح");
-const pose=z.enum(["stand","walk-a","walk-b","talk-open","sit","enter","exit","eat","wave","point","explain","closed","open"]);
+const pose=z.enum(["stand","walk-a","walk-b","talk-open","sit","enter","exit","eat","wave","point","explain","think","tablet","closed","open"]);
 export const heroImage=z.object({pose,image:artImage}).strict();
-export const imagesSchema=z.array(heroImage).min(1).max(13).refine(x=>new Set(x.map(p=>p.pose)).size===x.length,"لا تكرر وضعية الصورة");
+export const imagesSchema=z.array(heroImage).min(1).max(15).refine(x=>new Set(x.map(p=>p.pose)).size===x.length,"لا تكرر وضعية الصورة");
 const rigParts=["torso","head","left-arm","right-arm","left-leg","right-leg","mouth-open","eyes-closed"];
 export const rigSchema=z.array(z.object({part:z.enum(rigParts),image:artImage,pivotX:z.number().min(0).max(1),pivotY:z.number().min(0).max(1)}).strict()).min(7).max(8).refine(v=>new Set(v.map(x=>x.part)).size===v.length&&rigParts.slice(0,7).every(k=>v.some(x=>x.part===k)),"أضف طبقات الجسم والرأس والذراعين والساقين والفم دون تكرار");
 export const outfitSchema=z.object({id:z.string().uuid(),name:z.string().trim().min(1).max(40),images:imagesSchema,rig:rigSchema.optional()}).strict();
@@ -69,3 +69,4 @@ export function registerStudioAssetRoutes(app,{pool,requireAdmin,requirePermissi
   const r=await pool.query("DELETE FROM content_studio_assets WHERE id=$1 RETURNING id",[req.params.id]);if(!r.rowCount)return res.status(404).end();res.json({ok:true});
  }));
 }
+

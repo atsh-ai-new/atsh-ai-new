@@ -96,9 +96,12 @@ def rig_frame(rig,size,t,action,gesture,amp):
             im=im.rotate(angle,Image.Resampling.BILINEAR,center=(px*w,py*h))
         c.alpha_composite(im)
     return c
-def actor(canvas,placement,pictures,rig,amp,t,duration,n):
+def actor(canvas,placement,pictures,rig,amp,t,duration,n,medium=False):
     w,h=canvas.size;action=placement.get("action") or placement.get("pose") or "stand";gesture=placement["gesture"];x=SLOTS[placement["position"]]*w;y=h*.87
-    height=min(h*.70,w*.54/max(1,n*.55)*pictures["stand"].height/pictures["stand"].width)
+    if medium:
+        x=w*.5+(x-w*.5)*.72
+        y=h*.93
+    height=min(h*(.84 if medium else .70),w*.54/max(1,n*.55)*pictures["stand"].height/pictures["stand"].width)
     stand=pictures["stand"]
     if action in ("enter","exit"):
         offset=(1-min(1,t/1.3)) if action=="enter" else min(1,max(0,(t-duration+1.3)/1.3))
@@ -108,15 +111,15 @@ def actor(canvas,placement,pictures,rig,amp,t,duration,n):
         if action.startswith("stairs"):y+=(-1 if action=="stairs-up" else 1)*h*.13*(t/duration-.5)
     if action=="sit":y+=h*.035
     y+=math.sin(t*3)*h*.002
-    if rig and action not in ("eat","enter","exit"):
+    if rig and action not in ("eat","enter","exit","think","tablet"):
         body=rig_frame(rig,(max(1,round(height*stand.width/stand.height)),max(1,round(height))),t,action,gesture,amp)
         canvas.alpha_composite(body,(round(x-body.width/2),round(y-body.height)))
     else:
         pose=stand
         if action in ("walk","stairs-up","stairs-down"):pose=pictures.get("walk-a" if int(t*3.2)%2==0 else "walk-b",stand)
-        elif action in ("sit","enter","exit","eat"):pose=pictures.get(action,stand)
-        elif gesture!="idle":pose=blend(stand,pictures.get(gesture),.5+.5*math.sin(t*3))
-        if amp>.15 and action=="stand" and gesture=="idle":pose=blend(pose,pictures.get("talk-open"),amp)
+        elif action in ("sit","enter","exit","eat","think","tablet"):pose=pictures.get(action,stand)
+        elif gesture!="idle":pose=pictures.get(gesture,stand) # Hold complete illustrated pose; never crossfade incompatible silhouettes.
+        if amp>.15 and action=="stand" and gesture=="idle":pose=pictures.get("talk-open",pose) # Avoid translucent double faces and limbs.
         place(canvas,pose,x,y,height)
 def label(canvas,text,position):
     if not text:return
@@ -151,8 +154,15 @@ def render(plan,voice,folder,cancelled,stage=lambda _:None,resolution=1080):
                             k=min(1,dt/.45);im=blend(im,state,k if motion=="open" else 1-k)
                         height=min(h*p["size"],w*p["size"]*im.height/im.width);place(c,im,w*x,h*p["y"],height)
                 draw_props(False)
-                for p,pics,rig in actors:actor(c,p,pics,rig,speech_at(lines,p["characterId"],t,a["mouthIntensity"]),t,scene["seconds"],len(actors))
+                medium=scene.get("camera")=="medium" and not full and len(actors)<=2
+                for p,pics,rig in actors:actor(c,p,pics,rig,speech_at(lines,p["characterId"],t,a["mouthIntensity"]),t,scene["seconds"],len(actors),medium)
                 draw_props(True)
+                # Medium presentation framing, focused on faces and upper bodies.
+                if medium:
+                    f=1.4;cw,ch=round(w*f),round(h*f)
+                    enlarged=c.resize((cw,ch),Image.Resampling.LANCZOS)
+                    left=(cw-w)//2;top=round((ch-h)*.18)
+                    c=enlarged.crop((left,top,left+w,top+h))
                 if scene["motion"]!="static":
                     f=1+.06*(t/scene["seconds"] if scene["motion"]=="zoom-in" else 1-t/scene["seconds"]);c=ImageOps.fit(c.resize((round(w*f),round(h*f)),Image.Resampling.BILINEAR),size) if f==1 else c.resize((round(w*f),round(h*f)),Image.Resampling.BILINEAR).crop(((round(w*f)-w)//2,(round(h*f)-h)//2,(round(w*f)+w)//2,(round(h*f)+h)//2))
                 if scene.get("caption"):label(c,scene["caption"],"top")
@@ -172,3 +182,4 @@ def render(plan,voice,folder,cancelled,stage=lambda _:None,resolution=1080):
     subprocess.run(["ffmpeg","-v","error","-y","-f","concat","-safe","1","-i",str(listing),"-c","copy","-movflags","+faststart",str(final)],check=True,timeout=60)
     if final.stat().st_size>25*1024*1024:raise RuntimeError("Video too large")
     return final
+

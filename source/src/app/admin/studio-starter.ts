@@ -1,41 +1,484 @@
-// Original, code-native illustrative starter assets. No third-party artwork.
+import type {ArtPose,VoiceId} from "./cartoon-plan";
 export const locations={restaurant:"مطعم / كافيه",school:"مدرسة / فصل",clinic:"عيادة",shop:"متجر / معرض",office:"مكتب / شركة",home:"منزل",street:"شارع / مدينة",workshop:"ورشة / مصنع",hospital:"مستشفى",other:"موقع آخر"} as const;
 export type LocationType=keyof typeof locations;
-type SeedPose="talk-open"|"walk-a"|"walk-b"|"sit"|"open";
-type Starter={kind:"background"|"hero"|"prop";category:string;name:string;locationType?:LocationType;svg:string;poseSvgs?:Partial<Record<SeedPose,string>>;outfitSvg?:string;outfitPoses?:Partial<Record<SeedPose,string>>};
-const svg=(body:string,w=960,h=540)=>`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="wall" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f5f2ec"/><stop offset="1" stop-color="#cadadf"/></linearGradient><linearGradient id="floor" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#c2b5a6"/><stop offset="1" stop-color="#e7dcd0"/></linearGradient><linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#deeff2"/><stop offset="1" stop-color="#94b9cd"/></linearGradient></defs>${body}</svg>`;
-const rect=(x:number,y:number,w:number,h:number,fill:string,r=0)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}"/>`;
-const ellipse=(x:number,y:number,rx:number,ry:number,fill:string)=>`<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${fill}"/>`;
-const line=(x:number,y:number,x2:number,y2:number,color="#547078",sw=3)=>`<path d="M${x} ${y}L${x2} ${y2}" stroke="${color}" stroke-width="${sw}" stroke-linecap="round"/>`;
-const windowBox=(x:number,y:number,w=250,h=180)=>rect(x-8,y-8,w+16,h+16,"#f5f7f6",9)+rect(x,y,w,h,"url(#glass)",4)+line(x+w/2,y,x+w/2,y+h,"#f8fbfa",7)+line(x,y+h/2,x+w,y+h/2,"#f8fbfa",7)+`<path d="M${x} ${y+h}l${w*.24} -${h*.42} ${w*.2} ${h*.25} ${w*.18} -${h*.5} ${w*.38} ${h*.67}z" fill="#8eb9ae" opacity=".46"/>`;
-const plant=(x:number,y:number)=>rect(x-20,y-25,40,38,"#b67547",6)+line(x,y-24,x,y-95,"#397a65",5)+ellipse(x-16,y-62,22,10,"#4d9677")+ellipse(x+17,y-79,24,10,"#5ca28a")+ellipse(x-7,y-96,15,19,"#3d856b");
-const room=(accent:string,items:string)=>svg(rect(0,0,960,365,"url(#wall)")+rect(0,0,960,12,accent)+rect(0,347,960,18,"#9eb0b1")+rect(0,365,960,175,"url(#floor)")+[70,255,440,625,810].map(x=>line(480+(x-480)*.35,365,x,540,"#c2b5a7",2)).join("")+items);
-const table=(x:number,y:number,w=155)=>ellipse(x+w/2,y+119,w*.7,13,"#c2b5a7")+rect(x+20,y+20,12,100,"#69544a")+rect(x+w-32,y+20,12,100,"#69544a")+rect(x,y,w,23,"#9b6950",9);
-const desk=(x:number,y:number,w=300)=>table(x,y,w)+rect(x+w*.38,y-65,105,62,"#243e50",5)+rect(x+w*.38+5,y-60,95,49,"#9dcdd8",2)+rect(x+w*.38+45,y-4,15,5,"#243e50");
-const shelves=(x:number,y:number,color:string)=>rect(x,y,235,260,"#6b5350",5)+[15,95,175].map((d,i)=>rect(x+8,y+d,219,62,"#eee3d5")+[0,1,2,3].map(j=>rect(x+18+j*49,y+d+12,29,49,[color,"#d49a68","#547b84","#e1c38b"][(i+j)%4],3)).join("")).join("");
-const board=(x:number,y:number)=>rect(x,y,420,188,"#b09267",7)+rect(x+9,y+9,402,170,"#2f655b",4)+[30,62,94].map((n,i)=>line(x+34,y+n+12,x+240+i*21,y+n+12,"#d9e9db",5)).join("");
-const car=(color:string)=>svg(ellipse(245,265,205,22,"#25394a33")+rect(35,145,420,92,color,34)+`<path d="M95 148L170 60h150l94 88z" fill="${color}"/><path d="M123 144l58-68h64v68zm140-68h51l65 68H263z" fill="#b8e0e9"/>`+rect(47,175,53,21,"#f9d78a",8)+rect(400,175,45,20,"#f2a28b",8)+[110,379].map(x=>ellipse(x,233,44,44,"#293846")+ellipse(x,233,22,22,"#a0aeb5")).join(""),490,300);
-const person=(skin:string,hair:string,shirt:string,pose="stand")=>svg(ellipse(150,480,100,12,"#29384620")+(pose==="sit"?rect(101,287,100,53,"#273f57",19)+rect(156,337,41,130,"#273f57",19)+rect(151,460,64,22,"#253746",10):pose.startsWith("walk")?`<path d="M123 300L${pose==="walk-a"?76:191} 462M178 300L${pose==="walk-a"?206:91} 462" stroke="#273f57" stroke-width="44" stroke-linecap="round"/>`+rect(50,459,68,22,"#253746",10)+rect(183,459,68,22,"#253746",10):rect(101,287,44,180,"#273f57",19)+rect(155,287,44,180,"#273f57",19)+rect(86,460,64,22,"#253746",10)+rect(151,460,64,22,"#253746",10))+rect(55,184,47,153,skin,23)+rect(198,184,47,153,skin,23)+rect(89,169,122,161,shirt,35)+rect(129,141,42,51,skin,12)+ellipse(150,109,72,84,skin)+`<path d="M77 108Q67 11 150 12q91 0 78 101l-13-29q-46 6-66-38-34 43-63 40z" fill="${hair}"/>`+ellipse(125,112,6,8,"#263740")+ellipse(176,112,6,8,"#263740")+(pose==="talk-open"?ellipse(150,149,15,12,"#633b3e"):`<path d="M133 142q17 16 34 0" fill="none" stroke="#7c4f48" stroke-width="5" stroke-linecap="round"/>`)+rect(102,185,96,6,"#ffffff55",3),300,500);
-const animal=(cat:boolean,talk=false)=>svg(ellipse(135,254,118,12,"#29384618")+ellipse(145,172,83,60,cat?"#d4a263":"#bd8c65")+[75,175].map(x=>rect(x,192,25,57,cat?"#d4a263":"#bd8c65",10)).join("")+`<path d="M210 160Q270 90 250 50" fill="none" stroke="${cat?"#d4a263":"#bd8c65"}" stroke-width="21" stroke-linecap="round"/>`+ellipse(80,106,64,60,cat?"#e3b77a":"#d4a97f")+(cat?`<path d="M28 76L34 18l45 39 45-39 11 58" fill="#e3b77a"/>`:ellipse(23,105,20,47,"#7e5d4d")+ellipse(138,105,20,47,"#7e5d4d"))+ellipse(59,103,6,7,"#263740")+ellipse(101,103,6,7,"#263740")+ellipse(80,127,10,7,"#665047")+(talk?ellipse(80,145,12,9,"#6c423d"):""),300,280);
-const humanPoses=(skin:string,hair:string,shirt:string)=>({"talk-open":person(skin,hair,shirt,"talk-open"),"walk-a":person(skin,hair,shirt,"walk-a"),"walk-b":person(skin,hair,shirt,"walk-b"),sit:person(skin,hair,shirt,"sit")});
-export function starterArtwork():Starter[]{const bg=(locationType:LocationType,name:string,art:string):Starter=>({kind:"background",category:"background",locationType,name,svg:art});return [
-bg("restaurant","مطعم عصري — داخلي",room("#b97152",windowBox(60,55,265,215)+shelves(650,48,"#73918a")+table(110,320,190)+table(415,290,205)+plant(880,385))),
-bg("school","فصل مدرسي — سبورة ومقاعد",room("#4b847a",board(245,55)+windowBox(730,65,180,170)+table(55,320,195)+table(700,315,195)+plant(940,340))),
-bg("clinic","عيادة — استقبال وكشف",room("#6fa7b1",windowBox(70,60)+rect(630,90,220,190,"#f7faf8",8)+rect(715,122,45,108,"#d67d7c",4)+rect(685,154,105,44,"#d67d7c",4)+desk(550,310,290)+plant(110,385))),
-bg("shop","متجر — أرفف وعرض المنتجات",room("#c69a5e",shelves(40,55,"#70a59b")+shelves(685,55,"#9c9da5")+table(350,316,260))),
-bg("office","مكتب شركة — اجتماع",room("#4b778e",windowBox(75,48,330,210)+windowBox(560,48,330,210)+desk(540,305,325)+plant(55,383))),
-bg("home","منزل — غرفة معيشة",room("#937a98",windowBox(95,53,300,200)+rect(570,233,300,145,"#879f9f",30)+rect(580,305,280,90,"#758c94",15)+table(120,345,225)+plant(915,390))),
-bg("workshop","ورشة — أدوات ومعدات",room("#717d83",rect(50,60,260,195,"#a0aeb0",8)+[0,1,2,3].map(i=>rect(75+i*58,90,18,125,"#53636e",5)).join("")+desk(630,290,260)+table(70,315,265))),
-bg("hospital","مستشفى — غرفة رعاية",room("#5a9d9d",windowBox(50,55,260,190)+rect(690,80,120,210,"#eff5f4",8)+rect(728,122,42,110,"#d67d7c")+rect(695,157,110,42,"#d67d7c")+rect(525,305,355,60,"#e7f0ef",18)+rect(520,360,364,20,"#6e8a92",5)+plant(90,390))),
-bg("street","شارع حضري — واجهات ومحلات",svg(rect(0,0,960,540,"#c8e0e7")+rect(0,385,960,155,"#687c87")+[0,1,2,3,4].map((i)=>{const x=i*200,h=180+i%2*50;return rect(x,340-h,180,h+45,["#e3c9aa","#d8b5a0","#b9ccd0","#c7bfab","#d4bcaa"][i])+[0,1,2].map(j=>rect(x+18+j*52,365-h,36,55,"#789aa8",3)).join("")+rect(x+30,290,118,68,"#9d7962",4)}).join("")+rect(0,365,960,28,"#e2d6bf")+[35,235,435,635,835].map(x=>rect(x,467,100,8,"#f9eed0",3)).join(""))),
-{kind:"hero",category:"human",name:"بطل رجل — رسم توضيحي",svg:person("#b98260","#332b30","#427e92"),poseSvgs:humanPoses("#b98260","#332b30","#427e92"),outfitSvg:person("#b98260","#332b30","#43536a"),outfitPoses:humanPoses("#b98260","#332b30","#43536a")},
-{kind:"hero",category:"human",name:"بطلة سيدة — رسم توضيحي",svg:person("#d39c7a","#49323a","#a56f91"),poseSvgs:humanPoses("#d39c7a","#49323a","#a56f91"),outfitSvg:person("#d39c7a","#49323a","#588a82"),outfitPoses:humanPoses("#d39c7a","#49323a","#588a82")},
-{kind:"hero",category:"animal",name:"قطة منزلية",svg:animal(true),poseSvgs:{"talk-open":animal(true,true)}},
-{kind:"hero",category:"animal",name:"كلب أليف",svg:animal(false),poseSvgs:{"talk-open":animal(false,true)}},
-{kind:"prop",category:"vehicle",name:"سيارة زرقاء",svg:car("#497d9d")},
-{kind:"prop",category:"vehicle",name:"سيارة توصيل",svg:car("#cb775c")},
-{kind:"prop",category:"door",name:"باب خشبي",svg:svg(rect(18,8,214,340,"#715849",6)+rect(32,21,186,313,"#b08061",4)+rect(50,39,150,120,"#bc9270",3)+rect(50,170,150,140,"#946b50",3)+ellipse(194,182,9,9,"#e4c78c"),250,350),poseSvgs:{open:svg(rect(18,8,214,340,"#715849",6)+rect(32,21,186,313,"#404d54",4)+`<path d="M32 21l85 35v259l-85 19z" fill="#b08061"/>`+ellipse(95,190,7,7,"#e4c78c"),250,350)}},
-{kind:"prop",category:"object",name:"مكتب وحاسوب",svg:svg(desk(20,90,300),345,240)},
-{kind:"prop",category:"object",name:"طاولة عرض",svg:svg(table(18,40,220),260,180)},
-{kind:"prop",category:"object",name:"نبات ديكور",svg:svg(plant(80,135),160,170)},
-]}
+type ArtFile={pose:ArtPose;file:string};
+type Starter={kind:"background"|"hero"|"prop";category:string;name:string;locationType?:LocationType;files:ArtFile[];voiceId?:VoiceId;outfits?:{name:string;files:ArtFile[]}[]};
+const catalog:Starter[]= [
+  {
+    "kind": "background",
+    "category": "background",
+    "locationType": "office",
+    "name": "استوديو ATSH AI — إطلالة القاهرة",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "brand-location-0.webp"
+      }
+    ]
+  },
+  {
+    "kind": "background",
+    "category": "background",
+    "locationType": "restaurant",
+    "name": "مطعم سينمائي",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "brand-places-0.webp"
+      }
+    ]
+  },
+  {
+    "kind": "background",
+    "category": "background",
+    "locationType": "school",
+    "name": "فصل مدرسي سينمائي",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "brand-places-1.webp"
+      }
+    ]
+  },
+  {
+    "kind": "background",
+    "category": "background",
+    "locationType": "clinic",
+    "name": "عيادة سينمائية",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "brand-places-2.webp"
+      }
+    ]
+  },
+  {
+    "kind": "background",
+    "category": "background",
+    "locationType": "shop",
+    "name": "متجر سينمائي",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "brand-places-3.webp"
+      }
+    ]
+  },
+  {
+    "kind": "background",
+    "category": "background",
+    "locationType": "home",
+    "name": "منزل مصري سينمائي",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "places-animated-0.webp"
+      }
+    ]
+  },
+  {
+    "kind": "background",
+    "category": "background",
+    "locationType": "street",
+    "name": "شارع القاهرة السينمائي",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "places-animated-1.webp"
+      }
+    ]
+  },
+  {
+    "kind": "background",
+    "category": "background",
+    "locationType": "workshop",
+    "name": "ورشة سيارات سينمائية",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "places-animated-2.webp"
+      }
+    ]
+  },
+  {
+    "kind": "background",
+    "category": "background",
+    "locationType": "hospital",
+    "name": "مستشفى سينمائي",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "places-animated-3.webp"
+      }
+    ]
+  },
+  {
+    "kind": "hero",
+    "category": "human",
+    "name": "ATSH AI — مقدم الإعلان",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "host-man-stand.webp"
+      },
+      {
+        "pose": "talk-open",
+        "file": "host-man-talk-open.webp"
+      },
+      {
+        "pose": "point",
+        "file": "host-man-point.webp"
+      },
+      {
+        "pose": "wave",
+        "file": "host-man-wave.webp"
+      },
+      {
+        "pose": "walk-a",
+        "file": "host-man-walk-a.webp"
+      },
+      {
+        "pose": "walk-b",
+        "file": "host-man-walk-b.webp"
+      },
+      {
+        "pose": "sit",
+        "file": "host-man-sit.webp"
+      },
+      {
+        "pose": "think",
+        "file": "host-man-think.webp"
+      },
+      {
+        "pose": "explain",
+        "file": "host-man-talk-open.webp"
+      }
+    ],
+    "voiceId": "egyptian-male",
+    "outfits": [
+      {
+        "name": "ملابس كاجوال",
+        "files": [
+          {
+            "pose": "stand",
+            "file": "man-casual-stand.webp"
+          },
+          {
+            "pose": "talk-open",
+            "file": "man-casual-talk-open.webp"
+          },
+          {
+            "pose": "wave",
+            "file": "man-casual-wave.webp"
+          },
+          {
+            "pose": "sit",
+            "file": "man-casual-sit.webp"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "hero",
+    "category": "human",
+    "name": "ATSH AI — مقدمة الإعلان",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "host-woman-stand.webp"
+      },
+      {
+        "pose": "talk-open",
+        "file": "host-woman-talk-open.webp"
+      },
+      {
+        "pose": "tablet",
+        "file": "host-woman-tablet.webp"
+      },
+      {
+        "pose": "wave",
+        "file": "host-woman-wave.webp"
+      },
+      {
+        "pose": "walk-a",
+        "file": "host-woman-walk-a.webp"
+      },
+      {
+        "pose": "walk-b",
+        "file": "host-woman-walk-b.webp"
+      },
+      {
+        "pose": "sit",
+        "file": "host-woman-sit.webp"
+      },
+      {
+        "pose": "think",
+        "file": "host-woman-think.webp"
+      },
+      {
+        "pose": "explain",
+        "file": "host-woman-talk-open.webp"
+      }
+    ],
+    "voiceId": "egyptian-female",
+    "outfits": [
+      {
+        "name": "ملابس كاجوال",
+        "files": [
+          {
+            "pose": "stand",
+            "file": "woman-casual-stand.webp"
+          },
+          {
+            "pose": "talk-open",
+            "file": "woman-casual-talk-open.webp"
+          },
+          {
+            "pose": "wave",
+            "file": "woman-casual-wave.webp"
+          },
+          {
+            "pose": "sit",
+            "file": "woman-casual-sit.webp"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "hero",
+    "category": "human",
+    "name": "آدم — شاب مصري",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "boy-animated-stand.webp"
+      },
+      {
+        "pose": "talk-open",
+        "file": "boy-animated-talk-open.webp"
+      },
+      {
+        "pose": "wave",
+        "file": "boy-animated-wave.webp"
+      },
+      {
+        "pose": "sit",
+        "file": "boy-animated-sit.webp"
+      },
+      {
+        "pose": "explain",
+        "file": "boy-animated-talk-open.webp"
+      }
+    ],
+    "voiceId": "egyptian-teen-male"
+  },
+  {
+    "kind": "hero",
+    "category": "human",
+    "name": "ليلى — شابة مصرية",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "girl-animated-stand.webp"
+      },
+      {
+        "pose": "talk-open",
+        "file": "girl-animated-talk-open.webp"
+      },
+      {
+        "pose": "wave",
+        "file": "girl-animated-wave.webp"
+      },
+      {
+        "pose": "sit",
+        "file": "girl-animated-sit.webp"
+      },
+      {
+        "pose": "explain",
+        "file": "girl-animated-talk-open.webp"
+      }
+    ],
+    "voiceId": "egyptian-teen-female"
+  },
+  {
+    "kind": "hero",
+    "category": "human",
+    "name": "عمر — طفل مصري",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "childboy-animated-stand.webp"
+      },
+      {
+        "pose": "talk-open",
+        "file": "childboy-animated-talk-open.webp"
+      },
+      {
+        "pose": "wave",
+        "file": "childboy-animated-wave.webp"
+      },
+      {
+        "pose": "sit",
+        "file": "childboy-animated-sit.webp"
+      },
+      {
+        "pose": "explain",
+        "file": "childboy-animated-talk-open.webp"
+      }
+    ],
+    "voiceId": "egyptian-child-male"
+  },
+  {
+    "kind": "hero",
+    "category": "human",
+    "name": "مريم — طفلة مصرية",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "childgirl-animated-stand.webp"
+      },
+      {
+        "pose": "talk-open",
+        "file": "childgirl-animated-talk-open.webp"
+      },
+      {
+        "pose": "wave",
+        "file": "childgirl-animated-wave.webp"
+      },
+      {
+        "pose": "sit",
+        "file": "childgirl-animated-sit.webp"
+      },
+      {
+        "pose": "explain",
+        "file": "childgirl-animated-talk-open.webp"
+      }
+    ],
+    "voiceId": "egyptian-child-female"
+  },
+  {
+    "kind": "hero",
+    "category": "animal",
+    "name": "قطة سينمائية",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "cat-stand.webp"
+      },
+      {
+        "pose": "talk-open",
+        "file": "cat-talk-open.webp"
+      }
+    ]
+  },
+  {
+    "kind": "hero",
+    "category": "animal",
+    "name": "كلب سينمائي",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "dog-stand.webp"
+      },
+      {
+        "pose": "talk-open",
+        "file": "dog-talk-open.webp"
+      }
+    ]
+  },
+  {
+    "kind": "prop",
+    "category": "vehicle",
+    "name": "سيارة زرقاء سينمائية",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "car-stand.webp"
+      }
+    ]
+  },
+  {
+    "kind": "prop",
+    "category": "vehicle",
+    "name": "سيارة توصيل سينمائية",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "van-stand.webp"
+      }
+    ]
+  },
+  {
+    "kind": "prop",
+    "category": "vehicle",
+    "name": "توك توك مصري",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "tuktuk-stand.webp"
+      }
+    ]
+  },
+  {
+    "kind": "prop",
+    "category": "door",
+    "name": "باب خشبي سينمائي",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "door-stand.webp"
+      },
+      {
+        "pose": "open",
+        "file": "door-open.webp"
+      }
+    ]
+  },
+  {
+    "kind": "prop",
+    "category": "object",
+    "name": "مكتب وحاسوب سينمائي",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "desk-stand.webp"
+      }
+    ]
+  },
+  {
+    "kind": "prop",
+    "category": "object",
+    "name": "طاولة مطعم سينمائية",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "table-stand.webp"
+      }
+    ]
+  },
+  {
+    "kind": "prop",
+    "category": "object",
+    "name": "مقعد فصل سينمائي",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "chair-stand.webp"
+      }
+    ]
+  },
+  {
+    "kind": "prop",
+    "category": "object",
+    "name": "نبات ديكور سينمائي",
+    "files": [
+      {
+        "pose": "stand",
+        "file": "plant-stand.webp"
+      }
+    ]
+  }
+];
+export function starterArtwork():Starter[]{return catalog;}
