@@ -109,7 +109,7 @@ export default function DomainLookup({onDomainChange,locale="ar",source="configu
     autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="atsh"
     value={name} onChange={e=>change(e.target.value)} maxLength={253}
     style={{padding:12,minWidth:0,flex:"1 1 165px",border:"1px solid #cbd5e1",borderRadius:10,fontSize:16,direction:"ltr"}}/>
-   <button disabled={checking} type="button" onClick={()=>void check()} style={{background:"#203958",color:"white",border:0,padding:"11px 17px",borderRadius:10,fontSize:15,cursor:"pointer"}}>
+   <button data-analytics-action="domain_check" disabled={checking} type="button" onClick={()=>void check()} style={{background:"#203958",color:"white",border:0,padding:"11px 17px",borderRadius:10,fontSize:15,cursor:"pointer"}}>
     {checking?t("جارٍ البحث…","Searching…"):t("ابحث","Search")}
    </button>
   </div>
@@ -124,7 +124,7 @@ export default function DomainLookup({onDomainChange,locale="ar",source="configu
      </small>
      {item.lookup?.premium&&<small style={{display:"block"}}>{t("دومين مميز — السعر يحتاج تأكيدًا","Premium domain — price needs confirmation")}</small>}
     </div>
-    {item.lookup&&selectable(item.lookup)&&<button type="button" onClick={()=>select(item.domain)}
+    {item.lookup&&selectable(item.lookup)&&<button data-analytics-action="domain_select" type="button" onClick={()=>select(item.domain)}
      style={{background:selectedDomain===item.domain?"#e1ecf7":"#fff",color:"#203958",border:"1px solid #9db4cb",borderRadius:8,padding:"5px 4px",fontSize:14,fontWeight:600,cursor:"pointer",width:"100%"}}>
      {selectedDomain===item.domain?t("محدد ✓","Selected ✓"):t("اختيار مبدئي","Select")}
     </button>}

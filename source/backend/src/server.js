@@ -918,6 +918,7 @@ app.post("/api/admin/login",rateLimit({windowMs:15*60*1000,limit:isolatedCiRate?
 app.post("/api/admin/logout",(_req,res)=>{res.clearCookie(cookie,cookieOptions);res.json({authenticated:false});});
 await pool.query(`CREATE TABLE IF NOT EXISTS visitor_analytics_sessions (
  id uuid PRIMARY KEY, first_seen timestamptz NOT NULL DEFAULT now(), last_seen timestamptz NOT NULL DEFAULT now(), source text NOT NULL, device text NOT NULL);
+ ALTER TABLE visitor_analytics_sessions ADD COLUMN IF NOT EXISTS first_visit_id uuid;
  CREATE INDEX IF NOT EXISTS visitor_analytics_last_seen ON visitor_analytics_sessions(last_seen);
  CREATE TABLE IF NOT EXISTS visitor_analytics_daily (day date NOT NULL, visitor_id uuid NOT NULL, path text NOT NULL, views integer NOT NULL DEFAULT 0, PRIMARY KEY(day,visitor_id,path));`);
 await pool.query(`CREATE TABLE IF NOT EXISTS visitor_journey_events (
@@ -928,12 +929,12 @@ const journeyCleanup=setInterval(()=>pool.query("DELETE FROM visitor_journey_eve
 app.post("/api/visitor/analytics",rateLimit({windowMs:60000,limit:300,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
  if(req.cookies[cookie]) return res.sendStatus(204);
  const {id,path,source,device,view,visitId,eventId,kind,label,activeSeconds}=req.body??{};
- if(typeof id!=="string"||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)||typeof path!=="string"||path.length>200||!/^\/(?!\/)/.test(path)||/[?#]/.test(path)||/^\/(?:en\/)?(?:admin|team|customer|account|api|login)(?:\/|$)/i.test(path))return res.status(400).json({error:"Invalid analytics event"});
+ if(typeof id!=="string"||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)||typeof path!=="string"||path.length>200||!/^\/(?!\/)/.test(path)||/[?#]/.test(path)||/^\/(?:en\/)?(?:admin|team|customer|customer-portal|account|api|login)(?:\/|$)/i.test(path))return res.status(400).json({error:"Invalid analytics event"});
  const src=["Google","Facebook","Instagram","YouTube","Other","Direct"].includes(source)?source:"Other";
  const dev=device==="mobile"?"mobile":"desktop";
- await pool.query(`WITH session AS (INSERT INTO visitor_analytics_sessions(id,source,device) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET last_seen=now() RETURNING id)
- INSERT INTO visitor_analytics_daily(day,visitor_id,path,views) SELECT (now() AT TIME ZONE 'Africa/Cairo')::date,id,$4,$5 FROM session ON CONFLICT(day,visitor_id,path) DO UPDATE SET views=visitor_analytics_daily.views+EXCLUDED.views`,[id,src,dev,path,view===true?1:0]);
  const uuid=v=>typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+ await pool.query(`WITH session AS (INSERT INTO visitor_analytics_sessions(id,source,device,first_visit_id) VALUES($1,$2,$3,$6) ON CONFLICT(id) DO UPDATE SET last_seen=now() RETURNING id)
+ INSERT INTO visitor_analytics_daily(day,visitor_id,path,views) SELECT (now() AT TIME ZONE 'Africa/Cairo')::date,id,$4,$5 FROM session ON CONFLICT(day,visitor_id,path) DO UPDATE SET views=visitor_analytics_daily.views+EXCLUDED.views`,[id,src,dev,path,view===true?1:0,uuid(visitId)?visitId:null]);
  if(uuid(visitId)&&uuid(eventId)&&["page","click","activity","scroll","submit","result"].includes(kind)){
    const safeLabel=typeof label==="string"&&/^[a-z0-9_-]{1,80}$/i.test(label)?label:"";
    const seconds=kind==="activity"&&Number.isInteger(activeSeconds)?Math.max(0,Math.min(15,activeSeconds)):0;
@@ -968,7 +969,20 @@ app.get("/api/admin/visitor-analytics",requireAdmin,requireRole("owner","admin")
  if(_req.admin.role==="owner"){
  const journeys=await pool.query(`WITH recent AS (SELECT visit_id,visitor_id,min(created_at) AS started,max(created_at) AS last_seen,sum(active_seconds)::int AS active_seconds,count(*) FILTER(WHERE kind IN ('click','submit'))::int AS interactions,count(*) FILTER(WHERE kind='page')::int AS pages FROM visitor_journey_events WHERE created_at>=now()-interval '30 days' GROUP BY visit_id,visitor_id ORDER BY max(created_at) DESC LIMIT 50)
  SELECT r.*,s.device,s.source,r.last_seen>now()-interval '90 seconds' AS online,
- (SELECT coalesce(json_agg(e ORDER BY e.created_at),'[]'::json) FROM (SELECT path,kind,label,active_seconds,created_at FROM visitor_journey_events WHERE visit_id=r.visit_id AND visitor_id=r.visitor_id AND created_at>=now()-interval '30 days' ORDER BY created_at DESC LIMIT 200) e) AS events
+ s.first_seen, CASE WHEN s.first_visit_id=r.visit_id AND s.first_seen>=now()-interval '30 days' THEN 'first'
+   WHEN s.first_visit_id=r.visit_id THEN 'unknown'
+   WHEN s.first_visit_id IS NOT NULL OR s.first_seen<r.started-interval '1 minute' THEN 'returning'
+   ELSE 'unknown' END AS visit_type,
+ (SELECT coalesce(json_agg(p ORDER BY p.entered),'[]'::json)
+  FROM (SELECT e.path,min(e.created_at) AS entered,sum(e.active_seconds)::int AS seconds,
+     count(*) FILTER(WHERE e.kind='page')::int AS opens
+    FROM visitor_journey_events e WHERE e.visit_id=r.visit_id AND e.visitor_id=r.visitor_id AND e.created_at>=now()-interval '30 days'
+    GROUP BY e.path) p) AS page_times,
+ (SELECT row_to_json(last_action) FROM (SELECT e.path,e.kind,e.label,e.created_at FROM visitor_journey_events e
+  WHERE e.visit_id=r.visit_id AND e.visitor_id=r.visitor_id AND e.created_at>=now()-interval '30 days'
+    AND e.kind IN ('click','submit','result','page')
+  ORDER BY e.created_at DESC,e.event_id DESC LIMIT 1) last_action) AS last_action,
+ (SELECT coalesce(json_agg(e ORDER BY e.created_at),'[]'::json) FROM (SELECT path,kind,label,active_seconds,created_at FROM visitor_journey_events WHERE visit_id=r.visit_id AND visitor_id=r.visitor_id AND created_at>=now()-interval '30 days' AND kind<>'activity' ORDER BY created_at DESC,event_id DESC LIMIT 200) e) AS events
  FROM recent r JOIN visitor_analytics_sessions s ON s.id=r.visitor_id ORDER BY r.last_seen DESC`);
  result.rows[0].journeys=journeys.rows;
  }

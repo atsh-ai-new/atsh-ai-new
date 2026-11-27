@@ -22,8 +22,9 @@ export default function VisitorAnalytics(){
    lastActivity=now;
    return session;
  };
- const page=()=>{const session=touch();if(session){pageRecorded=true;send("page",session);}};
- const classify=(el:Element)=>{const explicit=el.getAttribute("data-analytics-action");if(explicit&&/^[a-z0-9_-]{1,80}$/i.test(explicit))return explicit;const href=el.getAttribute("href")||"";if(/catalog/.test(href))return "catalog";if(/pricing|packages/.test(href))return "pricing";if(/preview/.test(href))return "preview";if(/order/.test(href))return "order";const text=(el.getAttribute("aria-label")||el.textContent||"").trim();const known:[RegExp,string][]=[[/المساعد الذكي|assistant/i,"assistant"],[/إرسال|send/i,"send"],[/معاينة|preview/i,"preview"],[/دومين|domain/i,"domain"],[/التالي|next/i,"next"],[/تأكيد|confirm/i,"confirm"],[/إضاف|add/i,"add"],[/أنظمة مخصصة|catalog/i,"catalog"],[/كوّن طلبك|build your/i,"order"],[/بحث|search/i,"search"]];return known.find(([re])=>re.test(text))?.[1]||el.tagName.toLowerCase();};
+ const demoOpen=/^\/(?:en\/)?catalog\/[^/]+\/?$/i.test(path)&&new URLSearchParams(location.search).get("fullscreen")==="1";
+ const page=()=>{const session=touch();if(session){pageRecorded=true;send("page",session,demoOpen?"demo_open":"");}};
+ const classify=(el:Element)=>{const explicit=el.getAttribute("data-analytics-action");if(explicit&&/^[a-z0-9_-]{1,80}$/i.test(explicit))return explicit;const href=el.getAttribute("href")||"";if(/[?&]fullscreen=1(?:&|$)|preview/.test(href))return "preview";if(/pricing/.test(href))return "pricing";if(/(?:^|\/)configure(?:[?#]|$)/.test(href))return "start_order";if(/catalog/.test(href))return "catalog";if(/packages/.test(href))return "pricing";if(/order/.test(href))return "order";const text=(el.getAttribute("aria-label")||el.textContent||"").trim();const known:[RegExp,string][]=[[/المساعد الذكي|assistant/i,"assistant"],[/إرسال|send/i,"send"],[/معاينة|preview/i,"preview"],[/دومين|domain/i,"domain"],[/التالي|next/i,"next"],[/تأكيد|confirm/i,"confirm"],[/إضاف|add/i,"add"],[/أنظمة مخصصة|catalog/i,"catalog"],[/كوّن طلبك|build your/i,"order"],[/بحث|search/i,"search"]];return known.find(([re])=>re.test(text))?.[1]||el.tagName.toLowerCase();};
  const click=(e:MouseEvent)=>{const session=touch();const el=e.target instanceof Element?e.target.closest("button,a,[role=button],input[type=checkbox],input[type=radio],select"):null;if(el&&Date.now()-lastClick>250){lastClick=Date.now();send("click",session,classify(el));}};
  const submit=(e:Event)=>{const session=touch();if(e.target instanceof HTMLFormElement)send("submit",session,classify(e.target));};
  const scroll=()=>{const now=Date.now(),max=document.documentElement.scrollHeight-innerHeight;if(now-lastScrollTouch<500)return;lastScrollTouch=now;const session=touch();if(max>0){const level=Math.min(100,Math.floor(scrollY/max*4)*25);if(level>lastScroll){lastScroll=level;send("scroll",session,String(level));}}};
@@ -31,9 +32,13 @@ export default function VisitorAnalytics(){
  const originalFetch=window.fetch;
  const trackedFetch:typeof window.fetch=async(input,init)=>{
  const method=(init?.method||(input instanceof Request?input.method:"GET")).toUpperCase();
- let action="";try{const u=new URL(input instanceof Request?input.url:String(input),location.origin);if(u.origin===location.origin&&method==="POST"){if(u.pathname==="/api/visitor/assistant")action="assistant";else if(/^\/api\/(?:visitor\/)?(?:domain|domains)(?:\/|$)/.test(u.pathname))action="domain";else if(/^\/api\/(?:visitor\/)?(?:orders|order)(?:\/|$)/.test(u.pathname))action="order";}}catch{}
+ let action="";try{const u=new URL(input instanceof Request?input.url:String(input),location.origin);if(u.origin===location.origin){
+   if(method==="POST"&&u.pathname==="/api/visitor/assistant")action="assistant";
+   else if(method==="GET"&&u.pathname==="/api/domains/check")action="domain";
+   else if(method==="POST"&&(u.pathname==="/api/orders"||/^\/api\/customer\/auth\/project-drafts\/[^/]+\/submit$/.test(u.pathname)))action="order";
+ }}catch{}
  const requestSession=action?getSession(Date.now()):null;
- try{const response=await originalFetch.call(window,input,init);if(action)send("result",requestSession,action+"_"+(response.ok?"http_ok":"http_error"));return response;}catch(error){if(action)send("result",requestSession,action+"_network_error");throw error;}
+ try{const response=await originalFetch.call(window,input,init);if(action&&getSession(Date.now())===requestSession)send("result",requestSession,action+"_"+(response.ok?"http_ok":"http_error"));return response;}catch(error){if(action&&getSession(Date.now())===requestSession)send("result",requestSession,action+"_network_error");throw error;}
  };
  window.fetch=trackedFetch;
  page();const timer=setInterval(tick,15000);
