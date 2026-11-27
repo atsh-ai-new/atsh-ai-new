@@ -1,7 +1,7 @@
 import {artImage,heroImage,rigSchema,outfitsSchema,audioData} from "./content-studio-assets.js";
 import { z } from "zod";
 import {registerPortraitRoutes,portraitCancelSQL} from "./portrait-worker.js";
-import {voiceCatalog,voiceIdSchema,synthesizeStudioVoice} from "./studio-voices.js";
+import {onlineVoiceCatalog,voiceIdSchema,synthesizeStudioVoice} from "./studio-voices.js";
 import {registerLayeredRoutes,layeredCancelSQL} from "./layered-worker.js";
 import { createHash } from "node:crypto";
 const color=z.string().regex(/^#[0-9a-f]{6}$/i);
@@ -59,7 +59,7 @@ export function registerCharacterRoutes(app,{pool,requireAdmin,requirePermission
   await auditChange(c,req.admin.email,"content_studio.manual","content_studio_draft",q.rows[0].id,null,{title:x.title,status:x.status});await c.query("COMMIT");res.status(201).json({draft:characterDraftView(q.rows[0])});
   }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
  }));
- app.get("/api/admin/content-studio/voices",...auth,(_req,res)=>res.set("Cache-Control","no-store").json({voices:voiceCatalog()}));
+ app.get("/api/admin/content-studio/voices",...auth,route(async(_req,res)=>res.set("Cache-Control","no-store").json({voices:await onlineVoiceCatalog()})));
  app.post("/api/admin/content-studio/voice-preview",...auth,rateLimit({windowMs:60000,limit:5,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
   const p=z.object({text:z.string().trim().min(1).max(90),pronunciation:z.string().max(90),voiceId:voiceIdSchema.optional(),pitch:z.number().min(-3).max(3),speed:z.number().min(.8).max(1.2),intonation:z.number().min(.8).max(1.2)}).strict().safeParse(req.body);if(!p.success||/[A-Za-z]/.test(p.data.pronunciation||p.data.text))return res.status(400).json({error:"اكتب نصًا عربيًا قصيرًا."});
   try{const audio=await synthesizeStudioVoice(p.data);res.type("audio/wav").set("Cache-Control","no-store").send(audio);}catch{return res.status(502).json({error:"الصوت غير متاح أو تعذرت معاينته."})}

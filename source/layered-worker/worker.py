@@ -10,7 +10,7 @@ class API:
     def __init__(self,base,token):
         u=urllib.parse.urlsplit(base)
         if u.scheme not in ("http","https") or u.username or u.password or u.path not in ("","/") or u.query or u.fragment:raise ValueError("Invalid API origin")
-        if u.scheme=="http" and u.hostname not in ("backend","api","localhost","127.0.0.1") and os.environ.get("ALLOW_INTERNAL_HTTP")!="true":raise ValueError("Internal HTTP not allowed")
+        if u.scheme=="http" and u.hostname not in ("backend","api","atsh-website-api","atsh-website-api-internal","localhost","127.0.0.1") and os.environ.get("ALLOW_INTERNAL_HTTP")!="true":raise ValueError("Internal HTTP not allowed")
         if not KEY.fullmatch(token):raise ValueError("Invalid worker token")
         self.base=base.rstrip("/");self.token=token;self.opener=urllib.request.build_opener(NoRedirect())
     def call(self,path,body=None,token=None,mime="application/json",limit=6*1024*1024):

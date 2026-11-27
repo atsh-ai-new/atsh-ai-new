@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ChangeEvent } from "react";
 import CartoonStudio from "./cartoon-studio";
+import StudioAssets from "./studio-assets";
 
 type Scene = {
   seconds: number;
@@ -289,4 +290,11 @@ function LegacyContentStudio() {
   </div>;
 }
 
-export default function ContentStudio(){const [mode,setMode]=useState<"cartoon"|"legacy">("cartoon");return <div className="content-studio"><nav className="cartoon-mode" aria-label="نوع المحتوى"><button type="button" className={mode==="cartoon"?"active":""} onClick={()=>setMode("cartoon")}>استوديو الإنتاج المتكامل</button><button type="button" className={mode==="legacy"?"active":""} onClick={()=>setMode("legacy")}>أرشيف أدوات الإنتاج السابق</button></nav>{mode==="cartoon"?<CartoonStudio/>:<LegacyContentStudio/>}</div>}
+export default function ContentStudio(){
+ const [mode,setMode]=useState<"cartoon"|"library"|"legacy">("cartoon");
+ return <div className="content-studio" dir="rtl"><nav className="cartoon-mode" aria-label="أقسام الاستوديو">
+ <button type="button" className={mode==="cartoon"?"active":""} onClick={()=>setMode("cartoon")}>الإنتاج والمشروعات</button>
+ <button type="button" className={mode==="library"?"active":""} onClick={()=>setMode("library")}>مكتبة الأصول والأصوات</button>
+ <button type="button" className={mode==="legacy"?"active":""} onClick={()=>setMode("legacy")}>الأرشيف السابق</button>
+ </nav><div hidden={mode!=="cartoon"}><CartoonStudio/></div>{mode==="library"&&<StudioAssets/>}{mode==="legacy"&&<LegacyContentStudio/>}</div>
+}

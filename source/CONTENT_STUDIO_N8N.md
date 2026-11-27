@@ -83,7 +83,7 @@ Deploy on the same private network. Configure the backend
 `CHARACTER_DIALECT_SERVICE_URL`, `CHARACTER_DIALECT_SERVICE_TOKEN` and
 `CHARACTER_DIALECT_VOICES` (JSON array matching the installed models).
 The provider exposes authenticated GET /voices and POST /voice-preview;
-the backend allowlist controls UI availability. Dialect models preserve
+the backend allowlist and live provider registry jointly control UI availability. Dialect models preserve
 their own pitch/intonation, with only playback speed adjustable.
 No model downloads or paid cloud service calls are made automatically.
 

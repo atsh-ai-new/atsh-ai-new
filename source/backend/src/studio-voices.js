@@ -10,6 +10,18 @@ export function voiceCatalog(){
  const ids=configuredIds();
  return voiceIds.map(id=>({id,available:id==="local-msa"?local:external&&ids.has(id)}));
 }
+export async function onlineVoiceCatalog(){
+ const catalog=voiceCatalog();
+ if(!catalog.some(v=>v.id!=="local-msa"&&v.available))return catalog;
+ let installed=new Set();
+ try{
+  const url=new URL("/voices",process.env.CHARACTER_DIALECT_SERVICE_URL);
+  if(!["http:","https:"].includes(url.protocol)||url.username||url.password)throw Error("Invalid voice provider");
+  const r=await fetch(url,{headers:{Authorization:"Bearer "+process.env.CHARACTER_DIALECT_SERVICE_TOKEN},redirect:"error",signal:AbortSignal.timeout(3000)});
+  if(r.ok){const data=await r.json();if(Array.isArray(data.voices))installed=new Set(data.voices);}
+ }catch{}
+ return catalog.map(v=>v.id==="local-msa"?v:{...v,available:v.available&&installed.has(v.id)});
+}
 export function voiceAvailable(id){return voiceCatalog().some(v=>v.id===(id||"local-msa")&&v.available);}
 export async function synthesizeStudioVoice(input){
  const {voiceId="local-msa",...body}=input;

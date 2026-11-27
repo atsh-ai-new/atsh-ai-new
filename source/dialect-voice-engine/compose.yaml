@@ -7,7 +7,7 @@ services:
     pids_limit: 128
     environment:
       CHARACTER_DIALECT_SERVICE_TOKEN: ${CHARACTER_DIALECT_SERVICE_TOKEN:?Set secret}
-      VOICE_MODELS_JSON: ${VOICE_MODELS_JSON:-{}}
+      VOICE_MODELS_JSON: ${VOICE_MODELS_JSON:?Set verified model registry}
     volumes:
       - ${VOICE_MODELS_DIR:?Set verified models directory}:/models:ro
     security_opt:
