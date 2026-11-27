@@ -1105,3 +1105,12 @@ input,textarea,select,option,optgroup{font-weight:500}
 .cms-preview-panel .admin-content-title{flex-wrap:wrap}
 .cms-preview-panel .admin-content-title .admin-actions{flex-wrap:wrap;min-width:0;max-width:100%;justify-content:flex-start}
 @media(max-width:760px){.cms-preview-panel .admin-content-title{align-items:stretch;flex-direction:column}.cms-preview-panel .admin-content-title .admin-actions{width:100%;margin-top:0}}
+
+/* Keep delegated team directory and owner permission controls usable on narrow screens. */
+@media(max-width:760px){
+ .admin-team-permissions-panel .admin-team-form{grid-template-columns:minmax(0,1fr);align-items:stretch}
+ .admin-team-permissions-panel .admin-team-row{grid-template-columns:auto minmax(0,1fr);min-width:0;overflow-wrap:anywhere}
+ .admin-team-permissions-panel .admin-team-row>details{grid-column:1/-1;min-width:0}
+ .admin-team-permissions-panel .admin-team-row>details .check-row{max-width:100%;white-space:normal}
+ .admin-team-permissions-panel .admin-team-row>span:not(.admin-avatar){min-width:0;overflow-wrap:anywhere}
+}

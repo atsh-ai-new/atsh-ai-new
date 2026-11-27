@@ -59,6 +59,20 @@ try{
  const chatA=randomUUID(),chatB=randomUUID(),chatC=randomUUID();
  for(const [id,name] of [[chatA,"Chat A"],[chatB,"Chat B"],[chatC,"Chat C"]])await pool.query("INSERT INTO team_members(id,email,display_name,role,password_hash,is_active) VALUES($1,$2,$3,'viewer','ci-test',true)",[id,id+"@example.test",name]);
  const teamCookie=id=>"atsh_admin="+jwt.sign({role:"viewer",userId:id,email:id+"@example.test"},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-admin",expiresIn:"10m"});
+ // The owner can grant team-directory visibility independently of stored role.
+ assert.equal((await req("/api/admin/team",{cookie:teamCookie(chatA)})).status,403);
+ const granted=await req("/api/admin/team/"+chatA,{method:"PATCH",cookie:adminCookie,body:{permissions:{team:true}}});
+ assert.equal(granted.status,200,JSON.stringify(granted));
+ assert.deepEqual(granted.result.member.permission_overrides,{team:true});
+ assert.equal((await req("/api/admin/me",{cookie:teamCookie(chatA)})).result.permissions.team,true);
+ const teamRead=await req("/api/admin/team",{cookie:teamCookie(chatA)});
+ assert.equal(teamRead.status,200);
+ assert.ok(teamRead.result.members.some(m=>m.id===chatB));
+ assert.ok(teamRead.result.members.every(m=>!("password_hash" in m)));
+ assert.equal((await req("/api/admin/team/"+chatB,{method:"PATCH",cookie:teamCookie(chatA),body:{isActive:false}})).status,403);
+ const revoked=await req("/api/admin/team/"+chatA,{method:"PATCH",cookie:adminCookie,body:{permissions:{team:false}}});
+ assert.equal(revoked.status,200,JSON.stringify(revoked));
+ assert.equal((await req("/api/admin/team",{cookie:teamCookie(chatA)})).status,403);
  const chatPath="/api/admin/internal-chat/";
  assert.equal((await req(chatPath+"contacts")).status,401);
  assert.equal((await req(chatPath+"contacts",{cookie:cookieFor(accountA)})).status,401);

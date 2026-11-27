@@ -22,3 +22,22 @@ test("role guards must not block a separately granted permission",()=>{
  assert.ok(route);
  assert.ok(!route.includes('requireRole('),"legacy role guard still blocks per-member grants");
 });
+
+test("explicit team read grants work independently of role, but mutations remain owner-only",()=>{
+ const routes=server.split("\n");
+ const read=routes.find(line=>line.startsWith('app.get("/api/admin/team",'));
+ assert.ok(read.includes('requirePermission("team")'));
+ assert.ok(!read.includes("requireRole("));
+ for(const method of ["post","patch","delete"]){
+  const mutations=routes.filter(line=>line.startsWith('app.'+method+'("/api/admin/team'));
+  assert.ok(mutations.length);
+  assert.ok(mutations.every(line=>line.includes('requireRole("owner")')&&line.includes('requirePermission("team")')));
+ }
+ assert.equal(hasPermission("viewer",effectivePermissions("viewer",{team:true}),"team"),true);
+});
+
+test("permission override validation accepts one explicit boolean without requiring every key",()=>{
+ const routes=server.split("\n");
+ const validators=routes.filter(line=>line.includes("permissions:z.partialRecord("));
+ assert.equal(validators.length,2);
+});
