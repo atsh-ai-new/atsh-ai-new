@@ -1410,7 +1410,7 @@ app.patch("/api/admin/customer-services/:id",requireAdmin,requirePermission("cus
  if(!result.rowCount)return res.status(404).json({error:"Service not found"});
  res.json({service:result.rows[0]});
 }));
-app.get("/api/admin/team",requireAdmin,requirePermission("team"),requireRole("owner","admin"),route(async(_req,res)=>{
+app.get("/api/admin/team",requireAdmin,requirePermission("team"),route(async(_req,res)=>{
   const result=await pool.query("SELECT id,email,display_name,role,is_active,permission_overrides,created_at,updated_at FROM team_members ORDER BY created_at");
   res.json({members:result.rows});
 }));

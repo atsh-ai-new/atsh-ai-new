@@ -180,3 +180,25 @@ for(const role of ["admin","owner"] as const){
   await expect(card.locator("strong")).toHaveText("—");
  });
 }
+
+for(const role of ["admin","viewer"] as const){
+ test("granted team permission opens a real read-only team directory: "+role,async({page})=>{
+  let requested=0;
+  await page.route("**/api/admin/**",route=>{
+   const path=new URL(route.request().url()).pathname;
+   if(path==="/api/admin/me")return route.fulfill({json:{email:"manager@example.test",role,permissions:{team:true}}});
+   if(path==="/api/admin/team"){
+    requested++;
+    return route.fulfill({json:{members:[{id:"team-a",email:"employee@example.test",display_name:"عضو الفريق التجريبي",role:"viewer",is_active:true}]}});
+   }
+   return route.fulfill({json:{}});
+  });
+  await page.goto("/admin");
+  await expect(page.locator(".admin-stat").filter({hasText:"أعضاء الفريق"}).locator("strong")).toHaveText("1");
+  await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"الفريق",exact:true}).click();
+  await expect(page.getByText("عضو الفريق التجريبي",{exact:true})).toBeVisible();
+  await expect(page.getByRole("button",{name:"إنشاء الحساب"})).toHaveCount(0);
+  await expect(page.getByRole("button",{name:"حذف نهائي"})).toHaveCount(0);
+  expect(requested).toBeGreaterThan(0);
+ });
+}
