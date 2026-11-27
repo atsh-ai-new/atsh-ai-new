@@ -1,5 +1,5 @@
 """Isolated VoiceTut candidate auditions, never activates or installs a production voice."""
-import argparse, json, resource, time
+import argparse, json, resource, time, hashlib
 from pathlib import Path
 from service import EGYPTIAN_IDS
 from voice_quality import check_signal
@@ -19,6 +19,11 @@ def audition(model, out, dialect):
     import torch
     out=Path(out);out.mkdir(parents=True,exist_ok=True)
     rows=[]
+    errors=[]
+    def checkpoint():
+        (out/"metrics.json").write_text(json.dumps(rows,ensure_ascii=False,indent=2))
+        (out/"generation-errors.json").write_text(json.dumps(errors,ensure_ascii=False,indent=2))
+    checkpoint()
     for i,(role,instruct) in enumerate(ROLES.items()):
         identity=f"{dialect}-{role}"
         assert identity in EGYPTIAN_IDS
@@ -29,15 +34,25 @@ def audition(model, out, dialect):
             started=time.monotonic()
             # Second new sentence must reuse a reference identity, not a new random voice.
             kwargs={"instruct":instruct} if stage=="reference" else {"ref_audio":str(out/(identity+"-reference.wav")),"ref_text":ref_text}
-            with torch.inference_mode():
-                wav=model.generate(text=line,language_id="arz",num_step=32,**kwargs)[0]
-            signals=check_signal(wav,24000)
-            sf.write(out/(key+".wav"),wav,24000,subtype="PCM_16")
-            row={"sample":key,"voiceId":identity,"text":line,"seconds":len(wav)/24000,
-                 "renderSeconds":round(time.monotonic()-started,2),"maxRssMiB":round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,1),**signals}
-            rows.append(row)
-            (out/"metrics.json").write_text(json.dumps(rows,ensure_ascii=False,indent=2))
-            print(row,flush=True)
+            try:
+                with torch.inference_mode():
+                    wav=model.generate(text=line,language_id="arz",num_step=32,**kwargs)[0]
+                signals=check_signal(wav,24000)
+                path=out/(key+".wav")
+                sf.write(path,wav,24000,subtype="PCM_16")
+                row={"sample":key,"voiceId":identity,"stage":stage,"text":line,
+                     "seconds":len(wav)/24000,"sha256":hashlib.sha256(path.read_bytes()).hexdigest(),
+                     "renderSeconds":round(time.monotonic()-started,2),
+                     "maxRssMiB":round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,1),**signals}
+                rows.append(row)
+                print(row,flush=True)
+            except Exception as exc:
+                errors.append({"voiceId":identity,"stage":stage,"reason":str(exc)[:300]})
+                print("Rejected generation:",errors[-1],flush=True)
+                # A failed reference cannot be reused for the independent sentence.
+                checkpoint()
+                break
+            checkpoint()
     return rows
 
 def main():

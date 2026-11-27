@@ -109,8 +109,7 @@ The pinned candidate and the OmniVoice 0.2.1 runtime are tested on GitHub CI (no
 production endpoint, no customer data, no real child recordings). Six fictional
 age/gender identities are auditioned with a reference sentence and a different
 sentence using that reference, signal screening and independent Arabic ASR.
-Cairene is the default first test. Alexandrian and Saidi are separate evaluation
-choices, not claims of model accent support. OmniVoice's documented voice design
+All three dialects now run as separate CI matrix jobs (six identities each), not claims of model accent support. Each failed identity is reported independently; only complete reference/dialogue pairs that pass the signal and independent ASR checks are included in listening artifacts. A partial failure cannot hide a passing pair or expose a failed pair. No machine check approves production. OmniVoice's documented voice design
 training is Chinese/English; Arabic age/gender design may fail. Even successful
 ASR is not dialect or identity certification. Native listening and commercial
 source rights review are mandatory. Do not deploy this 2.47 GB model on the shared
