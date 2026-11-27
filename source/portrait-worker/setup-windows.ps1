@@ -15,7 +15,7 @@ function Refresh-Path {
         [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path
 }
 function Find-Command([string]$Name) {
-    $c = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue
+    $c = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($c) { return $c.Source }
     return $null
 }
@@ -32,8 +32,10 @@ function Python310 {
         if (Test-Path $candidate) { $launcher = $candidate }
     }
     if ($launcher) {
-        $p = & $launcher -3.10 -c 'import sys;print(sys.executable)' 2>$null
-        if ($LASTEXITCODE -eq 0 -and $p -and (Test-Path $p)) { return "$p" }
+        try {
+            $p = & $launcher -3.10 -c 'import sys;print(sys.executable)' 2>$null | Select-Object -First 1
+            if ($LASTEXITCODE -eq 0 -and $p -and (Test-Path -LiteralPath $p -PathType Leaf)) { return "$p" }
+        } catch { return $null }
     }
     return $null
 }
