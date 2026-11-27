@@ -273,3 +273,38 @@ test("open manager dashboard follows team grants and revocations and recovers ta
  await expect(page.locator(".admin-stat").filter({hasText:"أعضاء الفريق"}).locator("strong")).toHaveText("—");
  expect(teamReads).toBe(1);
 });
+
+test("studio imports custom actors and backgrounds directly into the project",async({page})=>{
+ let posted:any;
+ await page.route("**/api/admin/**",async route=>{
+  const path=new URL(route.request().url()).pathname;
+  if(path==="/api/admin/me")return route.fulfill({json:{email:"owner@example.test",role:"owner",permissions:{}}});
+  if(path==="/api/admin/content-studio/status")return route.fulfill({json:{aiConfigured:false,characterVideoConfigured:true}});
+  if(path==="/api/admin/content-studio")return route.fulfill({json:{drafts:[]}});
+  if(path==="/api/admin/content-studio/assets")return route.fulfill({json:{assets:[]}});
+  if(path==="/api/admin/content-studio/manual"){
+   posted=route.request().postDataJSON();
+   return route.fulfill({json:{draft:{id:"draft-a",status:"draft",title:posted.title,production_plan:posted.productionPlan,brief_markdown:posted.briefMarkdown,source_filename:"cartoon-manual.txt"}}});
+  }
+  return route.fulfill({json:{}});
+ });
+ await page.goto("/admin");
+ await page.getByRole("button",{name:"محتوى المنصة",exact:true}).click();
+ await page.getByRole("button",{name:"منشئ المحتوى"}).click();
+ await page.getByLabel("المنتج أو فكرة الإعلان").fill("اختبار إعلان بصور خاصة");
+ await page.getByRole("button",{name:"اقترح خطة مجانية"}).click();
+ // Use a browser-generated valid transparent PNG rather than a real customer's image.
+ const png=await page.evaluate(()=>{const c=document.createElement("canvas");c.width=16;c.height=16;const ctx=c.getContext("2d")!;ctx.fillStyle="#4585a5";ctx.fillRect(4,4,8,8);return c.toDataURL("image/png").split(",")[1]});
+ const image={name:"asset.png",mimeType:"image/png",buffer:Buffer.from(png,"base64")};
+ await page.getByLabel("رفع صورة مباشرة — نور",{exact:true}).setInputFiles(image);
+ await expect(page.getByAltText("صورة نور",{exact:true})).toBeVisible();
+ await page.getByRole("button",{name:"3 المشاهد والتحريك"}).click();
+ await page.getByLabel("رفع خلفية المشهد مباشرة من جهازك").setInputFiles(image);
+ await expect(page.getByAltText("المشهد المخصص")).toBeVisible();
+ await expect(page.getByLabel("طريقة تركيب المشهد")).toHaveValue("background");
+ await expect(page.getByLabel("حركة الصور")).toHaveValue("stand");
+ await page.getByRole("button",{name:"حفظ المشروع",exact:true}).click();
+ await expect.poll(()=>posted?.productionPlan?.animation?.cast?.[0]?.artwork?.images?.[0]?.pose).toBe("stand");
+ expect(posted.productionPlan.animation.shots[0].artwork.mode).toBe("background");
+ expect(posted.productionPlan.animation.cast[0].artwork.images[0].image.length).toBeGreaterThan(10);
+});
