@@ -87,3 +87,6 @@ The runtime UID/GID is 10001. Before running the container, make sure the
 private model tree is traversable and readable by that user (e.g. set
 the private tree's group to 10001 and grant group read/traverse permission).
 Do not make recordings or the manifest publicly readable.
+
+### Candidate rejection and speech quality gate (2026-11-27)
+KemeTone was rejected by the owner: whistle/no speech. The repeated control sentence failed spectral checks with high-band power 79.1%. Do not promote it, even if inference completes. All generated audio now passes a signal gate; trial artifacts additionally require independent Arabic transcription. The NAMAA candidate is an isolated CI-only study and is not sized for the current production VPS. No deployment is implied.

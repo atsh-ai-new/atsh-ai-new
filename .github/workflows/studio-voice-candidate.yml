@@ -1,10 +1,5 @@
-name: Egyptian voice quality trial (no deployment)
+name: Rejected KemeTone diagnostics (manual only; no deployment)
 on:
-  push:
-    branches: [feat/integrated-server-studio-20261127]
-    paths:
-      - 'source/dialect-voice-engine/**'
-      - '.github/workflows/studio-voice-candidate.yml'
   workflow_dispatch:
 permissions:
   contents: read
