@@ -22,6 +22,17 @@ try{
  assert.equal(starter.result.page?.slug,"catalog");
  assert.equal(starter.result.page?.content?.items?.length,4);
  assert.equal(starter.result.page?.content?.sectors?.length,3);
+ // Stores are seeded as a separate unpublished offer, not a fifth system card.
+ const storedCommerce=(await pool.query("SELECT item FROM site_pages, jsonb_array_elements(content->'items') item WHERE slug='catalog' AND locale='ar' AND item->>'slug'='commerce-engine'")).rows[0]?.item;
+ assert.equal(storedCommerce?.published,false);
+ const storePrices=await req("/api/admin/ownership-prices/sector/commerce-engine",{cookie:`atsh_admin=${ownerToken}`});
+ assert.equal(storePrices.status,200);
+ assert.equal(storePrices.result.prices.copy.price,46870);
+ assert.equal(storePrices.result.prices.rent_monthly.price,199);
+ assert.equal(storePrices.result.prices.rent.price,1990);
+ assert.equal(storePrices.result.prices.code.price,7990);
+ const unpublishedQuote=await req("/api/sector-price?slug=commerce-engine&ownershipMode=copy");
+ assert.equal(unpublishedQuote.status,400);
  // Known catalog slugs now receive approved system-only tariffs from code,
  // even when their old CMS base price was empty; the demo status is unchanged.
  const starterTariffs={eyadaty:28870,agzakhana:37520,supermarket:34190,avocato:25530};

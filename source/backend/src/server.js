@@ -626,7 +626,7 @@ app.get("/api/site-content/:slug", route(async(req,res)=>{
   const publishedPage=page.rows[0]||null;
   if(publishedPage&&!metadata)publishedPage.content=await expandDemoAssets(pool,req.params.slug,publishedPage.content);
   if(req.params.slug==="catalog"&&Array.isArray(publishedPage?.content?.items)){
-    publishedPage.content={...publishedPage.content,items:(await pricedSectorCatalog(pool,publishedPage.content.items)).map(item=>{
+    publishedPage.content={...publishedPage.content,items:(await pricedSectorCatalog(pool,publishedPage.content.items.filter(item=>item?.slug!=="commerce-engine"||item.published===true&&!item.archived))).map(item=>{
       if(!item||typeof item!=="object"||item.published!==false&&!item.archived)return item;
       const {previewHtml,previewHtmlName,hasPreviewHtml,previewAssetId,...rest}=item;return rest;
     })};
@@ -983,9 +983,10 @@ app.get("/api/admin/email-status",requireAdmin,requirePermission("settings"),(_r
 app.get("/api/admin/integrations/status",requireAdmin,requirePermission("settings"),route(async(_req,res)=>{
   const [catalog,packages]=await Promise.all([
     pool.query(`SELECT is_published,
-      CASE WHEN jsonb_typeof(content->'items')='array' THEN jsonb_array_length(content->'items') ELSE 0 END AS count,
       (SELECT count(*)::int FROM jsonb_array_elements(CASE WHEN jsonb_typeof(content->'items')='array' THEN content->'items' ELSE '[]'::jsonb END) item
-       WHERE item->>'published'='true' AND coalesce(item->>'archived','false')!='true') AS published_count
+       WHERE item->>'slug' IS DISTINCT FROM 'commerce-engine') AS count,
+      (SELECT count(*)::int FROM jsonb_array_elements(CASE WHEN jsonb_typeof(content->'items')='array' THEN content->'items' ELSE '[]'::jsonb END) item
+       WHERE item->>'published'='true' AND coalesce(item->>'archived','false')!='true' AND item->>'slug' IS DISTINCT FROM 'commerce-engine') AS published_count
       FROM site_pages WHERE slug='catalog' AND locale='ar' LIMIT 1`),
     pool.query("SELECT count(*)::int AS count FROM packages WHERE is_published=true")
   ]);
