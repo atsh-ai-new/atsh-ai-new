@@ -3,7 +3,7 @@ import OwnershipAdmin from "@/components/ownership-admin";
 import AddonPrice from "@/components/addon-price";
 import NotificationInbox from "../../components/notification-inbox";
 
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import {addonCategories,categoryFor,groupAddons,type AddonCategoryCode,type AddonCategoryOrder} from "@/lib/addon-categories";
 import { formatEgp } from "@/lib/catalog";
 import { siteCopyDefaults, siteCopyFields } from "@/lib/site-copy";
@@ -57,6 +57,13 @@ const adminGroups: Array<{label:string;views:View[];showChildren?:boolean}>= [
  {label:"الفريق",views:["team"]},
  {label:"المساعد الذكي",views:["assistant-knowledge"]}
 ];
+const viewPermissions: Partial<Record<View, string>> = {
+    integrations:"settings", "assistant-knowledge":"assistant", team:"team", audit:"audit",
+    options:"products", theme:"settings", content:"content", pages:"content",
+    works:"content", videos:"content", "content-studio":"assistant", journey:"customers",
+    commercial:"customers", inbox:"customers"
+  };
+const samePermissions = (a: AdminUser, b: AdminUser) => a.email === b.email && a.role === b.role && [...new Set([...Object.keys(a.permissions ?? {}), ...Object.keys(b.permissions ?? {})])].every(key => canAccess(a,key) === canAccess(b,key));
 const defaultTheme: Theme = { navy: "#203958", blue: "#4c78ae", gold: "#b59a6b", page: "#faf9f5", logoUrl: "/images/atsh-logo.jpg", heroImageUrl: "/images/atsh-hero.jpg", backgroundImageUrl: "", fontFamily: "IBM Plex Sans Arabic", cardRadius: 16 };
 const statuses = ["new", "reviewing", "quoted", "approved", "in_progress", "completed", "cancelled"] as const;
 const statusLabels: Record<string, string> = { new: "جديد", reviewing: "قيد المراجعة", quoted: "تم إرسال عرض", approved: "موافق عليه", in_progress: "قيد التنفيذ", completed: "مكتمل", cancelled: "ملغي" };
@@ -118,12 +125,23 @@ export default function AdminPage() {
   const [packageDraft, setPackageDraft] = useState<PackageDraft>({ name: "", tagline: "", description: "", price: "", features: "", copyFromPackageId: "", isFeatured: false, isCustomQuote: false, isPublished: false });
   const [optionDraft, setOptionDraft] = useState<OptionDraft>({ categoryCode:"foundation",sortOrder:10,packageId: "", code: "", name: "", description: "", price: "", pricingType: "fixed", unitLabel: "", isRequired: false, isActive: true, visibility: "both" as const });
 
+  const dataGeneration = useRef(0);
   const loadData = useCallback(async (session: AdminUser) => {
+    const generation = ++dataGeneration.current;
     // A valid session is not permission to read every administrative endpoint.
     // Match the API's permission (and team role) checks, including on refresh.
     const endpoints = ["packages", "orders", "settings", "pages", "team", "audit", "email-status", "journey/projects"] as const;
     const allowed = [canAccess(session,"products"), canAccess(session,"customers"), canAccess(session,"settings"), canAccess(session,"content"), canReadTeam(session), canAccess(session,"audit"), canAccess(session,"settings"), canAccess(session,"customers")];
+    // Remove revoked section data immediately; failed requests must not restore it.
+    if (!allowed[0]) { setPackages([]); setOptions([]); }
+    if (!allowed[1]) setOrders([]);
+    if (!allowed[2]) { setTheme(defaultTheme); setVatRate(14); setEmailStatus({configured:false,from:"info@atsh-ai.com",replyTo:"sales@atsh-ai.com"}); }
+    if (!allowed[3]) { setPage({...siteCopyDefaults}); setHiddenHomeFields(new Set()); }
+    if (!allowed[4]) { setMembers([]); setTeamLoaded(false); }
+    if (!allowed[5]) setAudit([]);
+    if (!allowed[7]) setJourneyProjects([]);
     const results = await Promise.allSettled(endpoints.map((endpoint,index) => allowed[index] ? api(endpoint) : Promise.resolve(null)));
+    if (generation !== dataGeneration.current) return;
     const failed: string[] = [];
     const getResult = (index: number): ApiPayload | null => {
       const result = results[index];
@@ -193,18 +211,40 @@ export default function AdminPage() {
     return () => { active = false; };
   }, [loadData]);
 
+  // Permissions are stored on the server, not in the browser session. Revalidate
+  // while the dashboard is open, and immediately when returning to it.
+  useEffect(() => {
+    if (!authChecked || !user || user.role === "owner") return;
+    let active = true, pending = false;
+    const sync = async () => {
+      if (!active || pending || document.visibilityState === "hidden") return;
+      pending = true;
+      try {
+        const data = await api("me");
+        if (!active) return;
+        const next: AdminUser = {email:data.email,role:data.role,permissions:data.permissions};
+        if (!samePermissions(user,next)) {
+          setUser(next);
+          setView(current => viewPermissions[current] && !canAccess(next,viewPermissions[current]!) ? "overview" : current);
+          await loadData(next);
+        }
+      } catch {
+        // A temporary connection failure is not a permission revocation.
+        // The API independently enforces permissions on every operation.
+      } finally { pending = false; }
+    };
+    const timer = window.setInterval(sync, 10000);
+    window.addEventListener("focus",sync);
+    document.addEventListener("visibilitychange",sync);
+    return () => { active = false; clearInterval(timer); window.removeEventListener("focus",sync); document.removeEventListener("visibilitychange",sync); };
+  }, [authChecked,user,loadData]);
+
   const permitted = (key: string) => canAccess(user, key);
   const refreshData = () => user ? loadData(user) : Promise.resolve();
   const canEditCatalog = permitted("products");
   const canEditContent = permitted("content");
   const canEditOrders = permitted("customers");
   const canManageTeam = user?.role === "owner";
-  const viewPermissions: Partial<Record<View, string>> = {
-    integrations:"settings", "assistant-knowledge":"assistant", team:"team", audit:"audit",
-    options:"products", theme:"settings", content:"content", pages:"content",
-    works:"content", videos:"content", "content-studio":"assistant", journey:"customers",
-    commercial:"customers", inbox:"customers"
-  };
   const visibleNav = nav.filter(item => item.id === "team" ? canReadTeam(user) : !viewPermissions[item.id] || permitted(viewPermissions[item.id]!));
   const newOrders = useMemo(() => orders.filter((order) => order.status === "new").length, [orders]);
   const title = nav.find((item) => item.id === view)?.label ?? "إدارة المنصة";
@@ -254,6 +294,7 @@ export default function AdminPage() {
   const logout = async () => {
     // Clear every account-scoped cache so a later login cannot display another user's data.
     await api("logout", { method: "POST" }).catch(() => undefined);
+    ++dataGeneration.current;
     setUser(null);
     setView("overview");
     setPackages([]);
@@ -533,7 +574,7 @@ export default function AdminPage() {
 
         {view === "team" && canReadTeam(user) && !canManageTeam && <section className="admin-content-card admin-team-permissions-panel"><div className="admin-content-title"><div><h2>فريق الإدارة</h2><p>يمكنك الاطلاع على الفريق بصلاحيتك. إنشاء الحسابات وتعديل الصلاحيات والحذف للمالك فقط.</p></div></div>{!teamLoaded?<p>تعذر تحميل بيانات الفريق.</p>:members.length===0?<p>لا توجد حسابات فريق.</p>:<div className="admin-team-list">{members.map(member=><article className="admin-team-row" key={member.id}><span className="admin-avatar">{member.display_name.slice(0,1)}</span><strong>{member.display_name}</strong><span>{member.email}</span><span>{roleLabels[member.role]}</span><span>{member.is_active ? "نشط" : "موقوف"}</span></article>)}</div>}</section>}
 
-        {view === "team" && canManageTeam && <section className="admin-content-card admin-team-permissions-panel"><div className="admin-content-title"><div><h2>فريق الإدارة</h2><p>أنشئ حسابات بصلاحيات محدودة؛ إرسال البريد يحتاج مزود بريد متصل.</p></div></div><form className="admin-team-form" onSubmit={addMember}><label className="admin-field">الاسم<input required value={memberName} onChange={(event) => setMemberName(event.target.value)} /></label><label className="admin-field">البريد الإلكتروني<input type="email" required value={memberEmail} onChange={(event) => setMemberEmail(event.target.value)} /></label><label className="admin-field">كلمة مرور مؤقتة (12 حرفًا على الأقل)<input type="password" minLength={12} required value={memberPassword} onChange={(event) => setMemberPassword(event.target.value)} /></label><div className="admin-content-card" style={{gridColumn:"1 / -1",padding:12}}><strong>حدد صلاحيات العضو</strong><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>{teamCapabilities.map(capability=><label className="check-row" key={capability.key}><input type="checkbox" checked={memberPermissions[capability.key]===true} onChange={event=>setMemberPermissions(previous=>({...previous,[capability.key]:event.target.checked}))}/> {capability.label}</label>)}</div><small>يتم منح الصلاحيات المحددة فقط. إدارة الحسابات تظل للمالك.</small></div><button className="button" disabled={busy}>إنشاء الحساب</button></form><div className="admin-team-list">{members.map((member) => <article className="admin-team-row" key={member.id}><span className="admin-avatar">{member.display_name.slice(0,1)}</span><strong>{member.display_name}</strong><span>{member.email}</span><details open><summary>تعديل الصلاحيات الفردية</summary><div style={{display:"flex",gap:8,flexWrap:"wrap",padding:8}}>{([{key:"assistant",label:"المساعد الذكي"},{key:"customers",label:"العملاء"},{key:"content",label:"إنشاء المحتوى"},{key:"products",label:"المنتجات"},{key:"settings",label:"الإعدادات"},{key:"team",label:"الفريق"},{key:"audit",label:"سجل التغييرات"}] as const).map(capability=><label className="check-row" key={capability.key}><input type="checkbox" disabled={busy} checked={member.permission_overrides?.[capability.key] ?? ({admin:["assistant","customers","content","products","settings","audit"],editor:["assistant","content"],sales:["customers"],viewer:[]}[member.role]?.some((permission: string)=>permission===capability.key) ?? false)} onChange={event=>{const permissions={...member.permission_overrides,[capability.key]:event.target.checked};void save(async()=>{const saved=await api(`team/${member.id}`,{method:"PATCH",body:JSON.stringify({permissions})});if(saved.member?.permission_overrides?.[capability.key]!==permissions[capability.key])throw new Error("لم يؤكد الخادم حفظ الصلاحية.");},"تم حفظ صلاحيات العضو.");}}/> {capability.label}</label>)}</div><small>يتم حفظ كل تغيير على الخادم. يجب تسجيل الدخول مجددًا لتحديث الواجهة.</small></details><span>{member.is_active ? "نشط" : "موقوف"}</span><button type="button" className="inline-add" disabled={busy} onClick={() => { if (window.confirm(`${member.is_active ? "إيقاف" : "إعادة تفعيل"} حساب ${member.display_name}؟`)) void save(() => api(`team/${member.id}`, { method: "PATCH", body: JSON.stringify({isActive:!member.is_active}) }), "تم تحديث حالة الحساب."); }}>{member.is_active ? "إيقاف" : "تفعيل"}</button><button type="button" className="inline-add" disabled={busy || member.email.toLowerCase() === user.email.toLowerCase()} onClick={() => { if(window.confirm(`حذف حساب ${member.display_name} نهائيًا؟ لا يمكن التراجع عن الحذف.`)) void save(async () => { await api(`team/${member.id}/purge`, {method:"POST"}); const verification = await api("team"); if ((verification.members ?? []).some((remaining: Member) => remaining.id === member.id)) throw new Error("أعاد الخادم نجاح الحذف، لكن الحساب لا يزال موجودًا في قاعدة البيانات. لم يتم تأكيد الحذف."); }, "تم حذف عضو الفريق والتحقق من اختفائه من قاعدة البيانات."); }}>حذف نهائي</button></article>)}</div><p className="field-hint">أرسل بيانات الدخول للعضو عبر قناة آمنة منفصلة. لا تُرسل المنصة كلمات المرور بالبريد.</p></section>}
+        {view === "team" && canManageTeam && <section className="admin-content-card admin-team-permissions-panel"><div className="admin-content-title"><div><h2>فريق الإدارة</h2><p>أنشئ حسابات بصلاحيات محدودة؛ إرسال البريد يحتاج مزود بريد متصل.</p></div></div><form className="admin-team-form" onSubmit={addMember}><label className="admin-field">الاسم<input required value={memberName} onChange={(event) => setMemberName(event.target.value)} /></label><label className="admin-field">البريد الإلكتروني<input type="email" required value={memberEmail} onChange={(event) => setMemberEmail(event.target.value)} /></label><label className="admin-field">كلمة مرور مؤقتة (12 حرفًا على الأقل)<input type="password" minLength={12} required value={memberPassword} onChange={(event) => setMemberPassword(event.target.value)} /></label><div className="admin-content-card" style={{gridColumn:"1 / -1",padding:12}}><strong>حدد صلاحيات العضو</strong><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>{teamCapabilities.map(capability=><label className="check-row" key={capability.key}><input type="checkbox" checked={memberPermissions[capability.key]===true} onChange={event=>setMemberPermissions(previous=>({...previous,[capability.key]:event.target.checked}))}/> {capability.label}</label>)}</div><small>يتم منح الصلاحيات المحددة فقط. إدارة الحسابات تظل للمالك.</small></div><button className="button" disabled={busy}>إنشاء الحساب</button></form><div className="admin-team-list">{members.map((member) => <article className="admin-team-row" key={member.id}><span className="admin-avatar">{member.display_name.slice(0,1)}</span><strong>{member.display_name}</strong><span>{member.email}</span><details open><summary>تعديل الصلاحيات الفردية</summary><div style={{display:"flex",gap:8,flexWrap:"wrap",padding:8}}>{([{key:"assistant",label:"المساعد الذكي"},{key:"customers",label:"العملاء"},{key:"content",label:"إنشاء المحتوى"},{key:"products",label:"المنتجات"},{key:"settings",label:"الإعدادات"},{key:"team",label:"الفريق"},{key:"audit",label:"سجل التغييرات"}] as const).map(capability=><label className="check-row" key={capability.key}><input type="checkbox" disabled={busy} checked={member.permission_overrides?.[capability.key] ?? ({admin:["assistant","customers","content","products","settings","audit"],editor:["assistant","content"],sales:["customers"],viewer:[]}[member.role]?.some((permission: string)=>permission===capability.key) ?? false)} onChange={event=>{const permissions={...member.permission_overrides,[capability.key]:event.target.checked};void save(async()=>{const saved=await api(`team/${member.id}`,{method:"PATCH",body:JSON.stringify({permissions})});if(saved.member?.permission_overrides?.[capability.key]!==permissions[capability.key])throw new Error("لم يؤكد الخادم حفظ الصلاحية.");},"تم حفظ صلاحيات العضو.");}}/> {capability.label}</label>)}</div><small>يتم حفظ كل تغيير على الخادم. تُحدّث صلاحيات العضو تلقائيًا أثناء فتح لوحة الإدارة.</small></details><span>{member.is_active ? "نشط" : "موقوف"}</span><button type="button" className="inline-add" disabled={busy} onClick={() => { if (window.confirm(`${member.is_active ? "إيقاف" : "إعادة تفعيل"} حساب ${member.display_name}؟`)) void save(() => api(`team/${member.id}`, { method: "PATCH", body: JSON.stringify({isActive:!member.is_active}) }), "تم تحديث حالة الحساب."); }}>{member.is_active ? "إيقاف" : "تفعيل"}</button><button type="button" className="inline-add" disabled={busy || member.email.toLowerCase() === user.email.toLowerCase()} onClick={() => { if(window.confirm(`حذف حساب ${member.display_name} نهائيًا؟ لا يمكن التراجع عن الحذف.`)) void save(async () => { await api(`team/${member.id}/purge`, {method:"POST"}); const verification = await api("team"); if ((verification.members ?? []).some((remaining: Member) => remaining.id === member.id)) throw new Error("أعاد الخادم نجاح الحذف، لكن الحساب لا يزال موجودًا في قاعدة البيانات. لم يتم تأكيد الحذف."); }, "تم حذف عضو الفريق والتحقق من اختفائه من قاعدة البيانات."); }}>حذف نهائي</button></article>)}</div><p className="field-hint">أرسل بيانات الدخول للعضو عبر قناة آمنة منفصلة. لا تُرسل المنصة كلمات المرور بالبريد.</p></section>}
 
         {view === "audit" && <section className="admin-content-card"><div className="admin-content-title"><div><h2>سجل التغييرات</h2><p>أحدث العمليات الإدارية التي سجلها الخادم.</p></div></div><div className="admin-audit-list">{audit.map((item) => <article key={item.id}><strong>{item.action}</strong><span>{item.entity_type}</span><span>{item.actor}</span><time>{new Date(item.created_at).toLocaleString("ar-EG")}</time></article>)}</div></section>}
 
@@ -580,10 +621,27 @@ function AssignedTaskChat(){
  const [project,setProject]=useState("");
  const [messages,setMessages]=useState<Array<{id:string;actor:string;body:string}>>([]);
  const [body,setBody]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);
- useEffect(()=>{let active=true;const load=()=>fetch("/api/admin/journey/my-tasks",{credentials:"include",cache:"no-store"}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(d=>{if(active)setTasks(d.tasks||[])}).catch(()=>{if(active)setError("تعذر تحميل المهام")});void load();const timer=setInterval(load,15000);return()=>{active=false;clearInterval(timer)}},[]);
+ const [tasksLoaded,setTasksLoaded]=useState(false),[tasksError,setTasksError]=useState("");
+ useEffect(()=>{
+   let active=true,pending=false;
+   const load=async()=>{
+     if(!active||pending||document.visibilityState==="hidden")return;
+     pending=true;
+     try{
+       const r=await fetch("/api/admin/journey/my-tasks",{credentials:"include",cache:"no-store"});
+       if(!r.ok)throw Error();
+       const d=await r.json();
+       if(active){setTasks(d.tasks||[]);setTasksLoaded(true);setTasksError("");}
+     }catch{if(active)setTasksError("تعذر تحميل المهام");}
+     finally{pending=false;}
+   };
+   void load();const timer=setInterval(load,15000);
+   window.addEventListener("focus",load);document.addEventListener("visibilitychange",load);
+   return()=>{active=false;clearInterval(timer);window.removeEventListener("focus",load);document.removeEventListener("visibilitychange",load);};
+ },[]);
  useEffect(()=>{setMessages([]);if(!project)return;let active=true;const load=()=>fetch("/api/admin/journey/assigned-chat/"+encodeURIComponent(project),{credentials:"include",cache:"no-store"}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(d=>{if(active){setMessages(d.messages||[]);setError("")}}).catch(()=>{if(active){setMessages([]);setError("المحادثة غير متاحة أو انتهت صلاحية الإسناد")}});void load();const timer=setInterval(load,5000);return()=>{active=false;clearInterval(timer)}},[project]);
  async function send(){if(busy||!project||body.trim().length<2)return;setBusy(true);try{const r=await fetch("/api/admin/journey/projects/"+encodeURIComponent(project)+"/messages",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({body:body.trim()})});if(!r.ok)throw Error();const d=await r.json();setMessages(old=>[...old,d.message]);setBody("");}catch{setError("تعذر إرسال الرسالة")}finally{setBusy(false)}}
- return <section className="admin-content-card" style={{padding:"12px 16px"}}><h2 style={{fontSize:"16px",margin:"0 0 6px",lineHeight:1.4}}>مهامي ومحادثات العملاء</h2>{tasks.map(t=><div key={t.id}><strong>{t.title} — {t.project_name}</strong> <button type="button" onClick={()=>{setProject(t.project_id);setBody("");setError("")}}>محادثة العميل</button></div>)}{!tasks.length&&<p style={{fontSize:"13px",margin:0,lineHeight:1.5}}>لا توجد مهام مسندة حاليًا.</p>}{error&&<p role="alert">{error}</p>}{project&&<div><button type="button" onClick={()=>setProject("")}>إغلاق المحادثة</button>{messages.map(m=><p key={m.id}><strong>{m.actor==="customer"?"العميل":"الفريق"}:</strong> {m.body}</p>)}<textarea aria-label="رسالة للعميل" value={body} onChange={e=>setBody(e.target.value)}/><button type="button" disabled={busy||body.trim().length<2} onClick={()=>void send()}>إرسال الرسالة</button></div>}</section>;
+ return <section className="admin-content-card" style={{padding:"12px 16px"}}><h2 style={{fontSize:"16px",margin:"0 0 6px",lineHeight:1.4}}>مهامي ومحادثات العملاء</h2>{tasks.map(t=><div key={t.id}><strong>{t.title} — {t.project_name}</strong> <button type="button" onClick={()=>{setProject(t.project_id);setBody("");setError("")}}>محادثة العميل</button></div>)}{!tasks.length&&tasksLoaded&&!tasksError&&<p style={{fontSize:"13px",margin:0,lineHeight:1.5}}>لا توجد مهام مسندة حاليًا.</p>}{!tasksLoaded&&!tasksError&&<p>جارٍ تحميل المهام…</p>}{tasksError&&<p role="alert">{tasksError}</p>}{error&&<p role="alert">{error}</p>}{project&&<div><button type="button" onClick={()=>setProject("")}>إغلاق المحادثة</button>{messages.map(m=><p key={m.id}><strong>{m.actor==="customer"?"العميل":"الفريق"}:</strong> {m.body}</p>)}<textarea aria-label="رسالة للعميل" value={body} onChange={e=>setBody(e.target.value)}/><button type="button" disabled={busy||body.trim().length<2} onClick={()=>void send()}>إرسال الرسالة</button></div>}</section>;
 }
 
 function InternalMessaging({canCustomers,target}:{canCustomers:boolean;target:string}){
