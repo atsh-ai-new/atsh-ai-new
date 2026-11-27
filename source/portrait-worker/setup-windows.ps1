@@ -31,10 +31,11 @@ function Install-Package([string]$Id) {
 function Confirm-Python310([string]$Path) {
     if (!$Path -or $Path -match '\\WindowsApps\\' -or !(Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
     try {
-        # Avoid nested quotes, which Windows PowerShell 5.1 strips from native arguments.
-        $p = & $Path -c 'import sys; print(sys.executable) if sys.version_info[:2] == (3,10) and sys.maxsize > 2**32 else sys.exit(1)' 2>$null | Select-Object -First 1
-        if ($LASTEXITCODE -eq 0 -and $p -and (Test-Path -LiteralPath $p -PathType Leaf)) { return "$p" }
-        Write-Host "Python candidate rejected: $Path (exit $LASTEXITCODE)"
+        # Reproduce the verified Windows workstation command without legacy native quoting.
+        $info = @(& $Path -I -c 'import sys; print(sys.version); print(sys.maxsize)')
+        $code = $LASTEXITCODE
+        if ($code -eq 0 -and $info.Count -eq 2 -and $info[0] -match '^3\.10\.' -and $info[1] -eq '9223372036854775807') { return [IO.Path]::GetFullPath($Path) }
+        Write-Host "Python candidate rejected: $Path (exit $code)"
     } catch { Write-Host "Python candidate failed: $Path ($($_.Exception.Message))" }
     return $null
 }
@@ -69,7 +70,7 @@ function Python310 {
     foreach ($launcher in ($launchers | Select-Object -Unique)) {
         if (!$launcher -or $launcher -match '\\WindowsApps\\' -or !(Test-Path -LiteralPath $launcher -PathType Leaf)) { continue }
         try {
-            $candidate = & $launcher -3.10 -c 'import sys;print(sys.executable)' 2>$null | Select-Object -First 1
+            $candidate = & $launcher -3.10 -I -c 'import sys;print(sys.executable)' 2>$null | Select-Object -First 1
             if ($LASTEXITCODE -eq 0 -and $candidate) {
                 $p = Confirm-Python310 $candidate
                 if ($p) { return $p }
@@ -99,6 +100,10 @@ try {
     New-Item -ItemType Directory -Force -Path $Root | Out-Null
     Write-Host '1/5 Checking Windows prerequisites...'
     Refresh-Path
+    # Restrict isolation to this process and its children; do not modify Windows settings.
+    Remove-Item Env:PYTHONHOME,Env:PYTHONPATH -ErrorAction SilentlyContinue
+    $env:PYTHONNOUSERSITE = '1'
+    $env:PIP_NO_CACHE_DIR = '1'
     if ($PythonExe) {
         $python = Confirm-Python310 $PythonExe
         if (!$python) { throw 'The supplied PythonExe must be an existing 64-bit Python 3.10 executable.' }
@@ -130,19 +135,19 @@ try {
     $worker = Join-Path $Root 'worker.py'
     Download-Official "https://raw.githubusercontent.com/atsh-ai-new/atsh-ai-new/$WorkerCommit/source/portrait-worker/worker.py" $worker
     if (!(Test-Path (Join-Path $Root 'venv\Scripts\python.exe'))) {
-        Run $python @('-m','venv',(Join-Path $Root 'venv'))
+        Run $python @('-I','-m','venv',(Join-Path $Root 'venv'))
     }
     $venv = Join-Path $Root 'venv\Scripts\python.exe'
 
     Write-Host '3/5 Installing isolated CPU dependencies (large download)...'
-    Run $venv @('-m','pip','install','--upgrade','pip','setuptools==69.5.1','wheel')
-    Run $venv @('-m','pip','install','torch==2.6.0','torchvision==0.21.0','torchaudio==2.6.0','--index-url','https://download.pytorch.org/whl/cpu')
+    Run $venv @('-I','-m','pip','install','--upgrade','pip','setuptools==69.5.1','wheel')
+    Run $venv @('-I','-m','pip','install','torch==2.6.0','torchvision==0.21.0','torchaudio==2.6.0','--index-url','https://download.pytorch.org/whl/cpu')
     # The CLI does not require the externally exposed Gradio demo.
     $req = Join-Path $Root 'requirements-cpu.txt'
     $requirements = Get-Content (Join-Path $model 'requirements.txt') | Where-Object { $_ -notmatch '^\s*gradio\s*$' }
     $requirements += @('numba==0.57.1','opencv-python==4.8.1.78','Pillow==9.5.0','gfpgan==1.3.8')
     Set-Content -LiteralPath $req -Value $requirements -Encoding ascii
-    Run $venv @('-m','pip','install','--no-build-isolation','-r',$req)
+    Run $venv @('-I','-m','pip','install','--no-build-isolation','-r',$req)
     # BasicSR 1.4.2 imports an old torchvision module; adapt only that known import.
     $basic = Join-Path $Root 'venv\Lib\site-packages\basicsr\data\degradations.py'
     if (!(Test-Path $basic)) { throw 'Expected BasicSR file missing' }
@@ -152,7 +157,7 @@ try {
     if ($source.Contains($old)) {
         [IO.File]::WriteAllText($basic,$source.Replace($old,$new),[Text.UTF8Encoding]::new($false))
     } elseif (!$source.Contains($new)) { throw 'Unexpected BasicSR version; stop for review.' }
-    Run $venv @('-m','pip','check')
+    Run $venv @('-I','-m','pip','check')
 
     Write-Host '4/5 Downloading only CPU portrait checkpoints...'
     $ck = Join-Path $model 'checkpoints'
