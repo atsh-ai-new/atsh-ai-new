@@ -1114,3 +1114,6 @@ input,textarea,select,option,optgroup{font-weight:500}
  .admin-team-permissions-panel .admin-team-row>details .check-row{max-width:100%;white-space:normal}
  .admin-team-permissions-panel .admin-team-row>span:not(.admin-avatar){min-width:0;overflow-wrap:anywhere}
 }
+
+.atsh-news-slot{min-height:0;min-width:0}
+.platform>.atsh-news-slot,.managed-page>.atsh-news-slot{width:100vw;margin-inline:calc((100% - 100vw)/2)}
