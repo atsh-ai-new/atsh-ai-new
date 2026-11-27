@@ -1,5 +1,5 @@
 import CatalogPage from "../../catalog-client";
 import {catalogMetadata} from "@/lib/seo";
-import {publicCatalog} from "@/lib/public-seo-data";
+import {publicGallery} from "@/lib/public-seo-data";
 export const metadata=catalogMetadata("en");
-export default async function Page(){return <CatalogPage locale="en" initialCatalog={await publicCatalog("en")??undefined}/>;}
+export default async function Page(){return <CatalogPage locale="en" initialCatalog={await publicGallery("en")??undefined}/>;}

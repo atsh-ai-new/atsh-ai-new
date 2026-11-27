@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {privatePath} from "./lib/seo";
+import {draftPreviewRequested,privatePath} from "./lib/seo";
 import {LOCALE_COOKIE,LOCALE_DEVICE_COOKIE,selectBrowserLocale} from "./lib/browser-locale";
 
 export function proxy(request: NextRequest) {
@@ -11,7 +11,9 @@ export function proxy(request: NextRequest) {
   if (pathname === "/en/admin" || pathname.startsWith("/en/admin/")) {
     const target = request.nextUrl.clone();
     target.pathname = pathname.slice(3);
-    return NextResponse.redirect(target);
+    const response=NextResponse.redirect(target);
+    response.headers.set("X-Robots-Tag","noindex, follow");
+    return response;
   }
 
   // Negotiate only the neutral entry URL; explicit language routes stay stable.
@@ -26,11 +28,13 @@ export function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   if (pathname === "/ar" || pathname === "/ar/") {
     requestHeaders.set("x-atsh-locale", "ar");
-    return NextResponse.next({ request: { headers: requestHeaders } });
+    const response=NextResponse.next({request:{headers:requestHeaders}});
+    if(draftPreviewRequested(request.nextUrl.searchParams.get("atshPreview")))response.headers.set("X-Robots-Tag","noindex, follow");
+    return response;
   }
   requestHeaders.set("x-atsh-locale", pathname === "/en" || pathname.startsWith("/en/") ? "en" : "ar");
   const response=NextResponse.next({ request: { headers: requestHeaders } });
-  if(privatePath(pathname)) response.headers.set("X-Robots-Tag","noindex, follow");
+  if(privatePath(pathname)||draftPreviewRequested(request.nextUrl.searchParams.get("atshPreview"))) response.headers.set("X-Robots-Tag","noindex, follow");
   return response;
 }
 

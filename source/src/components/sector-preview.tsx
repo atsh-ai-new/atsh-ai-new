@@ -8,7 +8,7 @@ import { isolatedDemoHtml, interactiveDemoPaths, type SectorTemplate } from "@/l
 import SectorInteractiveDemo,{isInteractiveSector} from "@/components/sector-interactive-demo";
 import {englishDemoLabel,englishTemplateLabel,englishTemplateFeatures} from "@/lib/sector-en";
 
-export default function SectorPreview({template,demoSlug,previewHtml,demoDocumentUrl,pricedAddons=[],basePrice=null,locale="ar"}: {template: SectorTemplate;demoSlug?:string;previewHtml?:string;demoDocumentUrl?:string;pricedAddons?:PreviewAddon[];basePrice?:number|null;locale?:"ar"|"en"}) {const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
+export default function SectorPreview({template,demoSlug,previewHtml,demoDocumentUrl,pricedAddons=[],basePrice=null,locale="ar",hasPublicHeading=false}: {hasPublicHeading?:boolean;template: SectorTemplate;demoSlug?:string;previewHtml?:string;demoDocumentUrl?:string;pricedAddons?:PreviewAddon[];basePrice?:number|null;locale?:"ar"|"en"}) {const PreviewHeading=hasPublicHeading?"h2":"h1";const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
   // Keep srcdoc stable across state updates and mobile viewport changes.
   const demoDocument=useMemo(()=>previewHtml?isolatedDemoHtml(previewHtml):undefined,[previewHtml]);
   const [active,setActive]=useState(template.modules[0]);
@@ -115,7 +115,7 @@ export default function SectorPreview({template,demoSlug,previewHtml,demoDocumen
       <summary style={{cursor:"pointer",fontWeight:800,color:"#203958",padding:10}}>{t("اختر هذا النظام وخصص طلبك: الشعار والاسم والألوان والإضافات","Select and customize: logo, name, colors and add-ons")}</summary>
       <div style={{marginTop:18}}>
     <section style={{background:"white",borderRadius:18,border:"1px solid #e2e8f0",padding:20,marginBottom:18}}>
-      <h1 style={{margin:"0 0 8px",color:brand,display:"flex",alignItems:"center",gap:10}}>{logoData?<img src={logoData} alt={t("شعار النشاط التجريبي","Demo business logo")} style={{width:48,height:48,objectFit:"contain"}}/>:template.icon} {customTitle || (en?englishTemplateLabel(template.slug,template.name):template.name)}</h1>
+      <PreviewHeading style={{margin:"0 0 8px",color:brand,display:"flex",alignItems:"center",gap:10}}>{logoData?<img src={logoData} alt={t("شعار النشاط التجريبي","Demo business logo")} style={{width:48,height:48,objectFit:"contain"}}/>:template.icon} {customTitle || (en?englishTemplateLabel(template.slug,template.name):template.name)}</PreviewHeading>
       <p style={{color:"#64748b",lineHeight:1.8}}>{customDescription||template.description}</p>
       <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"end"}}>
         <label style={{display:"grid",gap:5}}>{t("اسم النشاط التجريبي","Demo business name")}<input value={customTitle} onChange={e=>{setCustomTitle(e.target.value);saveGuestWorkspace({businessName:e.target.value,sectorSlug:template.slug,sectorName:template.name,source:"preview"});}} placeholder={template.name} maxLength={50} style={{padding:10,border:"1px solid #cbd5e1",borderRadius:8}}/></label>
