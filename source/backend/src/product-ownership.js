@@ -33,7 +33,7 @@ export async function ensureOwnership(db,scope,key,_name,base){
  const approved=scope==='sector'?sectorTariff(key):null;
  if(scope==='sector'&&key==='commerce-engine'&&(existing.rows.length!==ownershipModes.length||existing.rows.some(row=>Math.round(Number(row.list_price)*(100-Number(row.discount_percent)))<=0)))return null;
  if(existing.rows.length===ownershipModes.length&&(!approved||existing.rows.every(row=>Number(row.initial_price)===approved[row.mode])))return effectiveOwnership(existing.rows);
- // Commerce requires four explicitly approved amounts, not inferred tariffs.
+ // Commerce uses the independent, approved database seed; never infer replacement tariffs.
  if(scope==='sector'&&key==='commerce-engine')return null;
  let defaults=initialOwnership(scope,key,base);
  // Existing products keep their previously established annual baseline.

@@ -103,6 +103,7 @@ await migrateDemoAssets(pool);
 startThumbnailWorker(pool);
 await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
 await pool.query(await readFile(new URL("../db/catalog_offers_20261127.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/commerce_offer_20261127.sql", import.meta.url), "utf8"));
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim().replace(/\/$/, "")).filter(Boolean);
 // The public website is also an explicitly configured, trusted origin.
 // This prevents customer registration from failing when the canonical site URL
@@ -684,7 +685,7 @@ async function pricedSectorCatalog(db,items){
     if(!item||typeof item!=="object")return item;
     const base=prices.get("sector:"+item.slug+":base");
     const ownershipPrices=publicOwnership("sector",item.slug,await ensureOwnership(db,"sector",item.slug,item.name,base?.amount??null));
-    return {...item,basePrice:sectorTariff(item.slug)?ownershipPrices?.copy.price??null:base?Number(base.amount):null,ownershipPrices,
+    return {...item,basePrice:item.slug==="commerce-engine"||sectorTariff(item.slug)?ownershipPrices?.copy.price??null:base?Number(base.amount):null,ownershipPrices,
       pricedAddons:[...activeShared.filter(a=>!Array.isArray(item.includedAddonCodes)||!item.includedAddonCodes.includes(a.code)),...(Array.isArray(item.pricedAddons)?item.pricedAddons:[]).filter(a=>!centralCodes.has(a.code)&&!reservedAddonCodes.has(a.code)).map(addon=>{
         const price=prices.get("sector_addon:"+item.slug+":"+addon.code);
         return price&&price.amount!==null?{...addon,price:Number(price.amount),pricingType:price.pricing_type}:null;
