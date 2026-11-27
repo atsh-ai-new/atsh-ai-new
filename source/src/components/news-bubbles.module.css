@@ -11,7 +11,8 @@
   font-weight: 600;
   line-height: 1.45;
 }
-.viewport { min-width: 0; flex: 1; overflow: hidden; container-type: inline-size; }
+/* Anchor the duplicated track at the physical left edge in both locales. */
+.viewport { min-width: 0; flex: 1; overflow: hidden; container-type: inline-size; direction: ltr; }
 .track {
   display: flex;
   direction: ltr;

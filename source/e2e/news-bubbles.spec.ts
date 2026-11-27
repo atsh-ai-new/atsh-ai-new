@@ -36,3 +36,38 @@ test("news bubbles respect reduced motion and preserve the English fallback",asy
  await expect(bar.getByRole("button")).toHaveCount(0);
  await expect(bar.locator("ul[aria-hidden]")).toBeHidden();
 });
+
+for(const language of ["ar","en"] as const){
+ test(`news bubbles fill the viewport throughout the ${language} loop`,async({page})=>{
+  await page.route("**/api/site-content/home?locale=*",route=>route.fulfill({json:{page:{content:{newsTicker:{...ticker,text:language==="ar"?ticker.text:"Explore ATSH AI websites and apps | Customize your system now"}}}}}));
+  await page.goto(`/${language}`);
+  const bar=page.locator("[data-news-bubbles]");
+  await expect(bar).toHaveAttribute("dir",language==="ar"?"rtl":"ltr");
+  await page.evaluate(()=>document.fonts.ready.then(()=>undefined));
+  const geometry=await bar.evaluate(section=>{
+   const main=section.querySelector("ul")!;
+   const track=main.parentElement!;
+   const viewport=track.parentElement!.getBoundingClientRect();
+   const animation=track.getAnimations()[0];
+   const duration=Number(animation.effect!.getTiming().duration);
+   animation.pause();
+   const frames=Array.from({length:21},(_,i)=>{
+    animation.currentTime=duration*Math.min(i/20,0.99999);
+    const bounds=track.getBoundingClientRect();
+    return {left:bounds.left,right:bounds.right,visible:[...track.querySelectorAll("li")].some(item=>{
+     const bubble=item.firstElementChild!.getBoundingClientRect();
+     return bubble.right>viewport.left+1&&bubble.left<viewport.right-1;
+    })};
+   });
+   return {left:viewport.left,right:viewport.right,frames,direction:getComputedStyle(main).direction};
+  });
+  expect(geometry.direction).toBe(language==="ar"?"rtl":"ltr");
+  for(const frame of geometry.frames){
+   expect(frame.left).toBeLessThanOrEqual(geometry.left+1);
+   expect(frame.right).toBeGreaterThanOrEqual(geometry.right-1);
+   expect(frame.visible).toBe(true);
+  }
+  const displacement=geometry.frames.at(-1)!.left-geometry.frames[0].left;
+  expect(language==="ar"?displacement:-displacement).toBeGreaterThan(100);
+ });
+}
