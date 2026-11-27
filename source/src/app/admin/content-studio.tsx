@@ -289,4 +289,4 @@ function LegacyContentStudio() {
   </div>;
 }
 
-export default function ContentStudio(){const [mode,setMode]=useState<"cartoon"|"legacy">("cartoon");return <div className="content-studio"><nav className="cartoon-mode" aria-label="نوع المحتوى"><button type="button" className={mode==="cartoon"?"active":""} onClick={()=>setMode("cartoon")}>استوديو الكرتون</button><button type="button" className={mode==="legacy"?"active":""} onClick={()=>setMode("legacy")}>التجهيزات السابقة</button></nav>{mode==="cartoon"?<CartoonStudio/>:<LegacyContentStudio/>}</div>}
+export default function ContentStudio(){const [mode,setMode]=useState<"cartoon"|"legacy">("cartoon");return <div className="content-studio"><nav className="cartoon-mode" aria-label="نوع المحتوى"><button type="button" className={mode==="cartoon"?"active":""} onClick={()=>setMode("cartoon")}>استوديو الإنتاج المتكامل</button><button type="button" className={mode==="legacy"?"active":""} onClick={()=>setMode("legacy")}>أرشيف أدوات الإنتاج السابق</button></nav>{mode==="cartoon"?<CartoonStudio/>:<LegacyContentStudio/>}</div>}

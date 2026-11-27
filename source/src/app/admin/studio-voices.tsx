@@ -1,0 +1,11 @@
+"use client";
+import {useEffect,useState} from "react";
+import type {Voice,VoiceId} from "./cartoon-plan";
+export const voiceNames:Record<VoiceId,string>={"local-msa":"الصوت المحلي الفصيح","egyptian-male":"مصري — رجل","egyptian-female":"مصري — امرأة","alexandrian-male":"إسكندراني — رجل","alexandrian-female":"إسكندراني — امرأة","saidi-male":"صعيدي — رجل","saidi-female":"صعيدي — امرأة","saudi-male":"سعودي — رجل","saudi-female":"سعودي — امرأة","gulf-male":"خليجي — رجل","gulf-female":"خليجي — امرأة"};
+export default function VoiceIdentity({voice,onChange}:{voice:Omit<Voice,"engine">;onChange:(v:VoiceId)=>void}){
+ const [available,setAvailable]=useState<VoiceId[]>([]),[sample,setSample]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);
+ useEffect(()=>{let active=true;fetch("/api/admin/content-studio/voices",{credentials:"include",cache:"no-store"}).then(r=>r.json()).then(r=>{if(active)setAvailable((r.voices||[]).filter((v:{available:boolean})=>v.available).map((v:{id:VoiceId})=>v.id))}).catch(()=>{});return()=>{active=false}},[]);
+ useEffect(()=>()=>{if(sample)URL.revokeObjectURL(sample)},[sample]);
+ const selected=voice.voiceId||"local-msa";
+ return <div className="admin-field"><label>الصوت الثابت للشخصية<select value={selected} onChange={e=>{setSample("");setError("");onChange(e.target.value as VoiceId)}}>{Object.entries(voiceNames).map(([id,name])=><option key={id} value={id}>{name}{available.includes(id as VoiceId)?"":" · غير مجهز"}</option>)}</select></label><small>لا يتم استبدال اللهجة المختارة بالفصحى تلقائيًا.</small><button type="button" disabled={busy||!available.includes(selected)} onClick={async()=>{setBusy(true);setError("");try{const r=await fetch("/api/admin/content-studio/voice-preview",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({...voice,voiceId:selected,text:"أهلًا بيكم، خلينا نبدأ مع بعض.",pronunciation:""})});if(!r.ok)throw Error("تعذر تشغيل عينة الصوت.");setSample(URL.createObjectURL(await r.blob()))}catch(e){setError(String(e))}finally{setBusy(false)}}}>استمع إلى الصوت</button>{error&&<small role="alert">{error}</small>}{sample&&<audio controls src={sample}/>}</div>
+}
