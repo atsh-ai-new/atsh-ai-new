@@ -39,6 +39,23 @@ class WorkerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 worker.validate_face_geometry(faces, 320, 320)
 
+    def test_full_body_with_small_background_faces(self):
+        primary = (335, 245, 100, 120)
+        self.assertEqual(worker.validate_face_geometry([primary, (20, 500, 22, 22)], 720, 1239), primary)
+        for faces in [[primary, (500, 245, 80, 100)], [(20, 500, 22, 22), primary]]:
+            with self.assertRaises(ValueError):
+                worker.validate_face_geometry(faces, 720, 1239)
+
+    def test_preflight_runs_in_isolated_process(self):
+        args=argparse.Namespace(python=sys.executable, model_dir=Path("model"), cpu_threads=2)
+        cancelled=threading.Event()
+        with patch.object(worker, "run") as runner:
+            worker.check_portrait(args, Path("source.png"), cancelled)
+        command, event=runner.call_args.args
+        self.assertIn("--validate-source", command)
+        self.assertIs(event, cancelled)
+        self.assertEqual(runner.call_args.kwargs["env"]["TORCH_FORCE_WEIGHTS_ONLY_LOAD"], "1")
+
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"),"FFmpeg required")
     def test_media_pipeline_with_stub_not_ai(self):
         # The stub only verifies adapter, timing, normalization and MP4 output.
