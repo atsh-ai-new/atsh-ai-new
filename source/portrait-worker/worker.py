@@ -3,6 +3,7 @@ import argparse
 import base64
 import getpass
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -75,35 +76,89 @@ def probe(args, file):
     return json.loads(raw)
 
 
+def validate_face_geometry(faces, width, height):
+    # Conservative input gate for the frontal, single-person engine.
+    if len(faces) != 1:
+        raise ValueError("Choose one clear frontal portrait, not a group photo or collage")
+    _, _, w, h = faces[0]
+    if min(w, h) < .17 * min(width, height):
+        raise ValueError("Face is too small; crop to a head-and-shoulders portrait")
+
+
+def check_portrait(png):
+    import cv2
+    image = cv2.imread(str(png))
+    if image is None:
+        raise ValueError("Unable to read portrait")
+    h, w = image.shape[:2]
+    if min(h, w) < 160:
+        raise ValueError("Portrait is too small; select a higher-resolution image")
+    if max(h, w) > 1000:
+        factor = 1000 / max(h, w)
+        image = cv2.resize(image, (round(w * factor), round(h * factor)), interpolation=cv2.INTER_AREA)
+    h, w = image.shape[:2]
+    detector = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    if detector.empty():
+        raise RuntimeError("Local portrait detector is missing")
+    gray = cv2.equalizeHist(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
+    faces = detector.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=5, minSize=(24, 24))
+    validate_face_geometry(faces, w, h)
+
+
+def speech_render_timing(duration, seconds, start, full_motion=False):
+    if not all(math.isfinite(n) for n in (duration, seconds, start)) or duration <= 0 or start < 0 or duration + start > seconds + .03:
+        raise ValueError("Speech exceeds scene duration; shorten it")
+    if full_motion:
+        return seconds, 0.0, 0.0
+    # Render actual speech plus a short settling interval, not synthetic silence.
+    # Quantize to the model's native 25 FPS; preserve sound and total scene duration.
+    active = min(seconds - start, max(.92, math.ceil((duration + .20) * 25) / 25))
+    if active < .92 or active >= seconds - .04:
+        return seconds, 0.0, 0.0
+    return active, start, max(0, seconds - start - active)
+
+
 def render(args, folder, image, audio, seconds, start, volume, cancelled):
     png, wav, result = folder/"source.png", folder/"speech.wav", folder/"result"
     ff = [args.ffmpeg, "-nostdin", "-loglevel", "error", "-y"]
     run(ff + ["-i", str(image), "-frames:v", "1", str(png)], cancelled)
+    check_portrait(png)
     duration = float(probe(args, audio)["format"]["duration"])
-    if duration <= 0 or duration + start > seconds + .03:
-        raise ValueError("Speech exceeds scene duration; shorten it")
+    active, pre, post = speech_render_timing(duration, seconds, start, getattr(args, "full_motion", False))
+    model_wav = folder/"active.wav"
     run(ff + ["-i", str(audio), "-af", f"volume={volume},adelay={round(start*1000)}:all=1,apad",
               "-t", str(seconds), "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", str(wav)], cancelled)
+    if pre or post:
+        run(ff + ["-i", str(audio), "-af", f"volume={volume},apad", "-t", f"{active:.6f}",
+                  "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", str(model_wav)], cancelled)
+    else:
+        model_wav = wav
+    print(f"Model render: {active:.2f}s / scene: {seconds:.2f}s; idle hold: {pre + post:.2f}s", flush=True)
     result.mkdir()
     command = [args.python, str(args.model_dir/"inference.py"), "--source_image", str(png),
-               "--driven_audio", str(wav), "--result_dir", str(result), "--size", "256",
+               "--driven_audio", str(model_wav), "--result_dir", str(result), "--size", "256",
                "--batch_size", "1", "--preprocess", "full"]
     if args.device == "cpu":
         command.append("--cpu")
-    env = dict(os.environ, OMP_NUM_THREADS="2", MKL_NUM_THREADS="2")
+    threads = str(getattr(args, "cpu_threads", 2))
+    env = dict(os.environ, OMP_NUM_THREADS=threads, MKL_NUM_THREADS=threads, TORCH_FORCE_WEIGHTS_ONLY_LOAD="1", PYTHONNOUSERSITE="1")
     run(command, cancelled, timeout=90*60, env=env, cwd=args.model_dir)
     videos = list(result.glob("*.mp4"))
     if len(videos) != 1:
         raise RuntimeError("Expected one final model video")
     output = folder/"output.mp4"
+    # Clone only the idle frame outside speech; never drop speech frames.
+    vf = f"fps=25,tpad=start_mode=clone:start_duration={pre:.6f}:stop_mode=clone:stop_duration={post + .08:.6f},scale=720:720:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1"
     run(ff + ["-i", str(videos[0]), "-i", str(wav), "-map", "0:v:0", "-map", "1:a:0",
-              "-vf", "scale=720:720:force_original_aspect_ratio=decrease:force_divisible_by=2",
-              "-t", str(seconds), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23",
+              "-vf", vf, "-t", str(seconds), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23",
               "-c:a", "aac", "-movflags", "+faststart", str(output)], cancelled)
     info = probe(args, output)
     codecs = {s["codec_type"] for s in info["streams"]}
     if not {"audio", "video"} <= codecs or abs(float(info["format"]["duration"])-seconds) > .35:
         raise RuntimeError("Output streams or duration do not match")
+    video_stream = next(s for s in info["streams"] if s["codec_type"] == "video")
+    if abs(float(video_stream["duration"])-seconds) > .08:
+        raise RuntimeError("Video does not cover scene duration")
     if not 12 <= output.stat().st_size <= MAX_VIDEO:
         raise RuntimeError("Output exceeds upload limit")
     return output
@@ -182,6 +237,8 @@ def main():
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe")
     parser.add_argument("--server", default="https://atsh-ai.com")
+    parser.add_argument("--full-motion", action="store_true", help="Animate padding as well as speech; slower")
+    parser.add_argument("--cpu-threads", type=int, choices=range(1, 9), default=2)
     parser.add_argument("--benchmark-image", type=Path)
     parser.add_argument("--benchmark-audio", type=Path)
     parser.add_argument("--benchmark-output", type=Path)
