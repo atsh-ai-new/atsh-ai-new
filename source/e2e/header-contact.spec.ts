@@ -1,25 +1,21 @@
 import {test,expect} from "@playwright/test";
 
 for (const locale of ["ar","en"]) {
- test("homepage contact is a compact single-line link above the header controls "+locale,async({page})=>{
+ test("homepage header omits street address and telephone while keeping its controls "+locale,async({page})=>{
   await page.goto("/"+locale);
   const header=page.locator(".platform-header");
-  const contact=header.locator(".platform-header-contact");
-  await expect(contact).toHaveText("01007735321");
-  await expect(contact).toHaveAttribute("href","tel:+201007735321");
-  await expect(contact).toBeVisible();
+  await expect(header).toBeVisible();
+  await expect(header.locator(".platform-header-contact")).toHaveCount(0);
+  await expect(header.locator('a[href^="tel:"]')).toHaveCount(0);
+  await expect(header).not.toContainText("شارع النقطة القديمة");
+  await expect(header).not.toContainText("01007735321");
+  await expect(header.locator(".platform-brand")).toBeVisible();
   await expect(page.locator("body")).toHaveCSS("font-weight","500");
   await expect(header.locator(".platform-brand small")).toHaveCSS("font-size",page.viewportSize()!.width<=767?"13px":"14px");
   await expect(header.locator(".platform-brand small")).toHaveCSS("font-weight","600");
-  await expect(contact).toHaveCSS("font-weight","600");
-
-  const geometry=await contact.evaluate(el=>{
-   const link=el.getBoundingClientRect();
-   const logo=el.parentElement!.querySelector(".platform-brand")!.getBoundingClientRect();
-   const style=getComputedStyle(el);
-   return {inside:link.left>=0&&link.right<=window.innerWidth,above:link.bottom<=logo.top,nowrap:style.whiteSpace==="nowrap",small:parseFloat(style.fontSize)<=12};
-  });
-  expect(geometry).toEqual({inside:true,above:true,nowrap:true,small:true});
+  await expect(header).not.toHaveClass(/platform-header-with-contact/);
+  await page.locator(".atsh-fab-contact-menu").click();
+  await expect(page.locator('#atsh-contact-submenu a[href="tel:+201007735321"]')).toBeVisible();
  });
 }
 
