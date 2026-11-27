@@ -95,7 +95,7 @@ async function proxy(request: Request, context: RouteContext) {
     if (contentType) responseHeaders.set("content-type", contentType);
     for (const name of ["content-disposition","x-content-type-options"]) { const value=upstream.headers.get(name); if(value) responseHeaders.set(name,value); }
     const cacheControl = upstream.headers.get("cache-control");
-    if (cacheControl) responseHeaders.set("cache-control", cacheControl);
+    responseHeaders.set("cache-control", cacheControl ?? "private, no-store");
     for (const cookie of upstream.headers.getSetCookie()) responseHeaders.append("set-cookie", cookie);
     return new Response(payload, { status: upstream.status, headers: responseHeaders });
   } catch {

@@ -237,3 +237,39 @@ test("owner changes a single team permission and sees the persisted result after
  await expect(checkbox).not.toBeChecked();
  expect(writes).toEqual([{team:true},{team:false}]);
 });
+
+test("open manager dashboard follows team grants and revocations and recovers task loading",async({page})=>{
+ let team=false,tasksAvailable=false;
+ let teamReads=0;
+ await page.route("**/api/admin/**",route=>{
+  const path=new URL(route.request().url()).pathname;
+  if(path==="/api/admin/me")return route.fulfill({json:{email:"manager@example.test",role:"admin",permissions:{team}}});
+  if(path==="/api/admin/team"){
+   teamReads++;
+   return route.fulfill(team?{json:{members:[{id:"member-a",email:"member@example.test",display_name:"عضو الفريق المباشر",role:"viewer",is_active:true}]}}:{status:403,json:{error:"Insufficient permissions"}});
+  }
+  if(path==="/api/admin/journey/my-tasks")return route.fulfill(tasksAvailable?{json:{tasks:[]}}:{status:502,json:{error:"Unavailable"}});
+  return route.fulfill({json:{}});
+ });
+ await page.goto("/admin");
+ const teamTab=page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"الفريق",exact:true});
+ await expect(page.getByText("تعذر تحميل المهام",{exact:true})).toBeVisible();
+ await expect(page.getByText("لا توجد مهام مسندة حاليًا.",{exact:true})).toHaveCount(0);
+ await expect(teamTab).toHaveCount(0);
+ expect(teamReads).toBe(0);
+ team=true;tasksAvailable=true;
+ await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+ await expect(teamTab).toBeVisible();
+ await expect(page.getByText("تعذر تحميل المهام",{exact:true})).toHaveCount(0);
+ await expect(page.getByText("لا توجد مهام مسندة حاليًا.",{exact:true})).toBeVisible();
+ await expect(page.locator(".admin-stat").filter({hasText:"أعضاء الفريق"}).locator("strong")).toHaveText("1");
+ await teamTab.click();
+ await expect(page.getByText("عضو الفريق المباشر",{exact:true})).toBeVisible();
+ await expect(page.getByRole("button",{name:"إنشاء الحساب"})).toHaveCount(0);
+ team=false;
+ await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+ await expect(teamTab).toHaveCount(0);
+ await expect(page.getByText("عضو الفريق المباشر",{exact:true})).toHaveCount(0);
+ await expect(page.locator(".admin-stat").filter({hasText:"أعضاء الفريق"}).locator("strong")).toHaveText("—");
+ expect(teamReads).toBe(1);
+});
