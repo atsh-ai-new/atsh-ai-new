@@ -20,6 +20,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
  const [edit,setEdit]=useState<PricingDraft|null>(null);const [editReady,setEditReady]=useState(false);const [saveError,setSaveError]=useState("");const [vat,setVat]=useState(14);
  const [catalog,setCatalog]=useState<Catalog|null>(null);
  const [sharedAddons,setSharedAddons]=useState<Addon[]>([]);
+ const [sharedStatus,setSharedStatus]=useState<"loading"|"ready"|"error">("loading");
  const [status,setStatus]=useState<"loading"|"ready"|"missing">("loading");
  const [selected,setSelected]=useState<string[]>([]);
  const [pages,setPages]=useState(0);
@@ -30,6 +31,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
  useEffect(()=>{
   setLocale(window.location.pathname.startsWith("/en/")||new URLSearchParams(window.location.search).get("lang")==="en"?"en":"ar");
   let active=true;
+  setStatus("loading");setSharedStatus("loading");
   loadPricingDraft().then(async d=>{if(!active)return;setEdit(d);const saved=d?.draft??(new URLSearchParams(window.location.search).has("editWorkspace")?await loadAccountWorkspace():null)??loadGuestWorkspace();
   if(d&&saved.sectorSlug!==slug)throw Error("Project system mismatch");
   if(isCommerce){const requested=d?saved.commerceTheme:new URLSearchParams(window.location.search).get("commerceTheme")||saved.commerceTheme;setCommerceTheme(themes.some(t=>t.id===requested)?requested!:"");}
@@ -38,7 +40,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
   if(saved.sectorSlug===slug&&Array.isArray(saved.sectorAddonCodes)){setSelected(saved.sectorAddonCodes.filter(code=>code!=="extra_page"));setPages(saved.sectorAddonCodes.includes("extra_page")?saved.sectorAddonQuantities?.extra_page??1:0);setWritingPages(Object.entries(saved.sectorAddonQuantities??{}).find(([code])=>code!=="extra_page")?.[1]??1);}
   setEditReady(true);}).catch(e=>{if(active)setSaveError(e.message)});
 
-  fetch("/api/site-content/catalog?metadata=1",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();return r.json()}).then(data=>{
+  fetch(`/api/site-content/catalog?metadata=1&system=${encodeURIComponent(slug)}`,{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();return r.json()}).then(data=>{
    if(!active)return;
    const item=(data?.page?.content?.items??[]).find((x:Catalog)=>x.slug===slug&&x.published!==false&&!x.archived);
    if(!item){setStatus("missing");return;}
@@ -52,9 +54,10 @@ export default function CatalogPricingClient({slug}:{slug:string}){
     if(!byCode.has(option.code))byCode.set(option.code,{required:!!option.is_required,list_price:option.list_price,discount_percent:option.discount_percent,code:option.code,category_code:option.category_code,sort_order:option.sort_order,category_sort_order:option.category_sort_order,name:option.name,description:option.description??"",price:Number(option.price),pricingType:option.pricing_type==="monthly"?"monthly":option.pricing_type==="yearly"?"yearly":option.pricing_type==="per_page"?"per_page":"fixed"});
    }
    setSharedAddons([...byCode.values()]);
+   setSharedStatus("ready");
    setPages(old=>byCode.has("extra_page")?Math.max(byCode.get("extra_page")?.required?1:0,old):0);
    setSelected(old=>[...new Set([...old.filter(code=>byCode.has(code)),...Array.from(byCode.values()).filter(a=>a.required&&a.code!=="extra_page").map(a=>a.code)])]);
-  }).catch(()=>{if(active)setSharedAddons([]);});
+  }).catch(()=>{if(active){setSharedAddons([]);setSharedStatus("error");}});
   return()=>{active=false};
  },[slug]);
  const en=locale==="en",t=(ar:string,english:string)=>en?english:ar;
@@ -68,7 +71,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
  const monthly=(mode==="rent_monthly"?base??0:0)+addons.filter(a=>chosen.includes(a.code)&&a.pricingType==="monthly").reduce((n,a)=>n+Number(a.price),0);
  const yearly=baseYearly+addons.filter(a=>chosen.includes(a.code)&&a.pricingType==="yearly").reduce((n,a)=>n+Number(a.price),0);
  const money=(n:number)=>n.toLocaleString(en?"en-EG":"ar-EG",{maximumFractionDigits:2})+" "+t("ج.م","EGP");
- const save=async()=>{if(!catalog||base===null||!editReady||isCommerce&&!commerceTheme)return;setSaveError("");try{
+ const save=async()=>{if(!catalog||base===null||!editReady||sharedStatus!=="ready"||isCommerce&&!commerceTheme)return;setSaveError("");try{
  const items=[{name:catalog.name+" — "+ownershipName(mode),amount:base,period:ownershipPeriod(mode)},...addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="per_page"?"fixed" as const:a.pricingType})),...(pages>0&&pageAddon?[{name:"صفحات إضافية × "+pages,amount:pages*Number(pageAddon.price),period:"fixed" as const}]:[])];
  const subtotal=Math.round((baseFixed+fixed+monthly+yearly)*100)/100,tax=Math.round(subtotal*vat)/100;
  await savePricingDraft(edit,{domainName,sectorSlug:slug,sectorName:catalog.name,ownershipMode:mode,sectorAddonCodes:[...chosen,...(pages>0&&pageAddon?["extra_page"]:[])],sectorAddonQuantities:Object.fromEntries([...addons.filter(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&chosen.includes(a.code)).map(a=>[a.code,writingPages] as const),...(pages>0&&pageAddon?[["extra_page",pages] as const]:[])]),source:"catalog",projectMode:"ready",...(isCommerce?{solutionType:"store" as const,commerceTheme}:{}),businessDescription:details,draftInvoice:{title:catalog.name,items,subtotal,vat:tax,total:Math.round((subtotal+tax)*100)/100,fixed:baseFixed+fixed,monthly,yearly,currency:"EGP",savedAt:new Date().toISOString()}},locale);
@@ -84,6 +87,8 @@ export default function CatalogPricingClient({slug}:{slug:string}){
    <section style={cardStyle}><OwnershipSelector prices={catalog?.ownershipPrices} mode={mode} onChange={setMode} locale={locale}/></section>
    {!!catalog?.features?.length&&<section style={cardStyle}><h2 style={{fontSize:19}}>{t("المشمول في سعر النظام","Included in the system price")}</h2><ul>{(en?englishTemplateFeatures(slug,catalog.features):catalog.features).map(x=><li key={x}>{x}</li>)}</ul>{catalog.note&&!en&&<p>{catalog.note}</p>}</section>}
    <section className="catalog-addon-section"><h2 style={{fontSize:19,margin:"4px 0 12px"}}>{t("الإضافات والتكاملات","Add-ons and integrations")}</h2>
+    {sharedStatus==="loading"&&<p role="status">{t("جارٍ تحميل الإضافات…","Loading add-ons…")}</p>}
+    {sharedStatus==="error"&&<p role="alert">{t("تعذر تحميل الإضافات. حدّث الصفحة وحاول مجددًا.","Unable to load add-ons. Refresh and try again.")}</p>}
     <AddonGroups addons={addons} locale={locale} isSelected={a=>a.code==="extra_page"?pages>0||!!a.required:!!a.required||chosen.includes(a.code)} render={a=>a.code==="extra_page"&&pageAddon?<div key={a.code} className={pages>0?"select-card selected":"select-card"} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}><span className="select-card-copy"><strong>{t("صفحات إضافية","Additional pages")}</strong><small>{t("اختر عدد الصفحات الإضافية","Choose additional pages")}</small><AddonPrice item={pageAddon} locale={locale} prefix="+" suffix={t(" / صفحة"," / page")}/></span><span className="page-quantity"><button type="button" disabled={pages<=(pageAddon.required?1:0)} onClick={()=>setPages(n=>Math.max(pageAddon.required?1:0,n-1))} aria-label={t("تقليل الصفحات","Remove page")}>−</button><output aria-live="polite">{pages}</output><button type="button" disabled={pages===5} onClick={()=>setPages(n=>Math.min(5,n+1))} aria-label={t("زيادة الصفحات","Add page")}>+</button></span></div>:<button key={a.code} type="button" disabled={a.required} onClick={()=>setSelected(old=>old.includes(a.code)?old.filter(c=>c!==a.code):[...old,a.code])} aria-pressed={chosen.includes(a.code)} className={chosen.includes(a.code)?"select-card selected":"select-card"} style={{textAlign:"start",cursor:"pointer"}}><span className="select-mark">{chosen.includes(a.code)?"✓":"+"}</span><span className="select-card-copy"><strong>{en?(englishExpansionOptions[a.code]?.name??a.name):a.name}</strong>{a.description&&<small>{en?(englishExpansionOptions[a.code]?.description??a.description):a.description}</small>}<AddonPrice item={a} locale={locale} prefix="+" suffix={a.pricingType==="monthly"?t(" / شهريًا"," / month"):a.pricingType==="yearly"?t(" / سنويًا"," / year"):a.pricingType==="per_page"?t(" / صفحة"," / page"):""}/></span></button>}/>
     {addons.some(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&chosen.includes(a.code))&&<label style={{display:"grid",gap:6,marginTop:12}}>{t("عدد صفحات المحتوى المطلوب","Number of content pages")}<input type="number" min={1} max={50} value={writingPages} onChange={e=>setWritingPages(Math.max(1,Math.min(50,Math.floor(Number(e.target.value)||1))))}/></label>}
    </section>
@@ -99,7 +104,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
     {[[t("رسوم لمرة واحدة","One-time fees"),base===null?"—":money(baseFixed+fixed)],[t("رسوم شهرية متكررة","Recurring monthly fees"),money(monthly)],[t("رسوم سنوية متكررة","Recurring annual fees"),money(yearly)]].map(([label,value])=><div key={label} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"14px 12px",marginBottom:10,background:"#f7f7f4",borderRadius:12,fontSize:14,fontWeight:600,color:"#687584"}}><span>{label}</span><strong>{value}</strong></div>)}
     <p style={{fontSize:14,fontWeight:600,color:"#87919d",textAlign:"center",margin:"18px 0 0"}}>{t("الأسعار استرشادية بالجنيه المصري؛ تُراجع البنود والضريبة قبل إصدار عرض رسمي.","Indicative EGP pricing; line items and taxes are reviewed before a formal quote.")}</p>
    </section>
-   {saveError&&<p role="alert">{saveError}</p>}<button type="button" disabled={base===null||!editReady||isCommerce&&!commerceTheme} onClick={()=>void save()} style={{background:"#203958",color:"#fff",borderRadius:11,padding:15,textAlign:"center",fontWeight:800}}>{t("حفظ الاختيارات والمتابعة","Save selections and continue")}</button>
+   {saveError&&<p role="alert">{saveError}</p>}<button type="button" disabled={base===null||!editReady||sharedStatus!=="ready"||isCommerce&&!commerceTheme} onClick={()=>void save()} style={{background:"#203958",color:"#fff",borderRadius:11,padding:15,textAlign:"center",fontWeight:800}}>{t("حفظ الاختيارات والمتابعة","Save selections and continue")}</button>
   </div>}
  </main>;
 }

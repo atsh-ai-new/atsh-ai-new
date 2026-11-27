@@ -72,3 +72,40 @@ test("new system offer lists inclusions without selling the same panel again",as
  await expect(page.getByText("لوحة إدارة إضافية",{exact:true})).toHaveCount(0);
  await expect(page.getByText(/٢٨[٬,]٨٧٠/).first()).toBeVisible();
 });
+
+test("package add-ons are available without waiting for legacy VAT settings",async({page})=>{
+ let releaseSettings:()=>void=()=>{};
+ const settings=new Promise<void>(resolve=>{releaseSettings=resolve});
+ let requestedMetadata=false;
+ await page.route("**/api/**",async route=>{
+  const url=new URL(route.request().url());
+  if(url.pathname==="/api/catalog")return route.fulfill({json:{packages:[pkg],options}});
+  if(url.pathname==="/api/site-content/home"){
+   if(url.searchParams.get("metadata")==="1"){
+    requestedMetadata=true;
+    await settings;
+   }
+   return route.fulfill({json:{page:null,vatRate:14}});
+  }
+  return route.fulfill({json:{}});
+ });
+ try{
+  await page.goto("/packages/landing/pricing");
+  await expect(page.getByRole("heading",{name:"الإضافات والتخصيص"})).toBeVisible();
+  await expect(page.getByText("بانتظار تحديد الضريبة")).toBeVisible();
+  expect(requestedMetadata).toBe(true);
+  releaseSettings();
+  await expect(page.getByText("بانتظار تحديد الضريبة")).toHaveCount(0);
+ }finally{releaseSettings();}
+});
+
+test("homepage package action uses a direct pricing URL",async({page})=>{
+ await page.route("**/api/catalog",route=>route.fulfill({json:{packages:[pkg],options,sharedOptions:options,vatRate:14}}));
+ await page.route("**/api/site-content/**",route=>route.fulfill({json:{page:null,vatRate:14}}));
+ await page.goto("/ar");
+ const link=page.locator(".package-card .package-cta").first();
+ await expect(link).toHaveAttribute("href","/packages/landing/pricing");
+ await link.click();
+ await expect(page).toHaveURL(/\/packages\/landing\/pricing$/);
+ await expect(page.getByRole("heading",{name:"الإضافات والتخصيص"})).toBeVisible();
+});

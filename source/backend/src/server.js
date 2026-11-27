@@ -31,7 +31,7 @@ import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
 import { buildVisitorInstructions } from "./visitor-assistant.js";
 import { priceSectorSelection } from "./sector-pricing.js";
-import {publicOwnership,isNewCatalogOffer, ensureOwnership,resolveOwnership,ownershipModes,ownershipLabels,sectorTariff,resetOwnership } from "./product-ownership.js";
+import {publicOwnership,isNewCatalogOffer, ensureOwnership,resolveOwnership,ownershipModes,ownershipLabels,sectorTariff,resetOwnership,isApprovedSystemTierScope,readApprovedSystemOwnership } from "./product-ownership.js";
 import { calculateUnifiedPricing } from "./pricing-engine.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
@@ -557,13 +557,14 @@ app.get("/api/internal/commerce/projects/:id/addons",route(async(req,res)=>{
   res.set("Cache-Control","no-store").json(snapshot);
 }));
 app.get("/api/catalog", route(async (_req,res) => {
-  const [p,o,shared,categories] = await Promise.all([
+  const [p,o,shared,categories,settings] = await Promise.all([
     pool.query("SELECT id,name,tagline,description,price,list_price,discount_percent,currency,features,is_featured,is_custom_quote FROM packages WHERE is_published=true AND deleted_at IS NULL ORDER BY sort_order,created_at"),
     pool.query("SELECT o.id,o.package_id,o.code,o.name,o.description,o.price,o.pricing_type,o.unit_label,o.is_required,o.visibility,o.sort_order,a.list_price,a.discount_percent,a.category_code,c.sort_order AS category_sort_order FROM package_options o JOIN packages p ON p.id=o.package_id LEFT JOIN shared_addons a ON a.code=o.code LEFT JOIN addon_categories c ON c.code=a.category_code WHERE o.is_active=true AND p.is_published=true AND p.deleted_at IS NULL ORDER BY c.sort_order NULLS LAST,o.sort_order,p.sort_order,o.created_at"),
     pool.query("SELECT a.*,'both' AS visibility,c.sort_order AS category_sort_order FROM shared_addons a JOIN addon_categories c ON c.code=a.category_code WHERE a.is_active=true ORDER BY c.sort_order,a.sort_order,a.code"),
-    pool.query("SELECT * FROM addon_categories ORDER BY sort_order,code")
+    pool.query("SELECT * FROM addon_categories ORDER BY sort_order,code"),
+    pool.query("SELECT vat_rate FROM site_settings WHERE id=1")
   ]);
-  res.set("Cache-Control","no-store").json({packages:await Promise.all(p.rows.map(async p=>({...p,ownershipPrices:p.is_custom_quote?null:publicOwnership("package",p.id,await ensureOwnership(pool,"package",p.id,p.name,p.list_price))}))),options:o.rows,sharedOptions:shared.rows,addonCategories:categories.rows});
+  res.set("Cache-Control","no-store").json({packages:await Promise.all(p.rows.map(async p=>({...p,ownershipPrices:p.is_custom_quote?null:publicOwnership("package",p.id,await ensureOwnership(pool,"package",p.id,p.name,p.list_price))}))),options:o.rows,sharedOptions:shared.rows,addonCategories:categories.rows,vatRate:Number(settings.rows[0]?.vat_rate??14)});
 }));
 // Unified template catalog. Previews are links to independently deployed builds, never invented demos.
 const templateWriteSchema=z.object({
@@ -619,17 +620,31 @@ app.get("/api/site-content/:slug", route(async(req,res)=>{
   if(!/^[a-z0-9-]{1,100}$/.test(req.params.slug))return res.status(400).json({error:"Invalid page"});
   const locale=typeof req.query.locale==="string"&&/^[a-z]{2}(-[A-Z]{2})?$/.test(req.query.locale)?req.query.locale:"ar";
   const metadata=req.query.metadata==="1";
-  // Strip file bodies inside PostgreSQL before serialization or network transfer.
-  const contentSql="content";
+  const system=req.query.system;
+  if(system!==undefined&&(req.params.slug!=="catalog"||!metadata||typeof system!=="string"||system.length>100||!(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).test(system)))return res.status(400).json({error:"Invalid system"});
+  // A pricing screen needs one offer, not the previews and pricing rows of every system.
+  const pageQuery=system===undefined
+    ? pool.query("SELECT slug,locale,content,updated_at FROM site_pages WHERE slug=$1 AND locale=$2 AND is_published=true",[req.params.slug,locale])
+    : pool.query(`SELECT slug,locale,updated_at,jsonb_build_object('items',COALESCE((
+        SELECT jsonb_agg(jsonb_build_object('slug',item->'slug','name',item->'name','description',item->'description',
+          'features',item->'features','note',item->'note','includedAddonCodes',item->'includedAddonCodes','published',item->'published','archived',item->'archived'))
+        FROM (SELECT item FROM jsonb_array_elements(CASE WHEN jsonb_typeof(content->'items')='array' THEN content->'items' ELSE '[]'::jsonb END) item
+          WHERE item->>'slug'=$3 AND COALESCE(item->'published','true'::jsonb)<>'false'::jsonb
+            AND COALESCE(item->'archived','false'::jsonb)<>'true'::jsonb
+            AND ($3<>'commerce-engine' OR item->'published'='true'::jsonb) LIMIT 1) matched
+      ),'[]'::jsonb)) AS content FROM site_pages WHERE slug=$1 AND locale=$2 AND is_published=true`,[req.params.slug,locale,system]);
   const [page,settings]=await Promise.all([
-    pool.query("SELECT slug,locale,"+contentSql+" AS content,updated_at FROM site_pages WHERE slug=$1 AND locale=$2 AND is_published=true",[req.params.slug,locale]),
+    pageQuery,
     pool.query("SELECT theme,vat_rate FROM site_settings WHERE id=1")
   ]);
   const publishedPage=page.rows[0]||null;
   if(publishedPage&&!metadata)publishedPage.content=await expandDemoAssets(pool,req.params.slug,publishedPage.content);
   if(req.params.slug==="catalog"&&Array.isArray(publishedPage?.content?.items)){
     const items=publishedPage.content.items.filter(item=>item&&typeof item==="object"&&item.published!==false&&!item.archived&&(item.slug!=="commerce-engine"||item.published===true));
-    publishedPage.content={...publishedPage.content,items:await pricedSectorCatalog(pool,items)};
+    if(system!==undefined){
+      const priced=await pricedSectorCatalog(pool,items,{includeAddons:false,configuration:true});
+      publishedPage.content={items:priced};
+    }else publishedPage.content={...publishedPage.content,items:await pricedSectorCatalog(pool,items)};
   }
   res.set("Cache-Control","no-store").json({page:publishedPage,theme:settings.rows[0]?.theme||null,vatRate:Number(settings.rows[0]?.vat_rate??14)});
 }));
@@ -674,19 +689,24 @@ app.get("/api/domains/check",rateLimit({windowMs:60*1000,limit:10,standardHeader
 }));
 
 // The unified ledger is authoritative for amounts; catalog JSON supplies presentation and availability.
-async function pricedSectorCatalog(db,items){
-  if(!Array.isArray(items))return items;
-  const result=await db.query("SELECT scope,owner_key,code,amount,pricing_type FROM unified_price_items WHERE scope IN ('sector','sector_addon')");
+async function pricedSectorCatalog(db,items,{includeAddons=true,configuration=false}={}){
+  if(!Array.isArray(items)||!items.length)return items;
+  const result=includeAddons
+    ? await db.query("SELECT scope,owner_key,code,amount,pricing_type FROM unified_price_items WHERE scope IN ('sector','sector_addon')")
+    : await db.query("SELECT scope,owner_key,code,amount,pricing_type FROM unified_price_items WHERE scope='sector' AND code='base' AND owner_key=$1",[items[0].slug]);
   const prices=new Map(result.rows.map(row=>[row.scope+":"+row.owner_key+":"+row.code,row]));
-  const shared=(await db.query("SELECT code,name,description,price,pricing_type,is_active,is_required,list_price,discount_percent FROM shared_addons ORDER BY sort_order,code")).rows;
+  const shared=includeAddons?(await db.query("SELECT code,name,description,price,pricing_type,is_active,is_required,list_price,discount_percent FROM shared_addons ORDER BY sort_order,code")).rows:[];
   const centralCodes=new Set(shared.map(a=>a.code));
   const activeShared=shared.filter(a=>a.is_active).map(a=>({code:a.code,name:a.name,description:a.description,price:Number(a.price),list_price:Number(a.list_price),discount_percent:Number(a.discount_percent),pricingType:a.pricing_type,isRequired:a.is_required}));
   return Promise.all(items.map(async item=>{
     if(!item||typeof item!=="object")return item;
     const base=prices.get("sector:"+item.slug+":base");
-    const ownershipPrices=publicOwnership("sector",item.slug,await ensureOwnership(db,"sector",item.slug,item.name,base?.amount??null));
-    return {...item,basePrice:item.slug==="commerce-engine"||sectorTariff(item.slug)?ownershipPrices?.copy.price??null:base?Number(base.amount):null,ownershipPrices,
-      pricedAddons:[...activeShared.filter(a=>!Array.isArray(item.includedAddonCodes)||!item.includedAddonCodes.includes(a.code)),...(Array.isArray(item.pricedAddons)?item.pricedAddons:[]).filter(a=>!centralCodes.has(a.code)&&!reservedAddonCodes.has(a.code)).map(addon=>{
+    const ownershipPrices=isApprovedSystemTierScope(item.slug)
+      ? await readApprovedSystemOwnership(db,item.slug,{configuration:configuration&&item.published===true})
+      : publicOwnership("sector",item.slug,await ensureOwnership(db,"sector",item.slug,item.name,base?.amount??null));
+    const offer={...item,basePrice:item.slug==="commerce-engine"||sectorTariff(item.slug)?ownershipPrices?.copy?.price??null:base?Number(base.amount):null,ownershipPrices};
+    if(!includeAddons)return offer;
+    return {...offer,pricedAddons:[...activeShared.filter(a=>!Array.isArray(item.includedAddonCodes)||!item.includedAddonCodes.includes(a.code)),...(Array.isArray(item.pricedAddons)?item.pricedAddons:[]).filter(a=>!centralCodes.has(a.code)&&!reservedAddonCodes.has(a.code)).map(addon=>{
         const price=prices.get("sector_addon:"+item.slug+":"+addon.code);
         return price&&price.amount!==null?{...addon,price:Number(price.amount),pricingType:price.pricing_type}:null;
       }).filter(Boolean)]};
@@ -695,6 +715,10 @@ async function pricedSectorCatalog(db,items){
 
 // A customer draft carries identifiers, not trusted browser amounts. Use the
 // same pricing engine and tariff registry on creation, edits and submission.
+async function pricedSectorForQuote(db,items,slug){
+  return pricedSectorCatalog(db,Array.isArray(items)?items.filter(item=>item?.slug===slug&&item.published===true&&!item.archived):items,{configuration:true});
+}
+
 async function priceOwnershipDraft(db,draft){
  validateCommerceSelection(draft);
  if(!draft.ownershipMode)return draft;
@@ -702,7 +726,7 @@ async function priceOwnershipDraft(db,draft){
  let price, title, calculated;
  if(draft.source==="catalog"&&draft.sectorSlug){
   const catalog=await db.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true");
-  const quote=priceSectorSelection(await pricedSectorCatalog(db,catalog.rows[0]?.content?.items),draft.sectorSlug,draft.sectorAddonCodes??[],draft.sectorAddonQuantities??{},mode);
+  const quote=priceSectorSelection(await pricedSectorForQuote(db,catalog.rows[0]?.content?.items,draft.sectorSlug),draft.sectorSlug,draft.sectorAddonCodes??[],draft.sectorAddonQuantities??{},mode);
   if(quote.needsCustomQuote)throw Error("System price unavailable");
   title=quote.sectorName; calculated={sectorQuote:quote};
  }else if(draft.packageId){
@@ -734,7 +758,7 @@ app.get("/api/sector-price",route(async(req,res)=>{
   const result=await pool.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true LIMIT 1");
   try{
     const quantities=z.record(z.string().regex(/^[a-z0-9_-]{1,80}$/),z.number().int().min(1).max(50)).parse(typeof req.query.quantities==="string"?JSON.parse(req.query.quantities):{});
-    const price=priceSectorSelection(await pricedSectorCatalog(pool,result.rows[0]?.content?.items),slug,addons,quantities,typeof req.query.ownershipMode==="string"?req.query.ownershipMode:undefined);
+    const price=priceSectorSelection(await pricedSectorForQuote(pool,result.rows[0]?.content?.items,slug),slug,addons,quantities,typeof req.query.ownershipMode==="string"?req.query.ownershipMode:undefined);
     res.set("Cache-Control","no-store").json(price);
   }catch{return res.status(400).json({error:"Sector unavailable or pricing not configured"});}
 }));
@@ -817,7 +841,7 @@ app.post("/api/orders", route(async (req,res) => {
     let sectorPrice=null;
     if(input.sectorSlug){
       const catalog=await client.query("SELECT content FROM site_pages WHERE slug='catalog' AND locale='ar' AND is_published=true FOR SHARE");
-      try{sectorPrice=priceSectorSelection(await pricedSectorCatalog(client,catalog.rows[0]?.content?.items),input.sectorSlug,input.sectorAddonCodes,input.sectorAddonQuantities,input.ownershipMode);}
+      try{sectorPrice=priceSectorSelection(await pricedSectorForQuote(client,catalog.rows[0]?.content?.items,input.sectorSlug),input.sectorSlug,input.sectorAddonCodes,input.sectorAddonQuantities,input.ownershipMode);}
       catch{await client.query("ROLLBACK");return res.status(400).json({error:"Selected sector or addon unavailable"});}
       if(sectorPrice.needsCustomQuote){await client.query("ROLLBACK");return res.status(409).json({error:"تخصيص هذا القطاع يتطلب اعتماد عرض سعر قبل تسجيل طلب شراء.",needsCustomQuote:true});}
     }
