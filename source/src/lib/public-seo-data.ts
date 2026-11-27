@@ -26,7 +26,7 @@ async function publicJson<T>(path:string,timeoutMs=5000):Promise<T|null> {
 }
 export const publicMonthlyVisitorCount=cache(async()=>{
   const result=await publicJson<{monthly:number}>("/api/visitor/monthly-count",1200);
-  return result&&Number.isSafeInteger(result.monthly)&&result.monthly>0?result.monthly:undefined;
+  return result&&Number.isSafeInteger(result.monthly)&&result.monthly>=0?result.monthly:undefined;
 });
 export const publicPage=cache((slug:string,locale:Locale)=>publicJson<SiteConfig>("/api/site-content/"+encodeURIComponent(slug)+"?metadata=1&locale="+locale));
 export const publicPages=cache(async(locale:Locale)=>{
