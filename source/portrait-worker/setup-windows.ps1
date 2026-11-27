@@ -25,17 +25,51 @@ function Install-Package([string]$Id) {
     Run $winget @('install','--id',$Id,'--exact','--source','winget','--accept-package-agreements','--accept-source-agreements')
     Refresh-Path
 }
+function Confirm-Python310([string]$Path) {
+    if (!$Path -or $Path -match '\\WindowsApps\\' -or !(Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    try {
+        $p = & $Path -c 'import sys,struct; print(sys.executable) if sys.version_info[:2] == (3,10) and struct.calcsize("P") == 8 else sys.exit(1)' 2>$null | Select-Object -First 1
+        if ($LASTEXITCODE -eq 0 -and $p -and (Test-Path -LiteralPath $p -PathType Leaf)) { return "$p" }
+    } catch {}
+    return $null
+}
 function Python310 {
-    $launcher = Find-Command 'py.exe'
-    if (!$launcher) {
-        $candidate = Join-Path $env:LOCALAPPDATA 'Programs\Python\Launcher\py.exe'
-        if (Test-Path $candidate) { $launcher = $candidate }
+    # winget may install Python successfully without updating the launcher registrations.
+    $candidates = @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python310\python.exe'),
+        (Join-Path $env:ProgramFiles 'Python310\python.exe'),
+        (Join-Path ($env:SystemDrive + '\') 'Python310\python.exe')
+    )
+    foreach ($key in @(
+        'HKCU:\Software\Python\PythonCore\3.10\InstallPath',
+        'HKLM:\Software\Python\PythonCore\3.10\InstallPath',
+        'HKLM:\Software\WOW6432Node\Python\PythonCore\3.10\InstallPath'
+    )) {
+        $item = Get-ItemProperty -LiteralPath $key -ErrorAction SilentlyContinue
+        if ($item) {
+            if ($item.ExecutablePath) { $candidates += $item.ExecutablePath }
+            if ($item.'(default)') { $candidates += (Join-Path $item.'(default)' 'python.exe') }
+        }
     }
-    if ($launcher) {
+    $candidates += @(Get-Command python.exe -CommandType Application -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        $p = Confirm-Python310 $candidate
+        if ($p) { return $p }
+    }
+    $launchers = @(
+        (Join-Path $env:WINDIR 'py.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Launcher\py.exe')
+    )
+    $launchers += @(Get-Command py.exe -CommandType Application -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+    foreach ($launcher in ($launchers | Select-Object -Unique)) {
+        if (!$launcher -or $launcher -match '\\WindowsApps\\' -or !(Test-Path -LiteralPath $launcher -PathType Leaf)) { continue }
         try {
-            $p = & $launcher -3.10 -c 'import sys;print(sys.executable)' 2>$null | Select-Object -First 1
-            if ($LASTEXITCODE -eq 0 -and $p -and (Test-Path -LiteralPath $p -PathType Leaf)) { return "$p" }
-        } catch { return $null }
+            $candidate = & $launcher -3.10 -c 'import sys;print(sys.executable)' 2>$null | Select-Object -First 1
+            if ($LASTEXITCODE -eq 0 -and $candidate) {
+                $p = Confirm-Python310 $candidate
+                if ($p) { return $p }
+            }
+        } catch {}
     }
     return $null
 }
@@ -62,7 +96,8 @@ try {
     Refresh-Path
     $python = Python310
     if (!$python) { Install-Package 'Python.Python.3.10'; $python = Python310 }
-    if (!$python) { throw 'Python 3.10 not found. Reopen PowerShell and retry.' }
+    if (!$python) { throw '64-bit Python 3.10 not found in registered or standard locations. Check the installation path before reinstalling.' }
+    Write-Host "Using Python: $python"
     $git = Find-Command 'git.exe'
     if (!$git) { Install-Package 'Git.Git'; $git = Find-Command 'git.exe' }
     if (!$git) { throw 'Git not found. Reopen PowerShell and retry.' }
