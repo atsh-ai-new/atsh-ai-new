@@ -35,6 +35,7 @@ const server=createServer(async(req,res)=>{
   rate(req);
   if(path==='/api/health'&&method==='GET')return send(res,200,{ok:true,bridgeConfigured:!!(bridge.base&&bridge.secret)});
   if(path==='/api/themes'&&method==='GET')return send(res,200,{themes,sectors});
+  if(path==='/api/stores'&&method==='GET'){secretAuth(req,provision);return send(res,200,{stores:c.q("SELECT s.id,s.slug,s.name,s.sector,s.theme,s.mode,s.project_id,s.created,(SELECT COUNT(*) FROM products p WHERE p.store_id=s.id AND p.active=1) products,(SELECT COUNT(*) FROM store_pages p WHERE p.store_id=s.id AND p.published=1) pages,(SELECT COUNT(*) FROM orders o WHERE o.store_id=s.id) orders FROM stores s WHERE s.project_id IS NOT NULL ORDER BY s.created DESC LIMIT 250")})}
   if(path==='/api/stores'&&method==='POST'){secretAuth(req,provision);const x=await body(req);if(x.projectId){assert(/^[a-f0-9-]{36}$/i.test(x.projectId),400,'Invalid project');await snapshotFor({project_id:x.projectId},bridge)}return send(res,201,c.createStore(x))}
   const match=path.match(/^\/api\/stores\/([a-z0-9-]+)\/(.+)$/);assert(match,404,'Not found');const [,slug,action]=match,s=c.store(slug);
   if(action==='shop'&&method==='GET')return send(res,200,{store:publicStore(s),products:c.products(s),capabilities:await flags(s),pages:c.visiblePages(s,await quota(s)).map(({slug,title})=>({slug,title}))});

@@ -17,6 +17,8 @@ test('HTTP end to end: provisions, reads central addons, creates and tracks orde
  const base='/api/stores/',payload={name:'Test',slug:'test',theme:'fashion-canvas',mode:'copy',projectId};
  assert.equal((await req(base.slice(0,-1),'POST',payload)).status,401);
  const make=await req(base.slice(0,-1),'POST',payload,key);assert.equal(make.status,201);const token=make.data.token;
+ assert.equal((await req(base.slice(0,-1),"GET",undefined,token)).status,401);
+ const listing=await req(base.slice(0,-1),"GET",undefined,key);assert.equal(listing.data.stores[0].project_id,projectId);assert.equal(listing.data.stores[0].token,undefined);
  const call=(p,m,b,a=token)=>req(base+'test/'+p,m,b,a);
  const addons=(await call('addons')).data;assert.equal(addons.items[0].price,'3340.00');assert.equal(addons.items[0].status,'enabled');assert.match(addons.portal,/project=/);
  assert.equal((await call('products','POST',{name:'Shirt',category:'Fashion',variants:[{sku:'S',price:1000,quantity:5}]})).status,201);

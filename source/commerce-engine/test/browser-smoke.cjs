@@ -11,7 +11,7 @@ const assert=require('node:assert/strict');
  try{
  const seed=spawn(process.execPath,['src/demo.js'],{env});let stdout='';seed.stdout.on('data',x=>stdout+=x);assert.equal((await once(seed,'exit'))[0],0);const token=stdout.match(/Owner access token: ([a-f0-9]{64})/)[1];
  server=spawn(process.execPath,['src/server.js'],{env});await once(server.stdout,'data');
- browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--no-sandbox','--disable-dev-shm-usage']});
  const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('http://127.0.0.1:3298/store/dara');await page.getByRole('heading',{name:'بيتٌ يشبهك، بتفاصيل تدوم.'}).waitFor();
  await page.getByRole('button',{name:'أضف للسلة'}).first().click();await page.locator('#cart-open').click();

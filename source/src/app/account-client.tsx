@@ -1,4 +1,5 @@
 "use client";
+import ProjectAddonPurchases from "@/components/project-addon-purchases";
 import {useCallback,useEffect,useRef,useState} from "react";
 import {useParams,useSearchParams} from "next/navigation";
 import { syncCustomerWorkspace, loadGuestWorkspace, type CustomerWorkspace } from "@/lib/customer-workspace";
@@ -350,6 +351,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
     <small style={{display:"block",marginTop:12,color:"#64748b"}}>{t("تقدير مبدئي وليس فاتورة ضريبية نهائية","Estimate, not a final tax invoice")}</small>
    </div>:<p style={{padding:14,background:"#f1f5fb",borderRadius:10}}>{t("لم تختر باقة بعد.","No package selected yet.")}</p>}
    {!draft?.linked_journey_id&&<a href={slug?`${base}/catalog/${encodeURIComponent(slug)}/pricing${editQuery}`:packageId?`${base}/packages/${encodeURIComponent(packageId)}/pricing${editQuery}`:`${base}/catalog`} style={{display:"block",marginTop:14,padding:14,textAlign:"center",borderRadius:11,border:"1px solid #203958",color:"#203958",fontWeight:800,textDecoration:"none"}}>{t("تعديل الباقة وإضافة مكونات","Edit package and add components")}</a>}
+   {draft?.linked_journey_id&&<ProjectAddonPurchases key={draft.id} draftId={draft.id} locale={locale} base={base}/>}
    {guestPending&&(draft&&!draft.linked_journey_id?<button type="button" disabled={merging} onClick={()=>void importGuestToProjectDraft()} style={{width:"100%",marginTop:10,padding:13}}>{merging?t("جارٍ حفظ التعديلات…","Saving changes…"):t("حفظ الإضافات في نفس الطلب","Save additions to this request")}</button>:<button type="button" onClick={()=>void createProjectDraft(true)} style={{width:"100%",marginTop:10,padding:13}}>{t("حفظ الاختيارات في مشروع جديد","Save selections to a new project")}</button>)}
    {!draft&&!guestPending&&<button type="button" onClick={()=>void createProjectDraft()} style={{width:"100%",marginTop:10,padding:13}}>{t("إنشاء طلب جديد","Create new request")}</button>}
    {!draft&&inv&&<button type="button" disabled={submittingDraft} onClick={()=>void submitInvoiceToAdmin()} style={{width:"100%",marginTop:10,padding:14,background:"#203958",color:"#fff",border:0,borderRadius:11,fontWeight:800}}>{submittingDraft?t("جارٍ الإرسال…","Submitting…"):t("تأكيد وإرسال الطلب للإدارة","Confirm and submit request")}</button>}

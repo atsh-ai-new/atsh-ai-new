@@ -2,14 +2,23 @@ name: Commerce engine validation (no deployment)
 on:
   push:
     branches: [feature/atsh-commerce-engine]
-    paths: ['source/commerce-engine/**','source/backend/src/commerce-addon-bridge.js','source/backend/src/server.js','.github/workflows/commerce-engine.yml']
+    paths: ['source/commerce-engine/**','source/backend/**','source/src/**','.github/workflows/commerce-engine.yml']
   pull_request:
-    paths: ['source/commerce-engine/**','source/backend/src/commerce-addon-bridge.js']
+    paths: ['source/commerce-engine/**','source/backend/**','source/src/**','.github/workflows/commerce-engine.yml']
 permissions:
   contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: commerce_test
+          POSTGRES_PASSWORD: commerce_test
+          POSTGRES_DB: commerce_test
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U commerce_test" --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,10 +26,32 @@ jobs:
           node-version: '24'
       - run: node --check source/backend/src/server.js
       - run: node --check source/commerce-engine/public/app.js
-      - run: node --test source/commerce-engine/test/*.test.js source/backend/test/unified-pricing.test.js source/backend/test/sector-pricing-stage41.test.js
+      - run: npm install --no-package-lock --no-audit
+        working-directory: source/backend
+      - run: npm test
+        working-directory: source/backend
+        env:
+          ATSH_TEST_POSTGRES: postgres://commerce_test:commerce_test@127.0.0.1:5432/commerce_test
+      - run: npm test
+        working-directory: source/commerce-engine
       - run: npm install --no-save --no-package-lock playwright
         working-directory: source/commerce-engine
       - run: npx playwright install --with-deps chromium
         working-directory: source/commerce-engine
       - run: node test/browser-smoke.cjs
         working-directory: source/commerce-engine
+      - run: npm ci
+        working-directory: source
+      - run: npm run typecheck && npm run build
+        working-directory: source
+      - name: Verify actual administration tab navigation with mock API
+        working-directory: source
+        run: |
+          mkdir -p .next/standalone/.next
+          cp -a .next/static .next/standalone/.next/
+          cp -a public .next/standalone/
+          PORT=3301 HOSTNAME=127.0.0.1 node .next/standalone/server.js &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:3301/admin && break; sleep 1; done
+          node commerce-engine/test/platform-admin-smoke.cjs

@@ -1,7 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import QuoteRevisionEditor from "@/components/quote-revision-editor";
-type Quote={id:number;customer_email:string;status:string;revision:number;total_piasters:number;valid_until:string|null;items:Array<{label:string;quantity:number;unitPricePiasters:number;period?:string}>};
+type Quote={is_addon_request?:boolean;id:number;customer_email:string;status:string;revision:number;total_piasters:number;valid_until:string|null;items:Array<{label:string;quantity:number;unitPricePiasters:number;period?:string}>};
 type EligibleOrder={id:string;reference:string;total:number;currency:string;project_title:string;latest_preview_status:string|null};
 type EligibleDraft={id:string;title:string;email:string;draft:{solutionType?:string;requirements?:string;businessName?:string;deliveryMethod?:string;ownershipMode?:"rent"|"copy"|"code"|"rent_monthly"};latest_preview_status:string|null};
 type ChangeRequest={id:number;quote_id:number;customer_email:string;quote_status:string;revision:number;status:string;details:string;created_at:string;resolution_note?:string};
@@ -111,7 +111,8 @@ export default function CommercialManager(){
     <button type="button" onClick={async()=>{try{const result=await request(`quotes/${q.id}/review-link`,"POST",{});setReviewLink(`${location.origin}/commercial/review?token=${encodeURIComponent(result.reviewToken)}`);setMessage("نسخة الرابط الخاص أُنشئت، شاركها مع العميل بأمان.")}catch(e){setMessage(e instanceof Error?e.message:"تعذر إنشاء الرابط؛ تأكد من إصدار العقد أولًا.")}}}>إنشاء رابط مراجعة مستقل</button>
    </>}
   </div>
-  {(q.status==="draft"||q.status==="issued")&&<QuoteRevisionEditor quote={q} onSave={async(items,validUntil)=>{await request(`quotes/${q.id}/revise`,"POST",{items,validUntil});await refresh();setMessage("أُصدر عرض معدل جديد. اعتمده ثم أنشئ عقدًا جديدًا من أحدث قالب.")}}/>}
+  {q.is_addon_request&&<p>طلب إضافات مركزي — السعر والكمية لا يتغيران بعد إنشاء الطلب.</p>}
+  {!q.is_addon_request&&(q.status==="draft"||q.status==="issued")&&<QuoteRevisionEditor quote={q} onSave={async(items,validUntil)=>{await request(`quotes/${q.id}/revise`,"POST",{items,validUntil});await refresh();setMessage("أُصدر عرض معدل جديد. اعتمده ثم أنشئ عقدًا جديدًا من أحدث قالب.")}}/>}
  </article>)}</div>
  {reviewLink&&<section role="status" style={{border:"1px solid #b7d8ca",background:"#ebf8f1",borderRadius:12,padding:13,overflowWrap:"anywhere"}}><b>رابط خاص للعرض والعقد (يظهر هنا فقط):</b><p>{reviewLink}</p><button type="button" onClick={()=>void navigator.clipboard.writeText(reviewLink)}>نسخ الرابط</button><button type="button" onClick={()=>setReviewLink("")}>إخفاؤه</button><p><small>يمكن للعميل المسجّل مراجعة عرضه أيضًا من داخل حسابه، دون تداول رمز خاص.</small></p></section>}
   <section style={{display:"grid",gap:14,border:"1px solid #d7e1ec",borderRadius:14,padding:18}}>
