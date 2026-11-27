@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import Link from "next/link";
+import {themes} from "../../../../../commerce-engine/src/themes.js";
 import {englishTemplateFeatures} from "@/lib/sector-en";
 import AddonPrice from "@/components/addon-price";
 import AddonGroups from "@/components/addon-groups";
@@ -13,6 +14,8 @@ import OwnershipSelector,{ownershipName,ownershipPeriod,isRental,type OwnershipM
 type Addon=CategorizedAddon & {list_price?:number|string;discount_percent?:number|string;required?:boolean;code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"|"per_page"};
 type Catalog={description?:string;features?:string[];note?:string;includedAddonCodes?:string[];ownershipPrices?:OwnershipPrices|null;slug:string;name:string;basePrice:number|null;pricedAddons?:Addon[];published?:boolean;archived?:boolean};
 export default function CatalogPricingClient({slug}:{slug:string}){
+ const [commerceTheme,setCommerceTheme]=useState("");
+ const isCommerce=slug==="commerce-engine";
  const [mode,setMode]=useState<OwnershipMode>("copy");
  const [edit,setEdit]=useState<PricingDraft|null>(null);const [editReady,setEditReady]=useState(false);const [saveError,setSaveError]=useState("");const [vat,setVat]=useState(14);
  const [catalog,setCatalog]=useState<Catalog|null>(null);
@@ -29,6 +32,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
   let active=true;
   loadPricingDraft().then(async d=>{if(!active)return;setEdit(d);const saved=d?.draft??(new URLSearchParams(window.location.search).has("editWorkspace")?await loadAccountWorkspace():null)??loadGuestWorkspace();
   if(d&&saved.sectorSlug!==slug)throw Error("Project system mismatch");
+  if(isCommerce){const requested=d?saved.commerceTheme:new URLSearchParams(window.location.search).get("commerceTheme")||saved.commerceTheme;setCommerceTheme(themes.some(t=>t.id===requested)?requested!:"");}
   if(saved.sectorSlug===slug){setMode(saved.ownershipMode??"copy");setDetails(saved.businessDescription??"");}
   if(saved.sectorSlug===slug)setDomainName(saved.domainName??"");
   if(saved.sectorSlug===slug&&Array.isArray(saved.sectorAddonCodes)){setSelected(saved.sectorAddonCodes.filter(code=>code!=="extra_page"));setPages(saved.sectorAddonCodes.includes("extra_page")?saved.sectorAddonQuantities?.extra_page??1:0);setWritingPages(Object.entries(saved.sectorAddonQuantities??{}).find(([code])=>code!=="extra_page")?.[1]??1);}
@@ -64,16 +68,17 @@ export default function CatalogPricingClient({slug}:{slug:string}){
  const monthly=(mode==="rent_monthly"?base??0:0)+addons.filter(a=>chosen.includes(a.code)&&a.pricingType==="monthly").reduce((n,a)=>n+Number(a.price),0);
  const yearly=baseYearly+addons.filter(a=>chosen.includes(a.code)&&a.pricingType==="yearly").reduce((n,a)=>n+Number(a.price),0);
  const money=(n:number)=>n.toLocaleString(en?"en-EG":"ar-EG",{maximumFractionDigits:2})+" "+t("ج.م","EGP");
- const save=async()=>{if(!catalog||base===null||!editReady)return;setSaveError("");try{
+ const save=async()=>{if(!catalog||base===null||!editReady||isCommerce&&!commerceTheme)return;setSaveError("");try{
  const items=[{name:catalog.name+" — "+ownershipName(mode),amount:base,period:ownershipPeriod(mode)},...addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="per_page"?"fixed" as const:a.pricingType})),...(pages>0&&pageAddon?[{name:"صفحات إضافية × "+pages,amount:pages*Number(pageAddon.price),period:"fixed" as const}]:[])];
  const subtotal=Math.round((baseFixed+fixed+monthly+yearly)*100)/100,tax=Math.round(subtotal*vat)/100;
- await savePricingDraft(edit,{domainName,sectorSlug:slug,sectorName:catalog.name,ownershipMode:mode,sectorAddonCodes:[...chosen,...(pages>0&&pageAddon?["extra_page"]:[])],sectorAddonQuantities:Object.fromEntries([...addons.filter(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&chosen.includes(a.code)).map(a=>[a.code,writingPages] as const),...(pages>0&&pageAddon?[["extra_page",pages] as const]:[])]),source:"catalog",projectMode:"ready",businessDescription:details,draftInvoice:{title:catalog.name,items,subtotal,vat:tax,total:Math.round((subtotal+tax)*100)/100,fixed:baseFixed+fixed,monthly,yearly,currency:"EGP",savedAt:new Date().toISOString()}},locale);
+ await savePricingDraft(edit,{domainName,sectorSlug:slug,sectorName:catalog.name,ownershipMode:mode,sectorAddonCodes:[...chosen,...(pages>0&&pageAddon?["extra_page"]:[])],sectorAddonQuantities:Object.fromEntries([...addons.filter(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&chosen.includes(a.code)).map(a=>[a.code,writingPages] as const),...(pages>0&&pageAddon?[["extra_page",pages] as const]:[])]),source:"catalog",projectMode:"ready",...(isCommerce?{solutionType:"store" as const,commerceTheme}:{}),businessDescription:details,draftInvoice:{title:catalog.name,items,subtotal,vat:tax,total:Math.round((subtotal+tax)*100)/100,fixed:baseFixed+fixed,monthly,yearly,currency:"EGP",savedAt:new Date().toISOString()}},locale);
  }catch(e){setSaveError(e instanceof Error?e.message:"تعذر حفظ الاختيارات")}};
  const cardStyle={border:"1px solid #d8e1eb",borderRadius:12,padding:"12px 14px",background:"#fff"} as const;
  return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:780,margin:"0 auto",padding:"18px 14px 70px",color:"#203958"}}>
   <Link href={en?"/en/catalog":"/catalog"} style={{color:"#203958"}}>{t("← العودة","← Back")}</Link>
   {status==="loading"?<p>{t("جارٍ تحميل التسعير...","Loading pricing...")}</p>:status==="missing"?<p role="alert">{t("تعذر تحميل النظام المخصص. حاول مجددًا.","Catalog unavailable. Please try again.")}</p>:<div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr)",gap:13,marginTop:20}}>
    <header><small>{t("تخصيص النظام المخصص","Catalog configuration")}</small><h1 style={{fontSize:"clamp(24px,5vw,34px)",margin:"5px 0"}}>{catalog?.name}</h1><p style={{margin:0,color:"#60728a"}}>{t("المعاينة للتجربة. السعر للعرض الموضح، قبل الاستضافة والدومين والإضافات الاختيارية.","The demo is illustrative. This price covers the listed scope, excluding hosting, domain and optional add-ons.")}</p></header>
+   {isCommerce&&<section style={cardStyle}><h2>{t("تصميم المتجر","Store design")}</h2>{commerceTheme?<p>{themes.find(x=>x.id===commerceTheme)?.name} · <Link href={(en?"/en":"")+"/stores/"+commerceTheme}>{t("معاينة التصميم","Preview design")}</Link></p>:<p role="alert">{t("اختر تصميم المتجر أولاً.","Select your store design first.")} <Link href={(en?"/en":"")+"/stores"}>{t("مكتبة المتاجر","Store library")}</Link></p>}</section>}
    <section style={cardStyle}><strong>{t("إجمالي النظام حسب طريقة التشغيل","System total for selected delivery type")}</strong><p style={{fontSize:24,fontWeight:800,margin:"7px 0"}}>{base===null?t("يحتاج عرض سعر","Price on request"):money(base)}</p></section>
    <section style={cardStyle}><h2 style={{fontSize:18,margin:"0 0 10px"}}>{t("البحث عن الدومين","Search for a domain")}</h2><DomainLookup locale={locale} source="catalog" value={domainName} onDomainChange={setDomainName}/>{domainName&&<p><small>{t("الدومين المختار","Selected domain")}: <b dir="ltr">{domainName}</b></small></p>}</section>
    <section style={cardStyle}><OwnershipSelector prices={catalog?.ownershipPrices} mode={mode} onChange={setMode} locale={locale}/></section>
@@ -94,7 +99,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
     {[[t("رسوم لمرة واحدة","One-time fees"),base===null?"—":money(baseFixed+fixed)],[t("رسوم شهرية متكررة","Recurring monthly fees"),money(monthly)],[t("رسوم سنوية متكررة","Recurring annual fees"),money(yearly)]].map(([label,value])=><div key={label} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"14px 12px",marginBottom:10,background:"#f7f7f4",borderRadius:12,fontSize:14,fontWeight:600,color:"#687584"}}><span>{label}</span><strong>{value}</strong></div>)}
     <p style={{fontSize:14,fontWeight:600,color:"#87919d",textAlign:"center",margin:"18px 0 0"}}>{t("الأسعار استرشادية بالجنيه المصري؛ تُراجع البنود والضريبة قبل إصدار عرض رسمي.","Indicative EGP pricing; line items and taxes are reviewed before a formal quote.")}</p>
    </section>
-   {saveError&&<p role="alert">{saveError}</p>}<button type="button" disabled={base===null||!editReady} onClick={()=>void save()} style={{background:"#203958",color:"#fff",borderRadius:11,padding:15,textAlign:"center",fontWeight:800}}>{t("حفظ الاختيارات والمتابعة","Save selections and continue")}</button>
+   {saveError&&<p role="alert">{saveError}</p>}<button type="button" disabled={base===null||!editReady||isCommerce&&!commerceTheme} onClick={()=>void save()} style={{background:"#203958",color:"#fff",borderRadius:11,padding:15,textAlign:"center",fontWeight:800}}>{t("حفظ الاختيارات والمتابعة","Save selections and continue")}</button>
   </div>}
  </main>;
 }

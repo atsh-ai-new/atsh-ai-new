@@ -289,8 +289,8 @@ test("studio imports custom actors and backgrounds directly into the project",as
   return route.fulfill({json:{}});
  });
  await page.goto("/admin");
- await page.getByRole("button",{name:"محتوى المنصة",exact:true}).click();
- await page.getByRole("button",{name:"منشئ المحتوى"}).click();
+ await page.getByRole("button",{name:"فيديو",exact:true}).click();
+ await page.getByRole("button",{name:"منشئ المحتوى",exact:true}).click();
  await page.getByLabel("المنتج أو فكرة الإعلان").fill("اختبار إعلان بصور خاصة");
  await page.getByRole("button",{name:"اقترح خطة مجانية"}).click();
  // Use a browser-generated valid transparent PNG rather than a real customer's image.

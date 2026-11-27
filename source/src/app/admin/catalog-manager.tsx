@@ -1,6 +1,6 @@
 "use client";
 import OwnershipAdmin from "@/components/ownership-admin";
-import { useEffect, useMemo, useState, type FormEvent, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ChangeEvent } from "react";
 import { isolatedDemoHtml, MAX_DEMO_HTML_BYTES, MAX_DEMO_PAGE_BYTES } from "@/lib/sector-catalog";
 import { createPagePreviewUrl } from "@/lib/page-preview";
 import { sectorTemplates, interactiveDemoPaths, type SectorTemplate } from "@/lib/sector-catalog";
@@ -11,7 +11,8 @@ type CatalogItem = SectorTemplate & {previewHtml?:string;previewHtmlName?:string
 const seed = (): CatalogItem[] => sectorTemplates.map((s,i)=>({...s,published:true,archived:false,sortOrder:i*10,imageUrl:"",previewUrl:"",demoSlug:s.slug,basePrice:null,addons:[],pricedAddons:[]}));
 const empty = (): CatalogItem => ({slug:"",name:"",category:"",icon:"📁",description:"",features:[],modules:["لوحة القيادة"],sampleStats:[],sampleRows:[],note:"معاينة تجريبية",published:false,archived:false,sortOrder:100,imageUrl:"",previewUrl:"",demoSlug:"",basePrice:null,addons:[],pricedAddons:[]});
 const normalize = (v: unknown): CatalogItem[] => Array.isArray(v) ? v.filter(x=>x && typeof x==="object" && typeof x.slug==="string" && typeof x.name==="string").map(x=>({...empty(),...x,features:Array.isArray(x.features)?x.features:[],modules:Array.isArray(x.modules)?x.modules:[],sampleStats:Array.isArray(x.sampleStats)?x.sampleStats:[],sampleRows:Array.isArray(x.sampleRows)?x.sampleRows:[],addons:Array.isArray(x.addons)?x.addons:[],pricedAddons:Array.isArray(x.pricedAddons)?x.pricedAddons.filter((option:PricedAddon)=>!["logo_design","visual_identity"].includes(option.code)):[]})) : seed();
-export default function CatalogManager() {
+export default function CatalogManager({initialCommerceOffer=false}:{initialCommerceOffer?:boolean}={}) {
+  const openedCommerceOffer=useRef(false);
   const [items,setItems]=useState<CatalogItem[]>([]);
   const [sectors,setSectors]=useState<CatalogSector[]>(normalizeCatalogSectors(undefined));
   const [search,setSearch]=useState("");
@@ -50,10 +51,17 @@ export default function CatalogManager() {
       setPageWasPublished(catalog?.is_published!==false);
       setUpdatedAt(catalog?.updated_at?new Date(catalog.updated_at).toISOString():null);
       setReady(true);
+      if(initialCommerceOffer&&!openedCommerceOffer.current){
+       openedCommerceOffer.current=true;
+       const existing=normalize(raw).find(i=>i.slug==="commerce-engine");
+       if(existing){setOriginalSlug(existing.slug);setDraft(existing);}
+       else{setOriginalSlug("");setDraft({...empty(),slug:"commerce-engine",name:"متجر إلكتروني ATSH",sectorId:"business",subcategoryId:"retail",category:"التجزئة والمتاجر",icon:"🛒",description:"متجر إلكتروني بواجهة قابلة للتخصيص، منتجات ومخزون وطلبات وإدارة التاجر.",features:["اختيار تصميم المتجر","المنتجات والمخزون والطلبات","لوحة إدارة التاجر","ربط الإضافات المركزية"],modules:["المنتجات","المخزون","الطلبات","نقطة البيع","الفريق"]});}
+       goToEditor();
+      }
       if(!catalog)setNotice("لا توجد صفحة نظام مخصص محفوظة بعد. احفظ لنشر النسخة الأولية.");
     }).catch(e=>active&&setError(e instanceof Error?e.message:"تعذر تحميل النظام المخصص."));
     return()=>{active=false;};
-  },[version]);
+  },[version,initialCommerceOffer]);
 
   const uploadImage=async(event:ChangeEvent<HTMLInputElement>)=>{
     const file=event.target.files?.[0];
@@ -102,19 +110,20 @@ export default function CatalogManager() {
     e.preventDefault();
     const slug=draft.slug.trim().toLowerCase();
     if(!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)){setError("الرابط يجب أن يكون بحروف إنجليزية وأرقام وشرطات فقط.");return;}
+    if(slug==="commerce-engine"&&!initialCommerceOffer){setError("هذا العرض يُدار من تبويب المتاجر.");return;}
     if(slug!==originalSlug && items.some(x=>x.slug===slug)){setError("الرابط مستخدم بالفعل.");return;}
     if(draft.previewUrl.trim()){try{const url=new URL(draft.previewUrl.trim());if(url.protocol!=="https:")throw Error();}catch{setError("رابط المعاينة يجب أن يكون رابط HTTPS صالحًا للنظام المنشور.");return;}}
     if(draft.basePrice!==null&&(!Number.isFinite(draft.basePrice)||draft.basePrice<0)){setError("أدخل سعر بيع صحيحًا للنظام مخصص، أو اتركه فارغًا حتى تحديد السعر.");return;}
     const updated={...draft,previewHtml:draft.previewAssetId?undefined:draft.previewHtml,previewUrl:draft.previewUrl.trim(),pricedAddons:[],slug,name:draft.name.trim(),description:draft.description.trim()};
     if(!updated.name){setError("اسم النظام المخصص مطلوب.");return;}
     const placement=resolvePlacement(updated,sectors);
-    if(!placement.sector||!updated.sectorId){setError("اختر قطاعًا رئيسيًا صالحًا.");return;}
-    if(updated.subcategoryId&&!placement.subcategory){setError("اختر تصنيفًا فرعيًا تابعًا لهذا القطاع.");return;}
-    updated.category=placement.subcategory?.name||placement.sector.name;
+    if(!initialCommerceOffer&&(!placement.sector||!updated.sectorId)){setError("اختر قطاعًا رئيسيًا صالحًا.");return;}
+    if(!initialCommerceOffer&&updated.subcategoryId&&!placement.subcategory){setError("اختر تصنيفًا فرعيًا تابعًا لهذا القطاع.");return;}
+    updated.category=initialCommerceOffer?"المتاجر":placement.subcategory?.name||placement.sector!.name;
     const next=originalSlug?items.map(x=>x.slug===originalSlug?updated:x):[...items,updated];
     if(new Blob([JSON.stringify({items:next,sectors})]).size>MAX_DEMO_PAGE_BYTES){setError("حجم المعرض تجاوز الحد المسموح. استخدم ملف HTML أصغر.");return;}
     if(await saveAll(next,"تم حفظ النظام المخصص وتحديث حالته.")){
-      setDraft(empty());setOriginalSlug("");setHtmlPreview(false);setPreviewUrlLocal("");
+      if(initialCommerceOffer){setDraft(updated);setOriginalSlug(slug);}else{setDraft(empty());setOriginalSlug("");}setHtmlPreview(false);setPreviewUrlLocal("");
     }
   };
   const applyApprovedPrices=async()=>{
@@ -236,7 +245,7 @@ export default function CatalogManager() {
   };
   // Browsing is read-only. All persistence actions still use the entire catalog.
   const searchable=(value:string)=>value.normalize("NFKC").replace(/[\u064b-\u065f\u0670\u0640]/g,"").replace(/[أإآ]/g,"ا").toLowerCase().trim();
-  const catalogRows=useMemo(()=>items.map(item=>({item,...resolvePlacement(item,sectors),status:item.archived?"archived" as const:item.published?"published" as const:"draft" as const})),[items,sectors]);
+  const catalogRows=useMemo(()=>items.filter(item=>item.slug!=="commerce-engine").map(item=>({item,...resolvePlacement(item,sectors),status:item.archived?"archived" as const:item.published?"published" as const:"draft" as const})),[items,sectors]);
   const counts=useMemo(()=>{
     const status={all:catalogRows.length,published:0,draft:0,archived:0};
     const bySector=new Map<string,number>();
@@ -269,6 +278,7 @@ export default function CatalogManager() {
   const clearFilters=()=>{setSearch("");setSectorFilter("");setSubcategoryFilter("");setStatusFilter("all");setPage(1);};
   const field=(label:string,value:string,onChange:(value:string)=>void,area=false)=> <label className="admin-field">{label}{area?<textarea value={value} onChange={e=>onChange(e.target.value)} rows={3}/>:<input value={value} onChange={e=>onChange(e.target.value)} maxLength={2000}/>}</label>;
 
+  if(initialCommerceOffer)return <section id="catalog-item-editor" tabIndex={-1} className="admin-content-card"><h2>إعداد عرض المتاجر</h2><p>التسعير المركزي للمتاجر، مستقل عن معرض الأنظمة المخصصة. الأسعار الأساسية محفوظة وفق تعريفة ماركت، ويمكن تعديلها قبل إتاحة الطلب للعملاء.</p>{error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}{!ready?<p>جارٍ التحميل…</p>:<form onSubmit={saveItem} className="admin-form-grid">{field("اسم عرض المتجر",draft.name,v=>update("name",v))}{field("وصف العرض",draft.description,v=>update("description",v),true)}{originalSlug&&<OwnershipAdmin key={originalSlug+":"+version} scope="sector" productKey={originalSlug} base={null}/>}<label className="check-row"><input type="checkbox" checked={draft.published} disabled={!originalSlug} onChange={e=>update("published",e.target.checked)}/> إتاحة طلب المتجر للعملاء</label><button type="submit" className="button" disabled={busy}>{busy?"جارٍ الحفظ…":"حفظ عرض المتاجر"}</button></form>}</section>;
   return <div className="cms-workspace">
     <section className="admin-content-card"><div className="admin-content-title"><div><h2>إدارة الأنظمة المخصصة ومعاينات القطاعات</h2><p>إضافة وتعديل وحذف وإخفاء وأرشفة الأنظمة المخصصة. تُحفظ التغييرات على خادم المنصة عبر صلاحيات الإدارة، وليس داخل المتصفح.</p></div></div>
       {notice&&<p role="status" className="success-message">{notice}</p>}{error&&<p role="alert" className="error-message">{error}</p>}
@@ -372,6 +382,7 @@ export default function CatalogManager() {
     </section>}
     {ready&&<section id="catalog-item-editor" tabIndex={-1} className="admin-content-card"><h2>{originalSlug?"تعديل النظام المخصص":"إضافة نظام مخصص"}</h2>
       {error&&<p role="alert" className="error-message">{error}</p>}{notice&&<p role="status" className="success-message">{notice}</p>}
+      {draft.slug==="commerce-engine"&&<div className="field-hint" style={{padding:12,border:"1px solid #94bdb8",borderRadius:10,marginBottom:12}}>عرض محرك المتاجر. ابدأ بحفظ مسودة غير منشورة، ثم حمّل أسعار التملك وحدد الأربع قيم الموجبة بشكل مستقل واحفظها، ثم انشر العرض. لا يعتمد المحرك أسعارًا افتراضية. <a href="/stores" target="_blank" rel="noopener">معاينة مكتبة المتاجر ↗</a></div>}
       <form onSubmit={e=>void saveItem(e)} className="admin-form-grid">
         {field("الاسم",draft.name,v=>update("name",v))}
         <label className="admin-field">الرابط (Slug)<input required disabled={Boolean(originalSlug)} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={draft.slug} onChange={e=>update("slug",e.target.value.toLowerCase())}/></label>
@@ -413,7 +424,7 @@ export default function CatalogManager() {
         <div className="admin-actions"><button type="button" className="button button-outline" disabled={uploading||busy} onClick={showLivePreview}>معاينة تفاعلية قبل الحفظ</button>{(draft.previewHtml||draft.previewAssetId)&&<button type="button" className="button button-outline" onClick={()=>{setDraft(d=>({...d,previewHtml:"",previewHtmlName:"",previewAssetId:undefined,hasPreviewHtml:false}));setHtmlPreview(false);}}>إزالة ملف HTML والعودة للمعاينة المدمجة</button>}</div>
         {htmlPreview&&draft.previewHtml&&<div id="catalog-html-preview" style={{gridColumn:"1 / -1"}}><div className="admin-actions"><button type="button" onClick={()=>setPreviewDevice("desktop")}>كمبيوتر</button><button type="button" onClick={()=>setPreviewDevice("mobile")}>موبايل</button><button type="button" onClick={()=>setHtmlPreview(false)}>إغلاق المعاينة</button></div><iframe title="معاينة HTML قبل الحفظ" srcDoc={isolatedDemoHtml(draft.previewHtml)} sandbox="allow-scripts allow-modals" referrerPolicy="no-referrer" style={{width:previewDevice==="mobile"?390:"100%",maxWidth:"100%",height:"65vh",border:0}}/></div>}
         {field("رابط النظام التفاعلي المنشور HTTPS — الصق رابط المعاينة هنا",draft.previewUrl,v=>update("previewUrl",v))}
-        <label className="admin-field">مرجع السعر القديم / سعر تأسيس منتج جديد (جنيه)<input type="number" min="0" step="0.01" value={draft.basePrice??""} onChange={e=>update("basePrice",e.target.value===""?null:Number(e.target.value))}/></label>
+        {draft.slug!=="commerce-engine"&&<label className="admin-field">مرجع السعر القديم / سعر تأسيس منتج جديد (جنيه)<input type="number" min="0" step="0.01" value={draft.basePrice??""} onChange={e=>update("basePrice",e.target.value===""?null:Number(e.target.value))}/></label>}
         {originalSlug&&<OwnershipAdmin key={originalSlug+":"+version} scope="sector" productKey={originalSlug} base={draft.basePrice}/>}
         <p className="field-hint" style={{gridColumn:"1 / -1"}}>تُدار الإضافات وأسعارها من قسم الإضافات المركزي في لوحة الإدارة؛ لا توجد أسعار منفصلة لهذا النظام.</p>
         <label className="admin-field">ترتيب الظهور<input type="number" value={draft.sortOrder} onChange={e=>update("sortOrder",Number(e.target.value))}/></label>

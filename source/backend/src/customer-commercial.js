@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import {createHash} from 'node:crypto';
 import {validateCheckoutGate,ensureInvoiceScheduleOnAcceptance} from './customer-checkout.js';
 import {z} from 'zod';
+import {extensionCatalog,listExtensions,submitExtension,AddonRequestError} from './project-addon-requests.js';
 import {transitionJourneyProject} from './customer-journey-state.js';
 
 const tokenHash=value=>createHash('sha256').update(value).digest('hex');
@@ -24,6 +25,10 @@ export function customerCommercialRouter({pool,allowedOrigins=[],queueJourneyEve
   if(['POST','PATCH','DELETE','PUT'].includes(req.method)&&(!req.get('origin')||!allowedOrigins.includes(req.get('origin'))))return res.status(403).json({error:'Customer commercial origin not allowed'});
   next();
  });
+ const extensionInput=z.object({requestKey:z.string().uuid(),selection:z.array(z.object({code:z.string().regex(/^[a-z0-9_-]{1,80}$/),quantity:z.number().int().min(1).max(50)}).strict()).min(1).max(100),expectedTotalPiasters:z.number().int().positive().safe()}).strict();
+ const extensionRoute=fn=>safe(async(req,res)=>{try{if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:'Invalid project'});res.set('Cache-Control','private, no-store');await fn(req,res)}catch(e){if(e instanceof AddonRequestError)return res.status(e.status).json({error:e.message});throw e}});
+ router.get('/drafts/:id/addon-requests',extensionRoute(async(req,res)=>{const data=await extensionCatalog(pool,req.params.id,req.customer.id);res.json({...data,requests:await listExtensions(pool,{customerId:req.customer.id,draftId:req.params.id})})}));
+ router.post('/drafts/:id/addon-requests',extensionRoute(async(req,res)=>{const parsed=extensionInput.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Invalid add-on selection'});const result=await submitExtension(pool,{draftId:req.params.id,customer:req.customer,...parsed.data});res.status(201).json({request:result})}));
  // Customer-controlled approval, scoped strictly to their own linked project.
  router.get('/projects/:id/acceptance',safe(async(req,res)=>{
   if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:'Invalid project id'});

@@ -42,7 +42,7 @@ export const publicCatalog=cache(async(locale:Locale)=>{
   if(!ar)return null;
   const sectors=normalizeCatalogSectors(ar.page?.content?.sectors);
   const translated=new Map(itemsFrom(en).map(x=>[x.slug,x]));
-  const items=itemsFrom(ar).filter(x=>{const p=resolvePlacement(x,sectors);return p.sector?.isPublished&&p.subcategory?.isPublished!==false;}).map(x=>{
+  const items=itemsFrom(ar).filter(x=>{if(x.slug==="commerce-engine")return false;const p=resolvePlacement(x,sectors);return p.sector?.isPublished&&p.subcategory?.isPublished!==false;}).map(x=>{
     if(locale==="ar")return x;
     const tr=translated.get(x.slug);
     return {...x,name:tr?.name||englishTemplateLabel(x.slug,x.name),description:tr?.description||englishTemplateLabel(x.slug,x.description,"description"),features:tr?.features||englishTemplateFeatures(x.slug,x.features??[])};

@@ -4,7 +4,7 @@ import { contentVideoTimeoutMinutes } from "./content-video-timeout.js";
 import {publishedThumbnail,startThumbnailWorker} from "./demo-thumbnail.js";
 import {extractDemoAssets,migrateDemoAssets,readDemoAsset,expandDemoAssets,storeDemoAsset} from "./site-demo-assets.js";
 import { effectivePermissions, hasPermission } from "./team-permissions.js";
-import {validCalendarDate} from './invoice-ledger-rules.js';
+import {validCalendarDate,commercialInvoiceAuditId} from './invoice-ledger-rules.js';
 import { deliveryAdminRouter, deliveryCustomerRouter } from "./delivery-control.js";
 import { customerCommercialRouter } from "./customer-commercial.js";
 import { customerAuthRouter } from "./customer-auth.js";
@@ -22,7 +22,11 @@ import jwt from "jsonwebtoken";
 import pg from "pg";
 import { z } from "zod";
 import {characterAnimationSchema,refineCharacterPlan,characterDraftView,characterWorkflow,characterConfigured,registerCharacterRoutes} from "./character-studio.js";
-import { createHash, randomBytes } from "node:crypto";
+import {validateCommerceSelection} from "./commerce-selection.js";
+import {commerceConfig,runtimeRequest,commerceProjects,provisionCommerce} from "./commerce-admin.js";
+import {listExtensions,activateExtension,AddonRequestError} from "./project-addon-requests.js";
+import { commerceAddonSnapshot } from "./commerce-addon-bridge.js";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
 import { buildVisitorInstructions } from "./visitor-assistant.js";
@@ -85,6 +89,7 @@ await pool.query(await readFile(new URL("../db/visitor_ai_usage_stage51.sql", im
 await pool.query(await readFile(new URL("../db/customer_event_outbox_stage47.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_order_quote_stage50.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/commercial_checkout_stage52.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/project_addon_requests_stage57.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/unified_pricing_stage53.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/shared_addons_20261126.sql", import.meta.url), "utf8"));
 await pool.query(await readFile(new URL("../db/addon_categories_20261126.sql", import.meta.url), "utf8"));
@@ -98,6 +103,7 @@ await migrateDemoAssets(pool);
 startThumbnailWorker(pool);
 await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
 await pool.query(await readFile(new URL("../db/catalog_offers_20261127.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("../db/commerce_offer_20261127.sql", import.meta.url), "utf8"));
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim().replace(/\/$/, "")).filter(Boolean);
 // The public website is also an explicitly configured, trusted origin.
 // This prevents customer registration from failing when the canonical site URL
@@ -537,6 +543,17 @@ app.post("/api/visitor/assistant",
   })
 );
 
+// Optional private runtime bridge. Disabled until an explicit service secret is configured.
+app.get("/api/internal/commerce/projects/:id/addons",route(async(req,res)=>{
+  const secret=process.env.COMMERCE_BRIDGE_SECRET;
+  const presented=req.get("authorization")??"";
+  if(!secret||secret.length<32||!timingSafeEqual(createHash("sha256").update(presented).digest(),createHash("sha256").update("Bearer "+secret).digest()))return res.status(401).json({error:"Unauthorized"});
+  const id=z.string().uuid().safeParse(req.params.id);
+  if(!id.success)return res.status(400).json({error:"Invalid project"});
+  const snapshot=await commerceAddonSnapshot(pool,id.data);
+  if(!snapshot)return res.status(404).json({error:"Project not found"});
+  res.set("Cache-Control","no-store").json(snapshot);
+}));
 app.get("/api/catalog", route(async (_req,res) => {
   const [p,o,shared,categories] = await Promise.all([
     pool.query("SELECT id,name,tagline,description,price,list_price,discount_percent,currency,features,is_featured,is_custom_quote FROM packages WHERE is_published=true AND deleted_at IS NULL ORDER BY sort_order,created_at"),
@@ -609,7 +626,7 @@ app.get("/api/site-content/:slug", route(async(req,res)=>{
   const publishedPage=page.rows[0]||null;
   if(publishedPage&&!metadata)publishedPage.content=await expandDemoAssets(pool,req.params.slug,publishedPage.content);
   if(req.params.slug==="catalog"&&Array.isArray(publishedPage?.content?.items)){
-    publishedPage.content={...publishedPage.content,items:(await pricedSectorCatalog(pool,publishedPage.content.items)).map(item=>{
+    publishedPage.content={...publishedPage.content,items:(await pricedSectorCatalog(pool,publishedPage.content.items.filter(item=>item?.slug!=="commerce-engine"||item.published===true&&!item.archived))).map(item=>{
       if(!item||typeof item!=="object"||item.published!==false&&!item.archived)return item;
       const {previewHtml,previewHtmlName,hasPreviewHtml,previewAssetId,...rest}=item;return rest;
     })};
@@ -668,7 +685,7 @@ async function pricedSectorCatalog(db,items){
     if(!item||typeof item!=="object")return item;
     const base=prices.get("sector:"+item.slug+":base");
     const ownershipPrices=publicOwnership("sector",item.slug,await ensureOwnership(db,"sector",item.slug,item.name,base?.amount??null));
-    return {...item,basePrice:sectorTariff(item.slug)?ownershipPrices?.copy.price??null:base?Number(base.amount):null,ownershipPrices,
+    return {...item,basePrice:item.slug==="commerce-engine"||sectorTariff(item.slug)?ownershipPrices?.copy.price??null:base?Number(base.amount):null,ownershipPrices,
       pricedAddons:[...activeShared.filter(a=>!Array.isArray(item.includedAddonCodes)||!item.includedAddonCodes.includes(a.code)),...(Array.isArray(item.pricedAddons)?item.pricedAddons:[]).filter(a=>!centralCodes.has(a.code)&&!reservedAddonCodes.has(a.code)).map(addon=>{
         const price=prices.get("sector_addon:"+item.slug+":"+addon.code);
         return price&&price.amount!==null?{...addon,price:Number(price.amount),pricingType:price.pricing_type}:null;
@@ -679,6 +696,7 @@ async function pricedSectorCatalog(db,items){
 // A customer draft carries identifiers, not trusted browser amounts. Use the
 // same pricing engine and tariff registry on creation, edits and submission.
 async function priceOwnershipDraft(db,draft){
+ validateCommerceSelection(draft);
  if(!draft.ownershipMode)return draft;
  const mode=draft.ownershipMode;
  let price, title, calculated;
@@ -739,6 +757,7 @@ app.post("/api/orders", route(async (req,res) => {
   const parsed=orderSchema.safeParse(req.body);
   if(!parsed.success) return res.status(400).json({error:"Invalid order details",details:parsed.error.issues.map(x=>({path:x.path,message:x.message}))});
   const input=parsed.data;
+  if(input.sectorSlug==="commerce-engine")return res.status(400).json({error:"Choose the store design and submit through the customer project journey"});
   // Unlinked orders require a retry UUID; draft submissions can opt in without breaking existing clients.
   const submissionKey=req.get("Idempotency-Key");
   if((!input.projectDraftId || submissionKey) && (!submissionKey || !z.string().uuid().safeParse(submissionKey).success))return res.status(400).json({error:"Idempotency-Key UUID header required"});
@@ -964,9 +983,10 @@ app.get("/api/admin/email-status",requireAdmin,requirePermission("settings"),(_r
 app.get("/api/admin/integrations/status",requireAdmin,requirePermission("settings"),route(async(_req,res)=>{
   const [catalog,packages]=await Promise.all([
     pool.query(`SELECT is_published,
-      CASE WHEN jsonb_typeof(content->'items')='array' THEN jsonb_array_length(content->'items') ELSE 0 END AS count,
       (SELECT count(*)::int FROM jsonb_array_elements(CASE WHEN jsonb_typeof(content->'items')='array' THEN content->'items' ELSE '[]'::jsonb END) item
-       WHERE item->>'published'='true' AND coalesce(item->>'archived','false')!='true') AS published_count
+       WHERE item->>'slug' IS DISTINCT FROM 'commerce-engine') AS count,
+      (SELECT count(*)::int FROM jsonb_array_elements(CASE WHEN jsonb_typeof(content->'items')='array' THEN content->'items' ELSE '[]'::jsonb END) item
+       WHERE item->>'published'='true' AND coalesce(item->>'archived','false')!='true' AND item->>'slug' IS DISTINCT FROM 'commerce-engine') AS published_count
       FROM site_pages WHERE slug='catalog' AND locale='ar' LIMIT 1`),
     pool.query("SELECT count(*)::int AS count FROM packages WHERE is_published=true")
   ]);
@@ -1384,6 +1404,27 @@ const entitlementPayload=z.object({
  status:z.enum(["pending","active","paused","expired","cancelled"]).default("pending"),
  expiresAt:z.string().datetime({offset:true}).nullable().optional()
 }).strict();
+app.get("/api/admin/commerce/overview",requireAdmin,requirePermission("products"),route(async(_req,res)=>{
+ const config=commerceConfig();
+ const result={configured:!!config,publicOrigin:config?.publicOrigin??null,stores:[],themes:[],sectors:[],runtimeAvailable:false};
+ if(config){try{const [stores,library]=await Promise.all([runtimeRequest(config,"/api/stores"),runtimeRequest(config,"/api/themes")]);Object.assign(result,{stores:stores.stores,themes:library.themes,sectors:library.sectors,runtimeAvailable:true});}catch{}}
+ res.set("Cache-Control","no-store").json(result);
+}));
+app.get("/api/admin/commerce/projects",requireAdmin,requirePermission("products"),requirePermission("customers"),requireRole("owner","admin"),route(async(_req,res)=>{
+ res.set("Cache-Control","no-store").json({projects:await commerceProjects(pool)});
+}));
+app.post("/api/admin/commerce/stores",requireAdmin,requirePermission("products"),requirePermission("customers"),requireRole("owner","admin"),route(async(req,res)=>{
+ const input=z.object({projectId:z.string().uuid(),name:z.string().trim().min(1).max(200),slug:z.string().max(60).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),theme:z.string().max(100).regex(/^[a-z0-9-]+$/),shipping:z.number().int().min(0).max(100000000)}).strict().safeParse(req.body);
+ if(!input.success)return res.status(400).json({error:"Invalid store configuration"});
+ try{res.set("Cache-Control","no-store").status(201).json(await provisionCommerce(pool,commerceConfig(),input.data));}catch(e){if(e.status)return res.status(e.status).json({error:e.message});throw e;}
+}));
+app.get("/api/admin/commerce/addon-requests",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
+ res.set("Cache-Control","no-store").json({requests:await listExtensions(pool)});
+}));
+app.post("/api/admin/commerce/addon-requests/:id/activate",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
+ if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({error:"Invalid request"});
+ try{res.json(await activateExtension(pool,req.params.id,req.admin.email));}catch(e){if(e instanceof AddonRequestError)return res.status(e.status).json({error:e.message});throw e;}
+}));
 app.get("/api/admin/customer-service-projects",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
  const result=await pool.query(`SELECT d.id,d.title,d.linked_journey_id,a.name AS customer_name,a.email AS customer_email
  FROM customer_project_drafts d JOIN customer_accounts a ON a.id=d.customer_id
@@ -1491,6 +1532,10 @@ app.patch("/api/admin/ownership-prices/:scope/:key",requireAdmin,requirePermissi
   const p=await ownershipProduct(client,scope,key);
   if(!p){await client.query("ROLLBACK");return res.status(404).json({error:"Product unavailable"});}
   const before=await ensureOwnership(client,scope,key,p.name,p.base??parsed.data.copy.list_price);
+  if(scope==="sector"&&key==="commerce-engine"){
+   if(ownershipModes.some(m=>!parsed.data[m]||Math.round(parsed.data[m].list_price*(100-parsed.data[m].discount_percent))<=0)){await client.query("ROLLBACK");return res.status(400).json({error:"Enter four positive approved store prices (after discounts)"});}
+   for(const mode of ownershipModes){const x=parsed.data[mode];await client.query("INSERT INTO product_ownership_prices(scope,owner_key,mode,list_price,initial_price,discount_percent) VALUES($1,$2,$3,$4,$4,$5) ON CONFLICT(scope,owner_key,mode) DO UPDATE SET list_price=EXCLUDED.list_price,discount_percent=EXCLUDED.discount_percent",[scope,key,mode,x.list_price,x.discount_percent]);}
+  }else
   for(const mode of ownershipModes){const x=parsed.data[mode];if(!x)continue;await client.query("UPDATE product_ownership_prices SET list_price=$4,discount_percent=$5 WHERE scope=$1 AND owner_key=$2 AND mode=$3",[scope,key,mode,x.list_price,x.discount_percent]);}
   const prices=await ensureOwnership(client,scope,key,p.name,p.base??parsed.data.copy.list_price);
   await auditChange(client,req.admin.email,"ownership.prices_updated",scope,scope==="package"?key:"00000000-0000-4000-8000-000000000001",{key,prices:before},{key,prices});
@@ -1811,6 +1856,7 @@ app.post("/api/admin/commercial/quotes/:id/revise",requireAdmin,requirePermissio
  const client=await pool.connect();try{await client.query("BEGIN");const old=await client.query("SELECT * FROM commercial_quotes WHERE id=$1 FOR UPDATE",[req.params.id]);
  if(!old.rowCount||!["draft","issued"].includes(old.rows[0].status)){await client.query("ROLLBACK");return res.status(409).json({error:"Cannot revise quote"})}
  const x=old.rows[0];
+ if((await client.query("SELECT 1 FROM project_addon_requests WHERE quote_id=$1",[x.id])).rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Central add-on quote is immutable; request a new selection instead"});}
  const associatedContract=await client.query("SELECT id,status FROM customer_contracts WHERE quote_id=$1 AND status<>'void' FOR UPDATE",[x.id]);
  if(associatedContract.rows.some(contract=>contract.status==="signed")){await client.query("ROLLBACK");return res.status(409).json({error:"Signed contracts cannot be rewritten or repriced"});}
  if(associatedContract.rowCount)await client.query("UPDATE customer_contracts SET status='void' WHERE quote_id=$1 AND status='issued'",[x.id]);
@@ -1925,7 +1971,7 @@ app.get("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermis
  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Invalid id'});
  const r=await pool.query('SELECT id,invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by,created_at FROM commercial_invoice_payments WHERE invoice_id=$1 ORDER BY paid_at,id',[id]);res.json({payments:r.rows});
 }));
-app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermission("customers"),route(async(req,res)=>{
+app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requireRole("owner","admin"),requirePermission("customers"),route(async(req,res)=>{
  const id=Number(req.params.id),{amountPiasters,paidAt,provider,providerReference}=req.body||{};
  if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(amountPiasters)||amountPiasters<1||typeof provider!=='string'||!['manual_verified','gateway_verified'].includes(provider)||typeof providerReference!=='string'||!providerReference.trim()||providerReference.length>180||typeof paidAt!=='string'||Number.isNaN(Date.parse(paidAt)))return res.status(400).json({error:'Invalid verified payment'});
  // Gateway verification requires a server-side provider callback. Manual entries require owner/admin evidence review.
@@ -1938,7 +1984,7 @@ app.post("/api/admin/commercial/invoices/:id/payments",requireAdmin,requirePermi
  const payment=await client.query('INSERT INTO commercial_invoice_payments(invoice_id,amount_piasters,paid_at,provider,provider_reference,recorded_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[id,amountPiasters,paidAt,provider,providerReference.trim(),req.admin.email]);
  const newPaid=Number(inv.rows[0].verified_paid_piasters)+amountPiasters;
  await client.query('UPDATE commercial_invoices SET verified_paid_piasters=$1,status=$2 WHERE id=$3',[newPaid,newPaid===Number(inv.rows[0].amount_piasters)?'paid':'part_paid',id]);
- await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.payment.manually_verified','commercial_invoice',$2,$3::jsonb)",[req.admin.email,String(id),JSON.stringify({amountPiasters,paymentId:payment.rows[0].id,providerReference:providerReference.trim()})]);
+ await client.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,after_data) VALUES($1,'invoice.payment.manually_verified','commercial_invoice',$2,$3::jsonb)",[req.admin.email,commercialInvoiceAuditId(id),JSON.stringify({invoiceId:id,amountPiasters,paymentId:payment.rows[0].id,providerReference:providerReference.trim()})]);
  await queueJourneyEvent(client,"payment.verified",`payment.verified:${payment.rows[0].id}`,{invoiceId:id,paymentId:payment.rows[0].id,amountPiasters,invoiceStatus:newPaid===Number(inv.rows[0].amount_piasters)?'paid':'part_paid'});
  await advancePaidJourneyIfEligible(client,id);
  await client.query('COMMIT');res.status(201).json({payment:payment.rows[0],remainingPiasters:Number(inv.rows[0].amount_piasters)-newPaid});
@@ -2156,7 +2202,7 @@ app.post("/api/admin/commercial/quotes",requireAdmin,requirePermission("customer
  const q=await pool.query("INSERT INTO commercial_quotes(customer_email,items,total_piasters,valid_until) VALUES($1,$2::jsonb,$3,$4) RETURNING *",[customerEmail.trim().toLowerCase(),JSON.stringify(items),total,validUntil||null]);res.status(201).json({quote:q.rows[0]});
 }));
 app.get("/api/admin/commercial/quotes",requireAdmin,requirePermission("customers"),route(async(_req,res)=>{
- const q=await pool.query("SELECT * FROM commercial_quotes ORDER BY created_at DESC LIMIT 100");res.json({quotes:q.rows});
+ const q=await pool.query("SELECT q.*, EXISTS(SELECT 1 FROM project_addon_requests r WHERE r.quote_id=q.id) AS is_addon_request FROM commercial_quotes q ORDER BY created_at DESC LIMIT 100");res.json({quotes:q.rows});
 }));
 // Audit table stores UUID entity IDs while commercial templates use bigint identities.
 const contractAuditId=id=>{

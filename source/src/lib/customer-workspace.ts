@@ -5,7 +5,7 @@ export type CustomerWorkspace = {
   draftInvoice?:DraftInvoice;
   ownershipMode?:"rent"|"copy"|"code"|"rent_monthly"; domainChoice?:string; optionQuantities?:Record<string,number>;
   assistantMessages?:AssistantMessage[];
-  sectorSlug?:string; sectorName?:string; packageId?:string; businessName?:string;
+  sectorSlug?:string; commerceTheme?:string; sectorName?:string; packageId?:string; businessName?:string;
   projectMode?:"ready"|"custom"; solutionType?:"website"|"store"|"mobile"|"management"|"ai"|"other"; requirements?:string;
   businessDescription?:string; brandColor?:string; options?:string[]; sectorAddonCodes?:string[]; sectorAddonQuantities?:Record<string,number>;
   deliveryMethod?:"managed"|"source-code"|"undecided"; domainName?:string;
@@ -27,7 +27,7 @@ function guestStorage():Storage|null{
     return window.sessionStorage;
   }catch{return null;}
 }
-const allowed=new Set(["ownershipMode","optionQuantities","domainChoice","sectorSlug","sectorName","packageId","businessName","businessDescription","brandColor","options","sectorAddonCodes","sectorAddonQuantities","projectMode","solutionType","requirements","deliveryMethod","domainName","source","assistantMessages","draftInvoice"]);
+const allowed=new Set(["ownershipMode","optionQuantities","domainChoice","sectorSlug","commerceTheme","sectorName","packageId","businessName","businessDescription","brandColor","options","sectorAddonCodes","sectorAddonQuantities","projectMode","solutionType","requirements","deliveryMethod","domainName","source","assistantMessages","draftInvoice"]);
 export function loadGuestWorkspace():CustomerWorkspace {
   if(typeof window==="undefined")return {};
   try{
@@ -38,7 +38,9 @@ export function loadGuestWorkspace():CustomerWorkspace {
   }catch{return {};}
 }
 export function saveGuestWorkspace(patch:CustomerWorkspace):CustomerWorkspace {
-  const next={...loadGuestWorkspace(),...patch};
+  const previous=loadGuestWorkspace();
+  if(previous.commerceTheme&&(patch.sectorSlug&&patch.sectorSlug!=="commerce-engine"||patch.packageId)){delete previous.commerceTheme;delete previous.solutionType;}
+  const next={...previous,...patch};
   if(typeof window!=="undefined"){
     try{guestStorage()?.setItem(WORKSPACE_KEY,JSON.stringify(next));window.dispatchEvent(new CustomEvent("atsh-workspace-updated",{detail:next}));}catch{/* restricted storage */ }
   }

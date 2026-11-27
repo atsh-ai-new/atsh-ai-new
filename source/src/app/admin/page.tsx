@@ -18,9 +18,10 @@ import ContentStudio from "./content-studio";
 import JourneyManager from "./journey-manager";
 import CustomerServicesAdmin from "./customer-services-admin";
 import CommercialManager from "./commercial-manager";
+import CommerceManager from "./commerce-manager";
 
 type Role = "owner" | "admin" | "editor" | "sales" | "viewer";
-type View = "videos" | "messages" | "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "theme" | "inbox" | "team" | "audit";
+type View = "videos" | "messages" | "overview" | "integrations" | "assistant-knowledge" | "content" | "pages" | "works" | "content-studio" | "journey" | "commercial" | "options" | "stores" | "theme" | "inbox" | "team" | "audit";
 type Package = { ownershipPrices?:import("@/components/ownership-selector").OwnershipPrices|null; list_price?:number|string;initial_price?:number|string;discount_percent?:number|string; id: string; name: string; tagline: string; description: string; price: number | string; currency: string; features: string[]; is_featured: boolean; is_custom_quote: boolean; is_published: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
 type Option = { list_price?:number|string;discount_percent?:number|string;initial_price?:number|string;initial_pricing_type?:Option["pricing_type"];initial_unit_label?:string;category_code?:AddonCategoryCode;category_sort_order?:number; id: string; package_id: string; code: string; name: string; description: string; price: number | string; pricing_type: "fixed" | "monthly" | "yearly" | "per_page"; unit_label: string; is_required: boolean; is_active: boolean; sort_order: number; visibility: "both" | "packages" | "systems" };
 type Order = { id: string; reference: string; customer_name: string; phone: string; email: string | null; status: string; currency: string; total: number | string; created_at: string; assigned_to: string | null; assigned_to_name: string | null; package_name: string | null; notes?: string; linked_project_id?: string | null; snapshot?: { package?: { name?: string }; options?: Array<{ name: string; quantity?: number; lineTotal?: number }> } };
@@ -41,6 +42,7 @@ const nav: Array<{ id: View; label: string; icon: string }> = [
   { id: "overview", label: "نظرة عامة", icon: "◫" }, { id: "integrations", label: "حالة الربط", icon: "🔌" }, { id:"assistant-knowledge",label:"تعريفات GPT والردود",icon:"✦" }, { id: "content", label: "تعديل المحتوى", icon: "▤" },
   { id: "pages", label: "صفحات المنصة", icon: "▧" }, { id: "works", label: "سجل الأعمال السابقة", icon: "▣" },
   { id: "options", label: "المنتجات", icon: "▦" },
+  { id: "stores", label: "المتاجر", icon: "▣" },
   { id: "content-studio", label: "منشئ المحتوى", icon: "✦" },
   { id: "videos", label: "فيديوهات المنصة", icon: "▶" },
   { id: "messages", label: "مركز المراسلات", icon: "✉" },
@@ -53,14 +55,14 @@ const adminGroups: Array<{label:string;views:View[];showChildren?:boolean}>= [
  {label:"نظرة عامة",views:["overview"]},
  {label:"المراسلات",views:["messages"]},
  {label:"العملاء",views:["inbox","journey"]},
- {label:"محتوى المنصة",views:["pages","options"],showChildren:true},
+ {label:"محتوى المنصة",views:["pages","options","stores"],showChildren:true},
  {label:"فيديو",views:["content-studio","videos"],showChildren:true},
  {label:"الفريق",views:["team"]},
  {label:"المساعد الذكي",views:["assistant-knowledge"]}
 ];
 const viewPermissions: Partial<Record<View, string>> = {
     integrations:"settings", "assistant-knowledge":"assistant", team:"team", audit:"audit",
-    options:"products", theme:"settings", content:"content", pages:"content",
+    options:"products", stores:"products", theme:"settings", content:"content", pages:"content",
     works:"content", videos:"content", "content-studio":"assistant", journey:"customers",
     commercial:"customers", inbox:"customers"
   };
@@ -86,6 +88,7 @@ export default function AdminPage() {
   const [chatTarget,setChatTarget]=useState("");
   const [chatSequence,setChatSequence]=useState(0);
   useEffect(()=>{const open=()=>{const p=new URLSearchParams(window.location.search);if(p.get("view")==="messages"){setChatTarget(p.toString());setChatSequence(n=>n+1);setView("messages");}};open();window.addEventListener("popstate",open);window.addEventListener("atsh-open-chat",open);return()=>{window.removeEventListener("popstate",open);window.removeEventListener("atsh-open-chat",open);};},[]);
+  const [openCommerceOffer,setOpenCommerceOffer]=useState(false);
   const [offeringTab, setOfferingTab] = useState<"packages" | "systems" | "addons" | "preview">("packages");
   const [offerPreviewUrl,setOfferPreviewUrl]=useState("");
   const [orderPreviewUrl,setOrderPreviewUrl]=useState("");
@@ -480,6 +483,8 @@ export default function AdminPage() {
         {view === "content-studio" && canEditContent && <ContentStudio />}
         {view === "journey" && <><JourneyManager mode="projects" showMyTasks={user.role!=="owner"} canManageTasks={canEditOrders} canArchive={user.role === "owner" || user.role === "admin"} canDelete={user.role === "owner"} />{(user.role === "owner" || user.role === "admin") && <CustomerServicesAdmin canEdit={true} />}</>}
       {view === "commercial" && <CommercialManager />}
+        {view === "stores" && canEditCatalog && openCommerceOffer && <CatalogManager initialCommerceOffer />}
+        {view === "stores" && canEditCatalog && <CommerceManager canProvision={canEditOrders&&(user.role==="owner"||user.role==="admin")} canCustomers={canEditOrders} openOffer={()=>setOpenCommerceOffer(v=>!v)} openAddons={()=>{setOpenCommerceOffer(false);setOfferingTab("addons");setView("options");}} openCommercial={()=>setView("commercial")} />}
 
         {view === "options" && <section className="admin-content-card" aria-label="المعروض"><h2>المعروض</h2><p>إدارة الباقات والأنظمة المخصصة من مكان واحد، دون تكرار نماذج الإنشاء.</p><div role="tablist" aria-label="أقسام المعروض" style={{display:"flex",gap:8,flexWrap:"wrap"}}><button type="button" role="tab" aria-selected={offeringTab==="packages"} className={offeringTab==="packages"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("packages")}>الباقات</button><button type="button" role="tab" aria-selected={offeringTab==="systems"} className={offeringTab==="systems"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("systems")}>أنظمة مخصصة</button><button type="button" role="tab" aria-selected={offeringTab==="addons"} className={offeringTab==="addons"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("addons")}>الإضافات</button><button type="button" role="tab" aria-selected={offeringTab==="preview"} className={offeringTab==="preview"?"button button-small":"button button-outline button-small"} onClick={previewOfferings}>معاينة</button></div></section>}
 
