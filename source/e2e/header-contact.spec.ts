@@ -14,7 +14,10 @@ for (const locale of ["ar","en"]) {
   await expect(header.locator(".platform-brand small")).toHaveCSS("font-size",page.viewportSize()!.width<=767?"13px":"14px");
   await expect(header.locator(".platform-brand small")).toHaveCSS("font-weight","600");
   await expect(header).not.toHaveClass(/platform-header-with-contact/);
-  await page.locator(".atsh-fab-contact-menu").click();
+  const contactMenu=page.locator(".atsh-fab-contact-menu");
+  await expect(contactMenu).toBeVisible();
+  // The Next.js development indicator overlays the Arabic floating menu in CI.
+  await contactMenu.press("Enter");
   await expect(page.locator('#atsh-contact-submenu a[href="tel:+201007735321"]')).toBeVisible();
  });
 }
