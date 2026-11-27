@@ -3,6 +3,7 @@ import hmac,hashlib,json,os,re,subprocess,tempfile,wave,sys
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from threading import BoundedSemaphore
 from pathlib import Path
+from voice_quality import check_pcm16
 IDS={f"{dialect}-{gender}" for dialect in ("egyptian","alexandrian","saidi","saudi","gulf") for gender in ("male","female")}
 def local_asset(root, value, suffix=None, directory=False):
     if not isinstance(value,str) or not value:raise ValueError("Missing asset path")
@@ -71,6 +72,7 @@ def synthesize(models,body):
         subprocess.run(["ffmpeg","-v","error","-nostdin","-i",str(target),*filters,"-ac","1","-ar","16000","-c:a","pcm_s16le","-t","33",str(output)],check=True,timeout=5)
         with wave.open(str(output),"rb") as stream:
             if not 0<stream.getnframes()<=512000:raise ValueError("Invalid voice duration")
+        check_pcm16(output)
         return output.read_bytes()
 def main():
     root=os.environ.get("VOICE_MODEL_ROOT","/models")
