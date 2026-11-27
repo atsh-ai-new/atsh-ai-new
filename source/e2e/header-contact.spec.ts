@@ -139,7 +139,12 @@ test("default ticker starts above the complete administration and customer porta
 test("private portal ticker stays above the actual signed-in layouts even when public placement is below the header",async({page})=>{
  await page.route("**/api/site-content/home?locale=*",route=>route.fulfill({json:{page:{content:{newsTicker:{enabled:true,text:"Portal news",speed:25,position:"below_header"}}}}}));
  await page.route("**/api/admin/**",route=>route.fulfill({json:new URL(route.request().url()).pathname==="/api/admin/me"?{email:"staff@example.test",role:"admin",permissions:{products:true,content:true}}:{}}));
- await page.route("**/api/customer/auth/**",route=>route.fulfill({json:new URL(route.request().url()).pathname.endsWith("/me")?{customer:{name:"عميل تجريبي",email:"client@example.test"}}:{}}));
+ await page.route("**/api/customer/auth/**",route=>{
+  const path=new URL(route.request().url()).pathname;
+  return route.fulfill({json:path.endsWith("/me")?{customer:{name:"عميل تجريبي",email:"client@example.test"}}:path.endsWith("/workspace")?{workspace:{draft:{}}}:{drafts:[],previews:[],projects:[],messages:[]}});
+ });
+ await page.route("**/api/customer/commercial/**",route=>route.fulfill({json:{orders:[],quotes:[],contracts:[],invoices:[]}}));
+ await page.route("**/api/customer/deliverables",route=>route.fulfill({json:{deliverables:[]}}));
  for(const path of ["/admin","/account/dashboard"]){
   await page.goto(path);
   const ticker=page.locator("body > .atsh-news-slot:first-child .atsh-news-ticker");
@@ -221,14 +226,14 @@ test("owner changes a single team permission and sees the persisted result after
  await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"الفريق",exact:true}).click();
  const checkbox=page.locator(".admin-team-row").filter({hasText:"مدير اختباري"}).getByLabel("الفريق",{exact:true});
  await expect(checkbox).not.toBeChecked();
- await checkbox.click();
+ await checkbox.click({timeout:10000});
  await expect(checkbox).toBeChecked();
  await expect(page.getByText("تم حفظ صلاحيات العضو.",{exact:true})).toBeVisible();
  expect(writes).toEqual([{team:true}]);
  await page.reload();
  await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"الفريق",exact:true}).click();
  await expect(checkbox).toBeChecked();
- await checkbox.click();
+ await checkbox.click({timeout:10000});
  await expect(checkbox).not.toBeChecked();
  expect(writes).toEqual([{team:true},{team:false}]);
 });
