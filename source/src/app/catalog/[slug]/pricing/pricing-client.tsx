@@ -2,18 +2,20 @@
 import {useEffect,useState} from "react";
 import Link from "next/link";
 import AddonPrice from "@/components/addon-price";
+import {PriceBreakdown} from "@/components/price-breakdown";
+import {roundMoney,summarizePrice} from "@/lib/price-summary";
 import AddonGroups from "@/components/addon-groups";
 import {englishExpansionOptions} from "@/lib/site-copy-en";
 import DomainLookup from "@/components/domain-lookup";
 import type {CategorizedAddon} from "@/lib/addon-categories";
 import {loadGuestWorkspace,loadAccountWorkspace,loadPricingDraft,savePricingDraft,type PricingDraft} from "@/lib/customer-workspace";
-import OwnershipSelector,{ownershipName,ownershipPeriod,isRental,type OwnershipMode,type OwnershipPrices} from "@/components/ownership-selector";
+import OwnershipSelector,{ownershipName,ownershipPeriod,type OwnershipMode,type OwnershipPrices} from "@/components/ownership-selector";
 
 type Addon=CategorizedAddon & {list_price?:number|string;discount_percent?:number|string;required?:boolean;code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"|"per_page"};
 type Catalog={ownershipPrices?:OwnershipPrices|null;slug:string;name:string;basePrice:number|null;pricedAddons?:Addon[];published?:boolean;archived?:boolean};
 export default function CatalogPricingClient({slug}:{slug:string}){
  const [mode,setMode]=useState<OwnershipMode>("rent");
- const [edit,setEdit]=useState<PricingDraft|null>(null);const [editReady,setEditReady]=useState(false);const [saveError,setSaveError]=useState("");const [vat,setVat]=useState(14);
+ const [edit,setEdit]=useState<PricingDraft|null>(null);const [editReady,setEditReady]=useState(false);const [saveError,setSaveError]=useState("");const [vat,setVat]=useState<number|null>(null);
  const [catalog,setCatalog]=useState<Catalog|null>(null);
  const [sharedAddons,setSharedAddons]=useState<Addon[]>([]);
  const [status,setStatus]=useState<"loading"|"ready"|"missing">("loading");
@@ -37,7 +39,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
    if(!active)return;
    const item=(data?.page?.content?.items??[]).find((x:Catalog)=>x.slug===slug&&x.published!==false&&!x.archived);
    if(!item){setStatus("missing");return;}
-   setCatalog(item);setVat(Number(data.vatRate??14));setStatus("ready");
+   setCatalog(item);setVat(data.vatRate!=null&&Number.isFinite(Number(data.vatRate))&&Number(data.vatRate)>=0&&Number(data.vatRate)<=100?Number(data.vatRate):null);setStatus("ready");
   }).catch(()=>{if(active)setStatus("missing");});
   fetch("/api/catalog",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("Shared add-ons unavailable");return r.json()}).then(data=>{
    if(!active)return;
@@ -57,23 +59,17 @@ export default function CatalogPricingClient({slug}:{slug:string}){
  const pageAddon=addons.find(a=>a.code==="extra_page");
  const base=catalog?.ownershipPrices?.[mode]?.price??null;
  const chosen=[...new Set([...selected.filter(code=>addons.some(a=>a.code===code)),...addons.filter(a=>a.required&&a.code!=="extra_page").map(a=>a.code)])];
- const baseFixed=isRental(mode)?0:base??0;const baseYearly=mode==="rent"?base??0:0;
  const amountFor=(a:Addon)=>Number(a.price)*(a.pricingType==="per_page"?writingPages:1);
- const fixed=addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)&&(a.pricingType==="fixed"||a.pricingType==="per_page")).reduce((n,a)=>n+amountFor(a),0)+pages*Number(pageAddon?.price??0);
- const monthly=(mode==="rent_monthly"?base??0:0)+addons.filter(a=>chosen.includes(a.code)&&a.pricingType==="monthly").reduce((n,a)=>n+Number(a.price),0);
- const yearly=baseYearly+addons.filter(a=>chosen.includes(a.code)&&a.pricingType==="yearly").reduce((n,a)=>n+Number(a.price),0);
- const money=(n:number)=>n.toLocaleString(en?"en-EG":"ar-EG",{maximumFractionDigits:2})+" "+t("ج.م","EGP");
- const save=async()=>{if(!catalog||base===null||!editReady)return;setSaveError("");try{
- const items=[{name:catalog.name+" — "+ownershipName(mode),amount:base,period:ownershipPeriod(mode)},...addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="per_page"?"fixed" as const:a.pricingType})),...(pages>0&&pageAddon?[{name:"صفحات إضافية × "+pages,amount:pages*Number(pageAddon.price),period:"fixed" as const}]:[])];
- const subtotal=Math.round((baseFixed+fixed+monthly+yearly)*100)/100,tax=Math.round(subtotal*vat)/100;
- await savePricingDraft(edit,{domainName,sectorSlug:slug,sectorName:catalog.name,ownershipMode:mode,sectorAddonCodes:[...chosen,...(pages>0&&pageAddon?["extra_page"]:[])],sectorAddonQuantities:Object.fromEntries([...addons.filter(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&chosen.includes(a.code)).map(a=>[a.code,writingPages] as const),...(pages>0&&pageAddon?[["extra_page",pages] as const]:[])]),source:"catalog",projectMode:"ready",businessDescription:details,draftInvoice:{title:catalog.name,items,subtotal,vat:tax,total:Math.round((subtotal+tax)*100)/100,fixed:baseFixed+fixed,monthly,yearly,currency:"EGP",savedAt:new Date().toISOString()}},locale);
+ const items=[...(catalog&&base!==null?[{name:catalog.name+" · "+ownershipName(mode,en),amount:base,period:ownershipPeriod(mode)}]:[]),...addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)).map(a=>({name:en?(englishExpansionOptions[a.code]?.name??a.name):a.name,amount:roundMoney(amountFor(a)),period:a.pricingType==="per_page"?"fixed" as const:a.pricingType})),...(pages>0&&pageAddon?[{name:t(`صفحات إضافية × ${pages}`,`Additional pages × ${pages}`),amount:roundMoney(pages*Number(pageAddon.price)),period:"fixed" as const}]:[])];
+ const summary=base===null?null:summarizePrice(items,vat);
+ const save=async()=>{if(!catalog||!summary||!editReady)return;setSaveError("");try{
+ await savePricingDraft(edit,{domainName,sectorSlug:slug,sectorName:catalog.name,ownershipMode:mode,sectorAddonCodes:[...chosen,...(pages>0&&pageAddon?["extra_page"]:[])],sectorAddonQuantities:Object.fromEntries([...addons.filter(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&chosen.includes(a.code)).map(a=>[a.code,writingPages] as const),...(pages>0&&pageAddon?[["extra_page",pages] as const]:[])]),source:"catalog",projectMode:"ready",businessDescription:details,draftInvoice:{title:catalog.name,items,...summary,currency:"EGP",savedAt:new Date().toISOString()}},locale);
  }catch(e){setSaveError(e instanceof Error?e.message:"تعذر حفظ الاختيارات")}};
  const cardStyle={border:"1px solid #d8e1eb",borderRadius:12,padding:"12px 14px",background:"#fff"} as const;
  return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:780,margin:"0 auto",padding:"18px 14px 70px",color:"#203958"}}>
   <Link href={en?"/en/catalog":"/catalog"} style={{color:"#203958"}}>{t("← العودة","← Back")}</Link>
   {status==="loading"?<p>{t("جارٍ تحميل التسعير...","Loading pricing...")}</p>:status==="missing"?<p role="alert">{t("تعذر تحميل النظام المخصص. حاول مجددًا.","Catalog unavailable. Please try again.")}</p>:<div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr)",gap:13,marginTop:20}}>
    <header><small>{t("تخصيص النظام المخصص","Catalog configuration")}</small><h1 style={{fontSize:"clamp(24px,5vw,34px)",margin:"5px 0"}}>{catalog?.name}</h1><p style={{margin:0,color:"#60728a"}}>{t("النظام المخصص جاهز؛ أضف فقط ما تحتاجه دون اختيار باقة موقع جديدة.","Your catalog is already selected. Add only the features you need.")}</p></header>
-   <section style={cardStyle}><strong>{t("سعر النظام المخصص الأساسي","Catalog base price")}</strong><p style={{fontSize:24,fontWeight:800,margin:"7px 0"}}>{base===null?t("السعر يحدده المسؤول","Price pending admin setup"):money(base)}</p></section>
    <section style={cardStyle}><h2 style={{fontSize:18,margin:"0 0 10px"}}>{t("البحث عن الدومين","Search for a domain")}</h2><DomainLookup locale={locale} source="catalog" value={domainName} onDomainChange={setDomainName}/>{domainName&&<p><small>{t("الدومين المختار","Selected domain")}: <b dir="ltr">{domainName}</b></small></p>}</section>
    <section style={cardStyle}><OwnershipSelector prices={catalog?.ownershipPrices} mode={mode} onChange={setMode} locale={locale}/></section>
    <section className="catalog-addon-section"><h2 style={{fontSize:19,margin:"4px 0 12px"}}>{t("الإضافات والتكاملات","Add-ons and integrations")}</h2>
@@ -82,17 +78,10 @@ export default function CatalogPricingClient({slug}:{slug:string}){
    </section>
    <section style={cardStyle}><label style={{display:"grid",gap:7}}><strong>{t("تفاصيل أو متطلبات أخرى","Other details or requirements")}</strong><textarea rows={3} value={details} onChange={e=>setDetails(e.target.value)} placeholder={t("اكتب تفاصيل الطلب الإضافية","Describe any other requirements")} style={{width:"100%",boxSizing:"border-box",border:"1px solid #cad6e2",borderRadius:8,padding:10}}/></label></section>
    <section style={{...cardStyle,padding:"22px 20px",borderRadius:24}} aria-live="polite">
-    <div style={{color:"#718398",fontSize:14,fontWeight:600}}>{t("ملخص مباشر","Live summary")}</div>
-    <h2 style={{fontSize:27,margin:"8px 0 20px"}}>{t("طلبك الحالي","Your current order")}</h2>
-    <div style={{background:"#f5f7f9",border:"1px solid #e0e6eb",borderRadius:12,padding:"13px 15px",color:"#718398",fontSize:14,fontWeight:600,marginBottom:18}}>{t("تفاصيل النظام والإضافات المحددة","Selected system and add-ons")}</div>
-    {([{name:catalog?.name??t("النظام المخصص","Custom system"),amount:base??0,period:mode==="rent"?t("سنويًا","Yearly"):mode==="rent_monthly"?t("شهريًا","Monthly"):t("مرة واحدة","One-time")},...addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="monthly"?t("شهريًا","Monthly"):a.pricingType==="yearly"?(a.code==="hosting"?t("اشتراك سنوي لمدة 12 شهرًا","Annual subscription (12 months)"):t("سنويًا","Yearly")):t("مرة واحدة","One-time")})),...(pages>0&&pageAddon?[{name:t(`صفحات إضافية × ${pages}`,`Additional pages × ${pages}`),amount:pages*Number(pageAddon.price),period:t("مرة واحدة","One-time")}]:[]) ]).map((item,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"center",padding:"14px 0",borderBottom:"1px solid #e6e9ed"}}><div style={{textAlign:"start"}}><div>{item.name}</div><small style={{color:"#9aa3ad"}}>{item.period}</small></div><strong style={{whiteSpace:"nowrap",fontSize:14}}>{money(item.amount)}</strong></div>)}
-    <div style={{display:"flex",justifyContent:"space-between",gap:12,padding:"17px 0 10px",color:"#667586"}}><span>{t("المجموع قبل الضريبة","Subtotal before tax")}</span><strong>{base===null?"—":money(baseFixed+fixed+monthly+yearly)}</strong></div>
-    <div style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0 17px",borderBottom:"1px solid #dce2e8",color:"#667586"}}><span>{t("ضريبة القيمة المضافة ("+vat+"%)","VAT ("+vat+"%)")}</span><strong>{base===null?"—":money((baseFixed+fixed+monthly+yearly)*vat/100)}</strong></div>
-    <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"20px 0 18px"}}><span style={{color:"#667586"}}>{t("الإجمالي التقديري","Estimated total")}</span><strong style={{fontSize:"clamp(21px,5vw,30px)",color:"#203958",whiteSpace:"nowrap"}}>{base===null?"—":money((baseFixed+fixed+monthly+yearly)*(1+vat/100))}</strong></div>
-    {[[t("رسوم لمرة واحدة","One-time fees"),base===null?"—":money(baseFixed+fixed)],[t("رسوم شهرية متكررة","Recurring monthly fees"),money(monthly)],[t("رسوم سنوية متكررة","Recurring annual fees"),money(yearly)]].map(([label,value])=><div key={label} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"14px 12px",marginBottom:10,background:"#f7f7f4",borderRadius:12,fontSize:14,fontWeight:600,color:"#687584"}}><span>{label}</span><strong>{value}</strong></div>)}
-    <p style={{fontSize:14,fontWeight:600,color:"#87919d",textAlign:"center",margin:"18px 0 0"}}>{t("الأسعار استرشادية بالجنيه المصري؛ تُراجع البنود والضريبة قبل إصدار عرض رسمي.","Indicative EGP pricing; line items and taxes are reviewed before a formal quote.")}</p>
+    <h2 style={{margin:"0 0 12px"}}>{t("ملخص السعر","Price summary")}</h2>
+    {summary?<PriceBreakdown summary={summary} items={items} locale={locale} domain={domainName}/>:<p>{t("الإجمالي يظهر بعد تحميل الأسعار والضريبة.","The total appears when pricing and tax are available.")}</p>}
    </section>
-   {saveError&&<p role="alert">{saveError}</p>}<button type="button" disabled={base===null||!editReady} onClick={()=>void save()} style={{background:"#203958",color:"#fff",borderRadius:11,padding:15,textAlign:"center",fontWeight:800}}>{t("حفظ الاختيارات والمتابعة","Save selections and continue")}</button>
+   {saveError&&<p role="alert">{saveError}</p>}<button type="button" disabled={!summary||!editReady} onClick={()=>void save()} style={{background:"#203958",color:"#fff",borderRadius:11,padding:15,textAlign:"center",fontWeight:800}}>{t("حفظ الاختيارات والمتابعة","Save selections and continue")}</button>
   </div>}
  </main>;
 }

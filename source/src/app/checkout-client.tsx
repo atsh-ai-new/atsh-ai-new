@@ -2,6 +2,7 @@
 import {useEffect,useState} from "react";
 import Link from "next/link";
 import {useParams} from "next/navigation";
+import {billingLabel,priceMoney} from "@/components/price-breakdown";
 
 type QuoteLine={label:string;quantity:number;unitPricePiasters:number;period?:string};
 type Checkout={
@@ -12,9 +13,9 @@ type Checkout={
  project:{id:string;status:string;template_id:string|null;draft_id:string}|null;
  payment:{gatewayConnected:boolean;canPayOnline:boolean;note:string};
 };
-const money=(piasters:number,currency="EGP")=>`${(Number(piasters)/100).toLocaleString("ar-EG",{minimumFractionDigits:2,maximumFractionDigits:2})} ${currency==="EGP"?"جنيه":currency}`;
 const stageLabel:Record<string,string>={draft:"مسودة",issued:"في انتظار موافقتك",accepted:"موافق عليه",superseded:"نسخة قديمة",expired:"منتهي",unpaid:"بانتظار الدفع",part_paid:"مدفوع جزئيًا",paid:"تم الدفع بعد التحقق",void:"ملغي",signed:"موافقة مسجلة"};
 export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;const status=(v:string)=>en?({draft:"Draft",issued:"Awaiting approval",accepted:"Approved",superseded:"Superseded",expired:"Expired",unpaid:"Unpaid",part_paid:"Partially paid",paid:"Paid and verified",void:"Cancelled",signed:"Signed"} as Record<string,string>)[v]||v:stageLabel[v]||v;
+ const money=(piasters:number,currency="EGP")=>priceMoney(Number(piasters)/100,locale,currency);
  const {id}=useParams<{id:string}>();
  const [data,setData]=useState<Checkout|null>(null),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(""),[success,setSuccess]=useState("");
  const [name,setName]=useState(""),[consent,setConsent]=useState(false),[changes,setChanges]=useState(""),[showChanges,setShowChanges]=useState(false);
@@ -60,10 +61,10 @@ export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){cons
   <section style={{background:"white",padding:"clamp(14px,3vw,23px)",border:"1px solid #dce5ed",borderRadius:16,marginBottom:14}}>
    <h2 style={{marginTop:0,fontSize:22}}>{t("تفاصيل الخدمات والإضافات","Services and add-ons")}</h2>
    <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:340}}>
-    <thead><tr><th style={{textAlign:"right",padding:11,borderBottom:"1px solid #d8e2eb"}}>{t("البيان","Description")}</th><th style={{padding:11,borderBottom:"1px solid #d8e2eb"}}>{t("الكمية","Quantity")}</th><th style={{padding:11,borderBottom:"1px solid #d8e2eb"}}>{t("الإجمالي","Total")}</th></tr></thead>
-    <tbody>{(quote.items||[]).map((row,index)=><tr key={index}><td style={{padding:"12px 9px",borderBottom:"1px solid #edf1f5"}}>{row.label} {row.period&&<small style={{color:"#64748b"}}>({row.period==="monthly"?"شهري":row.period==="yearly"?"سنوي":"مرة واحدة"})</small>}</td><td style={{textAlign:"center"}}>{row.quantity}</td><td style={{textAlign:"center",whiteSpace:"nowrap"}}>{money(row.unitPricePiasters*row.quantity,quote.currency)}</td></tr>)}</tbody>
+    <thead><tr><th style={{textAlign:"start",padding:11,borderBottom:"1px solid #d8e2eb"}}>{t("البيان","Description")}</th><th style={{padding:11,borderBottom:"1px solid #d8e2eb"}}>{t("الكمية","Quantity")}</th><th style={{padding:11,borderBottom:"1px solid #d8e2eb"}}>{t("الإجمالي","Total")}</th></tr></thead>
+    <tbody>{(quote.items||[]).map((row,index)=><tr key={index}><td style={{padding:"12px 9px",borderBottom:"1px solid #edf1f5"}}>{row.label} {row.period&&<small style={{color:"#64748b"}}>({billingLabel(row.period,locale)})</small>}</td><td style={{textAlign:"center"}}>{row.quantity}</td><td style={{textAlign:"center",whiteSpace:"nowrap"}}>{money(row.unitPricePiasters*row.quantity,quote.currency)}</td></tr>)}</tbody>
    </table></div>
-   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,background:"#f1f5fa",borderRadius:12,padding:15,marginTop:12}}><strong>{t("الإجمالي المعتمد قبل الدفع","Approved amount before payment")}</strong><strong style={{fontSize:22}}>{money(quote.total_piasters,quote.currency)}</strong></div>
+   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,background:"#f1f5fa",borderRadius:12,padding:15,marginTop:12}}><strong>{t("إجمالي عرض السعر","Quote total")}</strong><strong style={{fontSize:22}}>{money(quote.total_piasters,quote.currency)}</strong></div>
    {data.project?.draft_id&&<Link href={`${base}/account/project-preview/${encodeURIComponent(data.project.draft_id)}`} style={{display:"inline-block",marginTop:14,color:"#174e83",fontWeight:700}}>{t("مشاهدة نسخة مشروعي ومواصفاته ←","Review my project specifications →")}</Link>}
   </section>
   <section style={{background:"white",padding:"clamp(14px,3vw,23px)",border:"1px solid #dce5ed",borderRadius:16,marginBottom:14}}>
@@ -85,9 +86,9 @@ export default function CustomerCheckout({locale="ar"}:{locale?:"ar"|"en"}){cons
   <section style={{background:"white",padding:"clamp(14px,3vw,23px)",border:"1px solid #dce5ed",borderRadius:16,marginBottom:14}}>
    <h2 style={{marginTop:0,fontSize:22}}>{t("الفاتورة وحالة الدفع","Invoice and payment status")}</h2>
    {!data.invoices.length?<p>{t("تُجهز الفاتورة بعد اعتماد العقد، أو وفق جدول دفعات تُصدره الإدارة. لن يُخصم أي مبلغ الآن.","An invoice is prepared after contract approval or according to an agreed payment schedule. No payment is collected now.")}</p>:data.invoices.map(invoice=><article key={invoice.id} style={{border:"1px solid #dce5ec",borderRadius:12,padding:13,marginBottom:9}}>
-     <div style={{display:"flex",gap:10,justifyContent:"space-between",flexWrap:"wrap"}}><strong>فاتورة #{invoice.id}</strong><span>{status(invoice.status)}</span></div>
-     <p>المستحق: {money(invoice.amount_piasters,quote.currency)} · المدفوع المؤكد: {money(invoice.verified_paid_piasters,quote.currency)}</p>
-     <p style={{marginBottom:0}}>الرصيد: {money(invoice.amount_piasters-invoice.verified_paid_piasters,quote.currency)} {invoice.due_at?`· الاستحقاق ${new Date(invoice.due_at).toLocaleDateString("ar-EG")}`:"· تاريخ الاستحقاق يُحدد بالعقد"}</p>
+     <div style={{display:"flex",gap:10,justifyContent:"space-between",flexWrap:"wrap"}}><strong>{t("فاتورة","Invoice")} #{invoice.id}</strong><span>{status(invoice.status)}</span></div>
+     <p>{t("المستحق","Due")}: {money(invoice.amount_piasters,quote.currency)} · {t("المدفوع المؤكد","Verified paid")}: {money(invoice.verified_paid_piasters,quote.currency)}</p>
+     <p style={{marginBottom:0}}>{t("المتبقي","Balance")}: {money(invoice.amount_piasters-invoice.verified_paid_piasters,quote.currency)} {invoice.due_at?`· ${t("الاستحقاق","Due")} ${new Date(invoice.due_at).toLocaleDateString(en?"en-EG":"ar-EG")}`:t("· تاريخ الاستحقاق حسب العقد","· Due date as agreed")}</p>
     </article>)}
    {!data.payment.canPayOnline&&<div role="status" style={{padding:14,borderRadius:12,background:"#fff5db",color:"#755114",lineHeight:1.9}}>⏳ بوابة الدفع الإلكتروني غير مفعّلة بعد. الفواتير محفوظة ولكن لا يوجد زر دفع ولا يتم تحصيل أموال أو تأكيد سداد من هذا القسم. يبدأ التنفيذ فقط عند وصول تأكيد دفع موثوق للخادم.</div>}
    <Link href={`${base}/account/dashboard`} style={{display:"inline-block",marginTop:14,color:"#203958",fontWeight:700}}>{t("متابعة التنفيذ والتسليم في حسابي ←","Track project delivery in my account →")}</Link>
