@@ -1,5 +1,6 @@
 import {artImage,heroImage} from "./content-studio-assets.js";
 import { z } from "zod";
+import {registerPortraitRoutes,portraitCancelSQL} from "./portrait-worker.js";
 import { createHash } from "node:crypto";
 const color=z.string().regex(/^#[0-9a-f]{6}$/i);
 const id=z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/);
@@ -45,6 +46,7 @@ export function characterDraftView(row){
 export function registerCharacterRoutes(app,{pool,requireAdmin,requirePermission,requireRole,roles,route,rateLimit,updateSchema,auditChange}){
  const auth=[requireAdmin,requirePermission("assistant"),requireRole(...roles)];
  const uuid=/^[0-9a-f-]{36}$/i;
+ registerPortraitRoutes(app,{pool,auth,route,rateLimit,auditChange});
  app.post("/api/admin/content-studio/manual",...auth,route(async(req,res)=>{
   const parsed=updateSchema.safeParse(req.body);if(!parsed.success||!parsed.data.productionPlan.animation)return res.status(400).json({error:parsed.error?.issues[0]?.message||"راجع تفاصيل المشروع."});
   const x=parsed.data;const plan={...x.productionPlan,approved:false,campaign:{...x.productionPlan.campaign,totalDurationSeconds:x.productionPlan.scenes.reduce((n,s)=>n+s.seconds,0)}};
@@ -66,6 +68,8 @@ export function registerCharacterRoutes(app,{pool,requireAdmin,requirePermission
  }));
  app.post("/api/admin/content-studio/:id/cancel",...auth,route(async(req,res)=>{
   if(!uuid.test(req.params.id))return res.status(404).end();
+  const portrait=await pool.query(portraitCancelSQL,[req.params.id]);
+  if(portrait.rowCount)return res.status(202).json({accepted:true});
   const q=await pool.query("UPDATE content_studio_drafts SET production_plan=production_plan||jsonb_build_object('_cancelRequested',true) WHERE id=$1 AND status='generating' AND production_plan ? 'animation' RETURNING production_plan->>'_rendererJobId' AS renderer",[req.params.id]);
   if(!q.rowCount)return res.status(409).json({error:"لا يوجد إنتاج كرتوني جارٍ."});if(q.rows[0].renderer)await cancelRenderer(q.rows[0].renderer);res.status(202).json({accepted:true});
  }));
