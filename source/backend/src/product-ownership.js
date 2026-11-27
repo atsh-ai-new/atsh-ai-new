@@ -65,7 +65,9 @@ const recalculatedPackages=new Set([
  '22222222-2222-4222-8222-222222222222',
  '33333333-3333-4333-8333-333333333333'
 ]);
-export const isNewCatalogOffer=(scope,key)=>scope==='package'?recalculatedPackages.has(key):scope==='sector'&&Boolean(sectorTariff(key));
+// New CMS entries with one scoped delivery price must not expose invented rental or source rates.
+const copyPricedCatalogItems=new Set(['naghma','liqaa']);
+export const isNewCatalogOffer=(scope,key)=>scope==='package'?recalculatedPackages.has(key):scope==='sector'&&(copyPricedCatalogItems.has(key)||Boolean(sectorTariff(key)));
 export function publicOwnership(scope,key,prices){
  return prices&&isNewCatalogOffer(scope,key)?{copy:prices.copy}:prices;
 }

@@ -1,6 +1,8 @@
 import type {CatalogSector} from "./catalog-sectors";
 import type {SectorTemplate} from "./sector-catalog";
 const sectors={
+  "media-entertainment": {name:"Media & entertainment",description:"Media, entertainment and publishing platforms."},
+  "social": {name:"Social platforms",description:"Discovery, matching and moderated communication platforms."},
   "health": {
     "name": "Healthcare",
     "description": "Clinic, pharmacy and medical-service solutions."
@@ -15,6 +17,8 @@ const sectors={
   }
 } as Record<string,{name:string;description:string}>;
 const subcategories={
+  "music-audio": "Music & audio",
+  "matching": "Dating & matching",
   "clinics": "Clinics & medical centers",
   "pharmacies": "Pharmacies",
   "retail": "Retail & stores",
@@ -23,6 +27,16 @@ const subcategories={
   "consulting": "Consultancies"
 } as Record<string,string>;
 const templates={
+  "naghma": {
+    name:"Naghma",category:"Music & audio",
+    description:"Web platform for music and podcasts, with a listener library and player, artist uploads, and publishing moderation. Demo only; the scoped price is for implementation and excludes hosting, streaming charges and content rights.",
+    features:["Search and discover tracks, albums, artists and podcasts","Audio player, playback queue and listening history","Personal library, favorites and playlists","Artist uploads and track metadata","Moderation and publishing dashboard"]
+  },
+  "liqaa": {
+    name:"Liqaa",category:"Dating & matching",
+    description:"Adult dating and matching web platform with discovery preferences, mutual matches, and messaging after a match. Includes reporting, blocking and a moderation dashboard. Demo only; the scoped price excludes hosting, paid memberships and external verification services.",
+    features:["Profiles and preference-based discovery","Likes and mutual matching","Matched-member messaging and in-app notifications","Privacy controls, reporting and blocking","Account moderation and report review"]
+  },
   "eyadaty": {
     "name": "My Clinic",
     "category": "Healthcare",
