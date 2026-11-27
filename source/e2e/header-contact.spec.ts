@@ -105,7 +105,7 @@ test("admin moves the ticker, previews the draft, publishes and reloads its posi
  const preview=page.frameLocator('iframe[title="معاينة الرئيسية"]');
  await expect(preview.locator(".atsh-news-slot:has(+ .platform-footer) .atsh-news-ticker")).toBeVisible();
  expect(saves).toBe(0);
- await page.getByRole("button",{name:"حفظ ونشر",exact:true}).click();
+ await page.getByRole("region",{name:"المعاينة الحية للصفحة"}).getByRole("button",{name:"حفظ ونشر",exact:true}).click();
  await expect.poll(()=>saves).toBe(1);
  expect((published.content.newsTicker as {position?:string}).position).toBe("before_footer");
  expect(published.content.newsTicker.text).toBe("خبر تجريبي");
