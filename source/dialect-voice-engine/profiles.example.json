@@ -1,0 +1,12 @@
+{
+  "egyptian-male": {"engine":"audar","model":"audar/Audar-TTS-V1-Flash-Q4_K_M.gguf","codec":"neucodec","reference":"references/egyptian-male.wav","transcript":"","commercialRights":false,"approved":false},
+  "egyptian-female": {"engine":"audar","model":"audar/Audar-TTS-V1-Flash-Q4_K_M.gguf","codec":"neucodec","reference":"references/egyptian-female.wav","transcript":"","commercialRights":false,"approved":false},
+  "alexandrian-male": {"engine":"audar","model":"audar/Audar-TTS-V1-Flash-Q4_K_M.gguf","codec":"neucodec","reference":"references/alexandrian-male.wav","transcript":"","commercialRights":false,"approved":false},
+  "alexandrian-female": {"engine":"audar","model":"audar/Audar-TTS-V1-Flash-Q4_K_M.gguf","codec":"neucodec","reference":"references/alexandrian-female.wav","transcript":"","commercialRights":false,"approved":false},
+  "saidi-male": {"engine":"audar","model":"audar/Audar-TTS-V1-Flash-Q4_K_M.gguf","codec":"neucodec","reference":"references/saidi-male.wav","transcript":"","commercialRights":false,"approved":false},
+  "saidi-female": {"engine":"audar","model":"audar/Audar-TTS-V1-Flash-Q4_K_M.gguf","codec":"neucodec","reference":"references/saidi-female.wav","transcript":"","commercialRights":false,"approved":false},
+  "saudi-male": {"engine":"audar","model":"audar/Audar-TTS-V1-Flash-Q4_K_M.gguf","codec":"neucodec","reference":"references/saudi-male.wav","transcript":"","commercialRights":false,"approved":false},
+  "saudi-female": {"engine":"audar","model":"audar/Audar-TTS-V1-Flash-Q4_K_M.gguf","codec":"neucodec","reference":"references/saudi-female.wav","transcript":"","commercialRights":false,"approved":false},
+  "gulf-male": {"engine":"audar","model":"audar/Audar-TTS-V1-Flash-Q4_K_M.gguf","codec":"neucodec","reference":"references/gulf-male.wav","transcript":"","commercialRights":false,"approved":false},
+  "gulf-female": {"engine":"piper","model":"emirati/arabic-emirati-female-model.onnx","approved":false}
+}

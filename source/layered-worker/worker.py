@@ -13,10 +13,10 @@ class API:
         if u.scheme=="http" and u.hostname not in ("backend","api","atsh-website-api","atsh-website-api-internal","localhost","127.0.0.1") and os.environ.get("ALLOW_INTERNAL_HTTP")!="true":raise ValueError("Internal HTTP not allowed")
         if not KEY.fullmatch(token):raise ValueError("Invalid worker token")
         self.base=base.rstrip("/");self.token=token;self.opener=urllib.request.build_opener(NoRedirect())
-    def call(self,path,body=None,token=None,mime="application/json",limit=6*1024*1024):
+    def call(self,path,body=None,token=None,mime="application/json",limit=6*1024*1024,timeout=40):
         payload=body if isinstance(body,bytes) else json.dumps(body or {}).encode()
         req=urllib.request.Request(self.base+path,data=payload,method="POST",headers={"Authorization":"Bearer "+(token or self.token),"Content-Type":mime})
-        with self.opener.open(req,timeout=40) as r:
+        with self.opener.open(req,timeout=timeout) as r:
             b=r.read(limit+1)
             if len(b)>limit:raise ValueError("Response too large")
             return r.status,b
@@ -38,7 +38,7 @@ def process(api,job):
     result="/api/integrations/content-studio/"+id+"/result"
     def voice(line):
         if cancel.is_set():raise RuntimeError("cancelled")
-        _,b=api.call(prefix+"voice",{**common,"lineId":line},limit=4*1024*1024)
+        _,b=api.call(prefix+"voice",{**common,"lineId":line},limit=4*1024*1024,timeout=105)
         return b
     try:
         with tempfile.TemporaryDirectory(prefix="atsh-layered-") as tmp:

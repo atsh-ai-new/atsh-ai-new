@@ -1,0 +1,8 @@
+services:
+  dialect-voice:
+    build:
+      context: .
+      dockerfile: Dockerfile.audar
+    mem_limit: 3g
+    tmpfs:
+      - /tmp:size=192m,mode=1777

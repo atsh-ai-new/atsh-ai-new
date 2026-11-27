@@ -31,7 +31,7 @@ export async function synthesizeStudioVoice(input){
  const token=local?process.env.CHARACTER_SERVICE_TOKEN:process.env.CHARACTER_DIALECT_SERVICE_TOKEN;
  const url=new URL("/voice-preview",base);
  if(!["http:","https:"].includes(url.protocol)||url.username||url.password)throw Error("Invalid voice service URL");
- const r=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(local?body:{...body,pitch:0,intonation:1,voiceId}),redirect:"error",signal:AbortSignal.timeout(30000)});
+ const r=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(local?body:{...body,pitch:0,intonation:1,voiceId}),redirect:"error",signal:AbortSignal.timeout(local?30000:95000)});
  if(!r.ok||!r.body)throw Error("Voice service failed");
  const reader=r.body.getReader(),parts=[];let len=0;
  while(true){const {done,value}=await reader.read();if(done)break;len+=value.length;if(len>4*1024*1024){await reader.cancel();throw Error("Voice size");}parts.push(value);}
