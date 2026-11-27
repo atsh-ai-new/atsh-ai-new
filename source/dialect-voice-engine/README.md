@@ -114,3 +114,15 @@ training is Chinese/English; Arabic age/gender design may fail. Even successful
 ASR is not dialect or identity certification. Native listening and commercial
 source rights review are mandatory. Do not deploy this 2.47 GB model on the shared
 VPS until a dedicated host has passed memory/latency profiling.
+
+### Pronunciation refinement — candidate A/B
+After the initial 18 identities passed machine intelligibility, compare the same
+original script and same fictional reference with selective colloquial vocalization,
+natural punctuation, 48 decoding steps, guidance 2.25, and 0.94 speed. The
+independent ASR comparison reports both versions without replacing the original
+or approving dialect, age, identity, or production. A guidance variant that is
+worse must not be deployed merely because it is newer. Native listeners should
+specifically compare qaf, gim, emphatic consonants, vowel length, phrasing and
+local identity. If regional pronunciation is not authentic, acquire licensed
+native reference voices rather than relabeling general Egyptian voices. Baseline
+artifacts are short-lived experimental assets; rerun the family audition if expired.

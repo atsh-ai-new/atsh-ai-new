@@ -1,11 +1,11 @@
 name: Egyptian family voice auditions (isolated, no deployment)
 on:
-  pull_request:
+  push:
+    branches: [feat/integrated-server-studio-20261127]
     paths:
       - 'source/dialect-voice-engine/egyptian_voice_trial.py'
       - 'source/dialect-voice-engine/family_review.py'
       - 'source/dialect-voice-engine/test_family_review.py'
-      - '.github/workflows/studio-egyptian-voices.yml'
   workflow_dispatch:
 permissions:
   contents: read
