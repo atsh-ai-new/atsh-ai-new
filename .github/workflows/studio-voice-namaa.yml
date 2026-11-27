@@ -1,0 +1,66 @@
+name: Egyptian NAMAA independent trial (no deployment)
+on:
+  push:
+    branches: [feat/integrated-server-studio-20261127]
+    paths:
+      - 'source/dialect-voice-engine/namaa_trial.py'
+      - '.github/workflows/studio-voice-namaa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  egyptian-namaa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    defaults:
+      run:
+        working-directory: source/dialect-voice-engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned CPU runtime
+        run: |
+          python -m pip install 'torch==2.6.0' 'torchaudio==2.6.0' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install 'chatterbox-tts==0.1.7' soundfile
+      - name: Download model components only
+        run: |
+          python - <<'PY'
+          import os, shutil
+          from pathlib import Path
+          from huggingface_hub import snapshot_download, hf_hub_download, model_info
+          root=Path(os.environ["RUNNER_TEMP"])/"namma"
+          rev=model_info("ResembleAI/chatterbox").sha
+          print("Base revision",rev)
+          snapshot_download("ResembleAI/chatterbox",revision=rev,local_dir=root,allow_patterns=["ve.pt","s3gen.pt","grapheme_mtl_merged_expanded_v1.json","conds.pt","Cangjie5_TC.json"])
+          ckpt=hf_hub_download("NAMAA-Space/NAMAA-Egyptian-TTS","t3_mtl23ls_v2.safetensors",revision="bee585b6bc3a3180e257f57d5fd84fa14c31db83")
+          shutil.copyfile(ckpt,root/"t3_mtl23ls_v2.safetensors")
+          PY
+      - name: Generate Egyptian dialogue offline (CI host only)
+        env:
+          HF_HUB_OFFLINE: '1'
+          TRANSFORMERS_OFFLINE: '1'
+          TORCH_FORCE_WEIGHTS_ONLY_LOAD: '1'
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+          CUDA_VISIBLE_DEVICES: ''
+        run: |
+          mkdir -p "$RUNNER_TEMP/namaa-auditions"
+          timeout 480 python -u namaa_trial.py "$RUNNER_TEMP/namma" "$RUNNER_TEMP/namaa-auditions"
+      - name: Confirm Arabic intelligibility separately
+        run: |
+          python -m venv "$RUNNER_TEMP/asr"
+          "$RUNNER_TEMP/asr/bin/pip" install faster-whisper==1.2.1 huggingface_hub==0.36.0
+          "$RUNNER_TEMP/asr/bin/python" - <<'PY'
+          import os
+          from huggingface_hub import snapshot_download
+          snapshot_download("Systran/faster-whisper-small",local_dir=os.path.join(os.environ["RUNNER_TEMP"], "whisper-small"))
+          PY
+          HF_HUB_OFFLINE=1 "$RUNNER_TEMP/asr/bin/python" asr_validate.py "$RUNNER_TEMP/namaa-auditions" "$RUNNER_TEMP/whisper-small"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: namaa-egyptian-verified-audition
+          path: ${{ runner.temp }}/namaa-auditions/
+          if-no-files-found: error
+          retention-days: 3

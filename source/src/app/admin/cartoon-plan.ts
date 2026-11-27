@@ -1,17 +1,22 @@
-export type ArtPose="stand"|"walk-a"|"walk-b"|"talk-open"|"sit"|"enter"|"exit";
+export type ArtPose="stand"|"walk-a"|"walk-b"|"talk-open"|"sit"|"enter"|"exit"|"eat"|"wave"|"point"|"explain"|"think"|"tablet"|"closed"|"open";
 export type ArtImage={pose:ArtPose;image:string};
-export type ArtSnapshot={id:string;revision:number;images:ArtImage[]};
+export type RigPart="torso"|"head"|"left-arm"|"right-arm"|"left-leg"|"right-leg"|"mouth-open"|"eyes-closed";
+export type RigLayer={part:RigPart;image:string;pivotX:number;pivotY:number};
+export type Outfit={id:string;name:string;images:ArtImage[];rig?:RigLayer[]};
+export type ArtSnapshot={id:string;revision:number;images:ArtImage[];rig?:RigLayer[];outfits?:Outfit[]};
 export type SceneArtwork={id:string;revision:number;image:string;mode:"background"|"full";framing?:"fit"|"fill"};
-export type PropArtwork={id:string;revision:number;image:string;x:number;y:number;size:number;foreground:boolean};
+export type PropArtwork={id:string;revision:number;image:string;x:number;y:number;size:number;foreground:boolean;stateImage?:string;motion?:"static"|"open"|"close"|"drive";motionStart?:number};
 export type ScreenText={text:string;start:number;end:number;position:"top"|"middle"|"bottom"};
-export type ArtAction="stand"|"walk"|"sit"|"stairs-up"|"stairs-down"|"enter"|"exit";
-export type Voice = {engine:"tiny-ar-msa";pitch:number;speed:number;intonation:number};
+export type ArtAction="stand"|"walk"|"sit"|"stairs-up"|"stairs-down"|"enter"|"exit"|"eat"|"think"|"tablet";
+export type VoiceId="local-msa"|"egyptian-male"|"egyptian-female"|"egyptian-child-male"|"egyptian-child-female"|"egyptian-teen-male"|"egyptian-teen-female"|"alexandrian-male"|"alexandrian-female"|"alexandrian-child-male"|"alexandrian-child-female"|"alexandrian-teen-male"|"alexandrian-teen-female"|"saidi-male"|"saidi-female"|"saidi-child-male"|"saidi-child-female"|"saidi-teen-male"|"saidi-teen-female"|"saudi-male"|"saudi-female"|"gulf-male"|"gulf-female";
+export type Voice = {voiceId?:VoiceId;engine:"tiny-ar-msa";pitch:number;speed:number;intonation:number};
 export type Character={id:string;name:string;skin:string;shirt:string;hairColor:string;hair:"short"|"long"|"bald";glasses:boolean;beard:boolean;voice:Voice;artwork?:ArtSnapshot};
-export type Placement={characterId:string;position:"left"|"center-left"|"center"|"center-right"|"right";expression:"neutral"|"happy"|"curious"|"serious";gesture:"idle"|"wave"|"point"|"explain";pose:"stand"|"sit"|"walk";action?:ArtAction};
+export type Placement={characterId:string;position:"left"|"center-left"|"center"|"center-right"|"right";expression:"neutral"|"happy"|"curious"|"serious";gesture:"idle"|"wave"|"point"|"explain";outfitId?:string;pose:"stand"|"sit"|"walk";action?:ArtAction};
 export type Dialogue={id:string;speakerId:string;text:string;pronunciation:string;start:number};
-export type Shot={sceneIndex:number;background:"studio"|"office"|"technology";placements:Placement[];dialogue:Dialogue[];artwork?:SceneArtwork;props?:PropArtwork[];screenTexts?:ScreenText[]};
+export type AudioSnapshot={id:string;revision:number;audio:string};
+export type Shot={sceneIndex:number;background:"studio"|"office"|"technology";placements:Placement[];dialogue:Dialogue[];artwork?:SceneArtwork;props?:PropArtwork[];screenTexts?:ScreenText[];effect?:AudioSnapshot};
 export type Scene={seconds:number;visual:string;characters:string;lighting:string;script:string;caption:string;motion:"zoom-in"|"zoom-out"|"static";camera:string;props:string;sound:string};
-export type Animation={version:1;mode:"cartoon";cast:Character[];shots:Shot[];subtitles:boolean;music:boolean;musicVolume:number;speechVolume:number;mouthIntensity:number};
+export type Animation={version:1;mode:"cartoon";renderer?:"layers-v1";cast:Character[];shots:Shot[];subtitles:boolean;music:boolean;musicTrack?:AudioSnapshot;musicVolume:number;speechVolume:number;mouthIntensity:number};
 export type CartoonPlan={version:1;approved:false;title:string;campaign:{objective:string;audience:string;keyMessage:string;tone:string;format:string;totalDurationSeconds:number};brand:{palette:string;logoPlacement:string;logoRules:string};concept:string;voiceover:string;musicAndSound:string;cta:string;scenes:Scene[];postProduction:string;openQuestions:string[];productionChecklist:string[];animation:Animation};
 export type Brief={product:string;audience:string;benefit:string;cta:string;style:"story"|"problem"|"intro";background:Shot["background"];seconds:number;castCount:number};
 export const newId=(prefix:string)=>prefix+"-"+Math.random().toString(36).slice(2,11);
@@ -40,8 +45,9 @@ export function validateCartoon(p:CartoonPlan):string[]{
  if(a.cast.some(c=>!c.name.trim())||new Set(a.cast.map(c=>c.name.trim())).size!==a.cast.length)err.push("أسماء الشخصيات يجب أن تكون مختلفة.");
  for(let i=0;i<p.scenes.length;i++){const s=p.scenes[i],shot=a.shots[i];if(!shot){err.push("مشهد بلا حركة.");continue}const pre=new Set(shot.placements.map(q=>q.characterId)),pos=shot.placements.map(q=>slots[q.position]).sort((x,y)=>x-y);if(!pre.size||pos.some((v,k)=>k>0&&v-pos[k-1]<.15))err.push("المشهد "+(i+1)+": وزّع الشخصيات دون تداخل.");if(!shot.dialogue.length||shot.dialogue.some(l=>!pre.has(l.speakerId)||!l.text.trim()||/[A-Za-z]/.test(l.pronunciation||l.text)||l.start>=s.seconds-.1||l.start<0)||new Set(shot.dialogue.map(l=>l.start)).size!==shot.dialogue.length)err.push("المشهد "+(i+1)+": راجع المتكلم والنطق العربي والتوقيت.");}
  for(const s of a.shots)if(s.screenTexts?.some(t=>!t.text.trim()||t.start<0||t.end<=t.start||t.end>p.scenes[s.sceneIndex].seconds))err.push("راجع توقيت النص الظاهر على الشاشة.");
- const artSize=a.cast.reduce((n,c)=>n+(c.artwork?.images.reduce((m,i)=>m+i.image.length,0)||0),0)+a.shots.reduce((n,s)=>n+(s.artwork?.image.length||0)+(s.props?.reduce((m,p)=>m+p.image.length,0)||0),0);if(artSize>3400000)err.push("حجم صور المشروع أكبر من الحد المسموح.");
- for(const s of a.shots)for(const x of s.placements){if(s.artwork?.mode==="full"||!x.action||x.action==="stand")continue;const poses=new Set(a.cast.find(c=>c.id===x.characterId)?.artwork?.images.map(i=>i.pose)||[]);if(x.action==="walk"||x.action.startsWith("stairs")){if(!poses.has("walk-a")||!poses.has("walk-b"))err.push("المشي والسلالم يتطلبان صورتين لخطوتين مختلفتين.");}else if(!poses.has(x.action as ArtPose))err.push("صورة الوضعية المطلوبة غير موجودة.");}
+ const artSize=a.cast.reduce((n,c)=>n+(c.artwork?[c.artwork,...(c.artwork.outfits||[])].reduce((m,a)=>m+a.images.reduce((k,i)=>k+i.image.length,0)+(a.rig||[]).reduce((k,i)=>k+i.image.length,0),0):0),0)+a.shots.reduce((n,s)=>n+(s.artwork?.image.length||0)+(s.props?.reduce((m,p)=>m+p.image.length+(p.stateImage?.length||0),0)||0),0);if(artSize+(a.musicTrack?.audio.length||0)+a.shots.reduce((n,s)=>n+(s.effect?.audio.length||0),0)>3400000)err.push("حجم صور المشروع أكبر من الحد المسموح.");
+ for(const s of a.shots)for(const x of s.placements){if(s.artwork?.mode==="full"||!x.action||x.action==="stand")continue;const art0=a.cast.find(c=>c.id===x.characterId)?.artwork;const art=x.outfitId?art0?.outfits?.find(o=>o.id===x.outfitId):art0; if(a.renderer==="layers-v1"&&art?.rig&&["walk","sit","stairs-up","stairs-down"].includes(x.action))continue;const poses=new Set(art?.images.map(i=>i.pose)||[]);if(x.action==="walk"||x.action.startsWith("stairs")){if(!poses.has("walk-a")||!poses.has("walk-b"))err.push("المشي والسلالم يتطلبان صورتين لخطوتين مختلفتين.");}else if(!poses.has(x.action as ArtPose))err.push("صورة الوضعية المطلوبة غير موجودة.");}
  if(a.shots.reduce((n,s)=>n+s.dialogue.length,0)>12)err.push("الحد الأقصى 12 جملة.");
  return err;
 }
+

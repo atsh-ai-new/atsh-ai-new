@@ -1,4 +1,5 @@
 import {createHash,randomBytes,timingSafeEqual} from "node:crypto";
+import {synthesizeStudioVoice} from "./studio-voices.js";
 import {validWebp} from "./content-studio-assets.js";
 import {contentVideoTimeoutMinutes} from "./content-video-timeout.js";
 
@@ -21,24 +22,16 @@ export function portraitInput(plan){
     !validWebp(image)||!Number.isFinite(scene.seconds)||scene.seconds<3||scene.seconds>8||
     !Number.isFinite(line.start)||line.start<0||line.start>=scene.seconds-.1||!line.text?.trim()||
     line.text.length>90||(line.pronunciation||"").length>90||/[A-Za-z]/.test(line.pronunciation||line.text)||
-    shot.artwork||shot.props?.length||shot.screenTexts?.length||a.music||a.subtitles||
+    shot.artwork||shot.props?.length||shot.screenTexts?.length||shot.effect||a.musicTrack||a.music||a.subtitles||shot.placements[0].outfitId||
     (shot.placements[0].action&&shot.placements[0].action!=="stand")||shot.placements[0].pose==="walk"||
     shot.placements[0].pose==="sit"||scene.caption||scene.motion!=="static"){
     throw Error("الصورة الناطقة تحتاج مشهدًا ثابتًا واحدًا (3–8 ثوانٍ)، صورة بطل واحد، وجملة عربية حتى 90 حرفًا دون إضافات المشهد أو الموسيقى أو الترجمة.");
   }
-  const {pitch,speed,intonation}=c.voice;
-  return {image,seconds:scene.seconds,start:line.start,speechVolume:a.speechVolume,voice:{text:line.text,pronunciation:line.pronunciation||"",pitch,speed,intonation}};
+  const {pitch,speed,intonation,voiceId}=c.voice;
+  return {image,seconds:scene.seconds,start:line.start,speechVolume:a.speechVolume,voice:{text:line.text,pronunciation:line.pronunciation||"",pitch,speed,intonation,...(voiceId?{voiceId}:{})}};
 }
 export const portraitCancelSQL="UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),production_plan=(production_plan-'_jobToken'-'_jobProgress'-'_rendererJobId'-'_cancelRequested')||jsonb_build_object('_productionError','character_cancelled') WHERE id=$1 AND status='generating' AND production_plan->>'_jobProgress' IN ('portrait_queued','portrait_running') RETURNING id";
-async function synthesize(input){
-  const r=await fetch(new URL("/voice-preview",process.env.CHARACTER_SERVICE_URL),{method:"POST",headers:{Authorization:"Bearer "+process.env.CHARACTER_SERVICE_TOKEN,"Content-Type":"application/json"},body:JSON.stringify(input.voice),redirect:"error",signal:AbortSignal.timeout(30000)});
-  if(!r.ok||!r.body)throw Error("voice");
-  const reader=r.body.getReader(),chunks=[];let size=0;
-  while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>4*1024*1024){await reader.cancel();throw Error("voice size");}chunks.push(value);}
-  const b=Buffer.concat(chunks);
-  if(b.length<44||b.toString("ascii",0,4)!=="RIFF"||b.toString("ascii",8,12)!=="WAVE")throw Error("voice format");
-  return b.toString("base64");
-}
+async function synthesize(input){return (await synthesizeStudioVoice(input.voice)).toString("base64");}
 export function registerPortraitRoutes(app,{pool,auth,route,rateLimit,auditChange}){
   let lastSeen=0;
   const base="/api/admin/content-studio",integration="/api/integrations/portrait-worker";
@@ -84,3 +77,4 @@ export function registerPortraitRoutes(app,{pool,auth,route,rateLimit,auditChang
     return res.status(q.rowCount?204:409).end();
   }));
 }
+

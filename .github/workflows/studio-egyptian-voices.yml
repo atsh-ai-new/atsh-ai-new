@@ -1,0 +1,84 @@
+name: Egyptian family voice auditions (isolated, no deployment)
+on:
+  push:
+    branches: [feat/integrated-server-studio-20261127]
+    paths:
+      - 'source/dialect-voice-engine/egyptian_voice_trial.py'
+      - 'source/dialect-voice-engine/family_review.py'
+      - 'source/dialect-voice-engine/test_family_review.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: source/dialect-voice-engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: python -m pip install numpy==1.26.4
+      - run: python -m unittest -v test_voices test_prepare_reference test_voice_quality test_family_review
+  audition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        dialect: [egyptian, alexandrian, saidi]
+    defaults:
+      run:
+        working-directory: source/dialect-voice-engine
+    env:
+      DIALECT: ${{ matrix.dialect }}
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      CUDA_VISIBLE_DEVICES: ''
+      TORCH_FORCE_WEIGHTS_ONLY_LOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU runtime
+        run: |
+          python -m pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install omnivoice==0.2.1 huggingface_hub soundfile
+      - name: Download pinned Egyptian model
+        run: |
+          python - <<'PY'
+          import os
+          from huggingface_hub import snapshot_download
+          snapshot_download("mohammedaly22/VoiceTut-TTS",revision="b36bdf4416864d84f47ca77ce3decf34f6ab16cc",local_dir=os.environ["RUNNER_TEMP"]+"/voicetut",allow_patterns=["*.json","*.safetensors","*.jinja","README.md"])
+          PY
+      - name: Generate six fictional identities and six independent dialogue samples
+        run: |
+          mkdir -p "$RUNNER_TEMP/egyptian-family"
+          timeout 1200 python -u egyptian_voice_trial.py "$RUNNER_TEMP/voicetut" "$RUNNER_TEMP/egyptian-family" --dialect "$DIALECT"
+      - name: Independently transcribe every candidate
+        if: ${{ !cancelled() }}
+        run: |
+          python -m venv "$RUNNER_TEMP/asr"
+          "$RUNNER_TEMP/asr/bin/pip" install faster-whisper==1.2.1 huggingface_hub==0.36.0
+          "$RUNNER_TEMP/asr/bin/python" - <<'PY'
+          import os
+          from huggingface_hub import snapshot_download
+          snapshot_download("Systran/faster-whisper-small",local_dir=os.environ["RUNNER_TEMP"]+"/whisper")
+          PY
+          HF_HUB_OFFLINE=1 "$RUNNER_TEMP/asr/bin/python" family_review.py "$RUNNER_TEMP/egyptian-family" "$RUNNER_TEMP/whisper" --dialect "$DIALECT"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: egyptian-family-${{ matrix.dialect }}-review
+          path: |
+            ${{ runner.temp }}/egyptian-family/review-candidates/*.wav
+            ${{ runner.temp }}/egyptian-family/review.json
+            ${{ runner.temp }}/egyptian-family/metrics.json
+            ${{ runner.temp }}/egyptian-family/generation-errors.json
+          if-no-files-found: error
+          retention-days: 3

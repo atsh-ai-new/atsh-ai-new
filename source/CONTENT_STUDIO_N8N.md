@@ -34,3 +34,73 @@ The deployed local mode uses preset backgrounds and 2D characters at
 release. The four-character, 16-second local production test completed the
 real authenticated n8n webhook, returned H.264/AAC MP4, and saved the callback
 to the content-studio database. No image/audio generation API was used.
+
+## Server-side layered animation studio (2.5D)
+
+This is an additional CPU-only production route. Existing projects and the
+workstation portrait tool remain readable. New manual projects select
+`animation.renderer = "layers-v1"`. The engine uses prepared WebP artwork,
+transparent rig layers, pose sets and separately named wardrobe sets; it is
+not generative full-body video from a single photograph. The mouth follows
+speech amplitude, not a phoneme model. Door states crossfade and vehicle
+sprites move; high-quality results need aligned transparent artwork.
+User assets remain in the existing database, independent project snapshots,
+with the existing 3.4 million encoded-character project budget. A library
+entry permits eleven human/animal pose slots and up to three additional
+outfits, subject to that same size budget. Music/effects accept WAV or MP3
+up to 1 MB each. Use licensed artwork and recordings.
+
+### Rollout (staging first)
+- Apply the backend image and its additive music-kind migration. Preserve
+  the database and all current service secrets.
+- Generate a new random 32-byte hex `LAYERED_WORKER_TOKEN`; configure it on
+  backend and worker. Deploy `layered-worker/compose.yaml` alongside the
+  backend on its **private** Docker network; set `ATSH_API_URL` to the
+  internal backend origin (e.g. `http://backend:3000`). Join the existing
+  network via the deployment-specific compose override. Do not expose
+  worker ports or share the token with browsers. The existing local Arabic
+  voice service remains required. No GPU or paid API calls by this renderer.
+- Use a staging administrator to verify library create/read/update, saved
+  projects, approval, queue claim, heartbeat/cancel, result callback and
+  MP4 download; verify other portal paths separately.
+- Test the available CPU and RAM before increasing scene duration or
+  concurrency. Worker defaults to 2 CPUs / 2 GiB. Existing timeout policies
+  apply; heartbeat refreshes actively running work.
+
+### Distinct, locally synthesized accents
+The 18 priority Egyptian identities include **Cairene, Alexandrian, Saidi**, each with adult male/female, young child male/female and teen male/female. Four legacy Saudi/Gulf adult identities and the local MSA voice remain compatible. Do not mark an identity ready
+until a genuine model has been sourced, tested with native speakers and
+licensed for this deployment. No accent or gender fallback is used.
+`dialect-voice-engine/` is a private CPU Piper adapter, not bundled model
+weights. Each identity requires an ONNX model and its matching .onnx.json
+configuration; a multivoice model may use distinct verified speaker IDs.
+Set read-only `VOICE_MODELS_DIR` and `VOICE_MODELS_JSON` mapping approved IDs
+to model filenames (optional integer speaker). For example, the deployment
+operator can configure a **verified** Egyptian female model under the key
+`egyptian-female`. Never rename a generic MSA model to a regional voice.
+Deploy on the same private network. Configure the backend
+`CHARACTER_DIALECT_SERVICE_URL`, `CHARACTER_DIALECT_SERVICE_TOKEN` and
+`CHARACTER_DIALECT_VOICES` (JSON array matching the installed models).
+The provider exposes authenticated GET /voices and POST /voice-preview;
+the backend allowlist and live provider registry jointly control UI availability. Dialect models preserve
+their own pitch/intonation, with only playback speed adjustable.
+No model downloads or paid cloud service calls are made automatically.
+
+### Tests
+From source: run backend tests (using Node 22+) and TypeScript check; from
+layered-worker, run `python -m unittest -v test_render` with Pillow and FFmpeg.
+The render test creates synthetic artwork/audio and verifies the actual
+1920×1080 MP4 containing two scenes and an audio stream. No production
+media or secrets are needed. Actual server and regional voice models still
+require staging certification before deployment.
+
+### Unified studio workspace
+Only `layers-v1` projects appear in the new studio UI. Old records and API
+compatibility are retained, but the previous creation and computer-portrait
+interfaces are not shown. The asset library includes an optional, repeat-safe
+starter import (19 original illustrative assets, 40 variants including talk,
+walk, sit, outfit and door states); use the existing authenticated asset
+routes and the location filter. The graphics are illustrative, not
+photorealistic source material. The temporary VoiceTut voice bank is staged
+separately from the renderer (see dialect-voice-engine/README.md).
+The previously measured shared server must not run the heavy neural engine.

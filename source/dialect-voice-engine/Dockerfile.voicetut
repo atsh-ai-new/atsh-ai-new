@@ -1,0 +1,7 @@
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libgomp1 && rm -rf /var/lib/apt/lists/* && pip install --no-cache-dir torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu && pip install --no-cache-dir omnivoice==0.2.1 soundfile piper-tts==1.3.0
+WORKDIR /app
+COPY service.py voice_quality.py audition.py voicetut_backend.py .
+USER 10001:10001
+ENV OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TORCH_FORCE_WEIGHTS_ONLY_LOAD=1
+CMD ["python","-u","service.py"]

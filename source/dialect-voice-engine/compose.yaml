@@ -1,0 +1,18 @@
+services:
+  dialect-voice:
+    build: .
+    restart: unless-stopped
+    cpus: 2
+    mem_limit: 2g
+    pids_limit: 128
+    environment:
+      CHARACTER_DIALECT_SERVICE_TOKEN: ${CHARACTER_DIALECT_SERVICE_TOKEN:?Set secret}
+      VOICE_MODELS_JSON: ${VOICE_MODELS_JSON:-}
+    volumes:
+      - ${VOICE_MODELS_DIR:?Set verified models directory}:/models:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp:size=96m,mode=1777
