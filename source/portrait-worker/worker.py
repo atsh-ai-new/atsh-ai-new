@@ -77,32 +77,64 @@ def probe(args, file):
 
 
 def validate_face_geometry(faces, width, height):
-    # Conservative input gate for the frontal, single-person engine.
-    if len(faces) != 1:
-        raise ValueError("Choose one clear frontal portrait, not a group photo or collage")
-    _, _, w, h = faces[0]
-    if min(w, h) < .17 * min(width, height):
-        raise ValueError("Face is too small; crop to a head-and-shoulders portrait")
+    # The supplied detector order is the order used by SadTalker.
+    if not len(faces):
+        raise ValueError("No clear frontal face detected; choose a clearer portrait")
+    if any(not all(math.isfinite(v) for v in face) or face[2] <= 0 or face[3] <= 0
+           for face in faces):
+        raise ValueError("Invalid face detection")
+    ranked = sorted(range(len(faces)), key=lambda i: faces[i][2] * faces[i][3], reverse=True)
+    primary = faces[ranked[0]]
+    _, _, w, h = primary
+    if min(w, h) < max(48, .08 * min(width, height)):
+        raise ValueError("Main face is too small; choose a higher-resolution portrait")
+    if any(faces[i][2] * faces[i][3] >= .35 * w * h for i in ranked[1:]):
+        raise ValueError("Multiple comparable faces detected; choose one main subject")
+    # SadTalker uses the first detection. Do not animate a background face by mistake.
+    if ranked[0] != 0:
+        raise ValueError("Model selected a different face first; choose a clearer portrait of the main subject")
+    return primary
 
 
-def check_portrait(png):
+def detect_portrait(png, model_dir):
     import cv2
-    image = cv2.imread(str(png))
+    import numpy as np
+    import torch
+    from facexlib.detection import init_detection_model
+
+    image = cv2.imdecode(np.frombuffer(png.read_bytes(), dtype=np.uint8),
+                         cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
     if image is None:
         raise ValueError("Unable to read portrait")
     h, w = image.shape[:2]
     if min(h, w) < 160:
         raise ValueError("Portrait is too small; select a higher-resolution image")
-    if max(h, w) > 1000:
-        factor = 1000 / max(h, w)
-        image = cv2.resize(image, (round(w * factor), round(h * factor)), interpolation=cv2.INTER_AREA)
-    h, w = image.shape[:2]
-    detector = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    if detector.empty():
-        raise RuntimeError("Local portrait detector is missing")
-    gray = cv2.equalizeHist(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
-    faces = detector.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=5, minSize=(24, 24))
-    validate_face_geometry(faces, w, h)
+    weights = model_dir / "gfpgan" / "weights"
+    if not (weights / "detection_Resnet50_Final.pth").is_file():
+        raise RuntimeError("Installed SadTalker face detector weights not found")
+    detector = init_detection_model("retinaface_resnet50", half=False, device="cpu",
+                                    model_rootpath=str(weights))
+    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    with torch.no_grad():
+        detections = detector.detect_faces(rgb, .97)
+    faces = [(float(d[0]), float(d[1]), float(d[2]-d[0]), float(d[3]-d[1]))
+             for d in detections]
+    primary = validate_face_geometry(faces, w, h)
+    print(f"Portrait accepted: main face {primary[2]:.0f}x{primary[3]:.0f}px; "
+          f"ignored {len(faces)-1} smaller background face(s).", flush=True)
+
+
+def model_environment(args):
+    threads = str(getattr(args, "cpu_threads", 2))
+    return dict(os.environ, OMP_NUM_THREADS=threads, MKL_NUM_THREADS=threads,
+                TORCH_FORCE_WEIGHTS_ONLY_LOAD="1", PYTHONNOUSERSITE="1")
+
+
+def check_portrait(args, png, cancelled):
+    # Release detector memory before starting the much heavier renderer.
+    run([args.python, str(Path(__file__).resolve()), "--model-dir", str(args.model_dir),
+         "--validate-source", str(png)], cancelled, timeout=180, env=model_environment(args),
+        cwd=args.model_dir)
 
 
 def speech_render_timing(duration, seconds, start, full_motion=False):
@@ -122,7 +154,7 @@ def render(args, folder, image, audio, seconds, start, volume, cancelled):
     png, wav, result = folder/"source.png", folder/"speech.wav", folder/"result"
     ff = [args.ffmpeg, "-nostdin", "-loglevel", "error", "-y"]
     run(ff + ["-i", str(image), "-frames:v", "1", str(png)], cancelled)
-    check_portrait(png)
+    check_portrait(args, png, cancelled)
     duration = float(probe(args, audio)["format"]["duration"])
     active, pre, post = speech_render_timing(duration, seconds, start, getattr(args, "full_motion", False))
     model_wav = folder/"active.wav"
@@ -140,9 +172,7 @@ def render(args, folder, image, audio, seconds, start, volume, cancelled):
                "--batch_size", "1", "--preprocess", "full"]
     if args.device == "cpu":
         command.append("--cpu")
-    threads = str(getattr(args, "cpu_threads", 2))
-    env = dict(os.environ, OMP_NUM_THREADS=threads, MKL_NUM_THREADS=threads, TORCH_FORCE_WEIGHTS_ONLY_LOAD="1", PYTHONNOUSERSITE="1")
-    run(command, cancelled, timeout=90*60, env=env, cwd=args.model_dir)
+    run(command, cancelled, timeout=90*60, env=model_environment(args), cwd=args.model_dir)
     videos = list(result.glob("*.mp4"))
     if len(videos) != 1:
         raise RuntimeError("Expected one final model video")
@@ -239,6 +269,7 @@ def main():
     parser.add_argument("--server", default="https://atsh-ai.com")
     parser.add_argument("--full-motion", action="store_true", help="Animate padding as well as speech; slower")
     parser.add_argument("--cpu-threads", type=int, choices=range(1, 9), default=2)
+    parser.add_argument("--validate-source", type=Path, help="Check a portrait locally, without rendering or contacting the server")
     parser.add_argument("--benchmark-image", type=Path)
     parser.add_argument("--benchmark-audio", type=Path)
     parser.add_argument("--benchmark-output", type=Path)
@@ -247,6 +278,10 @@ def main():
     args.model_dir = args.model_dir.resolve()
     if not (args.model_dir/"inference.py").is_file():
         parser.error("Local SadTalker inference.py not found")
+    if args.validate_source:
+        os.environ.update(model_environment(args))
+        detect_portrait(args.validate_source.resolve(), args.model_dir)
+        return
     for executable in (args.ffmpeg, args.ffprobe):
         subprocess.check_call([executable, "-version"], stdout=subprocess.DEVNULL)
     if args.benchmark_image or args.benchmark_audio or args.benchmark_output:
