@@ -10,7 +10,7 @@ export default function SocialHeader(){
  const [ticker,setTicker]=useState<{enabled:boolean;text:string;url:string;speed:number;background:string;color:string;position?:NewsTickerPosition}|null>(null);
  const [tickerHost,setTickerHost]=useState<HTMLElement|null>(null);
  const pathname=usePathname();
- useEffect(()=>{const locale=pathname.startsWith("/en")?"en":"ar";let live=true;setTicker(null);const valid=(t:any)=>t?.enabled&&typeof t.text==="string"&&t.text.trim();const apply=(t:any)=>{if(live)setTicker(valid(t)?t:null);};const preview=readPagePreview("home",locale);if(preview){apply(preview.content.newsTicker);return()=>{live=false;};}const load=async(lang:string)=>{try{const r=await fetch("/api/site-content/home?locale="+lang,{cache:"no-store"});return r.ok?(await r.json())?.page?.content?.newsTicker:null;}catch{return null;}};void (async()=>{const local=await load(locale);if(valid(local)||Array.isArray(local?.bubbles)){apply(local);return;}const other=await load(locale==="en"?"ar":"en");apply(valid(other)?{...other,bubbles:undefined,text:locale==="en"?"Explore ATSH AI websites and apps ✦ Customize your system now":"اكتشف مواقع وتطبيقات ATSH AI ✦ خصص نظامك الآن"}:null);})();return()=>{live=false;};},[pathname]);
+ useEffect(()=>{const locale=pathname.startsWith("/en")?"en":"ar";let live=true;setTicker(null);if(document.querySelector("[data-home-ticker-seeded]"))return()=>{live=false;};const valid=(t:any)=>t?.enabled&&typeof t.text==="string"&&t.text.trim();const apply=(t:any)=>{if(live)setTicker(valid(t)?t:null);};const preview=readPagePreview("home",locale);if(preview){apply(preview.content.newsTicker);return()=>{live=false;};}const load=async(lang:string)=>{try{const r=await fetch("/api/site-content/home?locale="+lang+"&metadata=1",{cache:"no-store"});return r.ok?(await r.json())?.page?.content?.newsTicker:null;}catch{return null;}};void (async()=>{const local=await load(locale);if(valid(local)||Array.isArray(local?.bubbles)){apply(local);return;}const other=await load(locale==="en"?"ar":"en");apply(valid(other)?{...other,bubbles:undefined,text:locale==="en"?"Explore ATSH AI websites and apps ✦ Customize your system now":"اكتشف مواقع وتطبيقات ATSH AI ✦ خصص نظامك الآن"}:null);})();return()=>{live=false;};},[pathname]);
  const [host,setHost]=useState<HTMLElement|null>(null);
  // Private workspaces always retain the requested top-of-page placement.
  const portal=/^\/(?:ar\/|en\/)?(?:admin|account|team)(?:\/|$)/.test(pathname);
@@ -32,6 +32,7 @@ export default function SocialHeader(){
    if(brand?.parentElement===header){if(holder.parentElement!==header||holder.previousElementSibling!==brand)brand.insertAdjacentElement("afterend",holder);}
    else if(holder.parentElement!==header)header.prepend(holder);
    if(holder.isConnected)setHost(holder);
+   if(document.querySelector("[data-home-ticker-seeded]")){if(bar.isConnected)bar.remove();setTickerHost(null);return;}
    // Resolve only known page landmarks in the same container as the header.
    // Empty or unavailable anchors fall back above the header without wrapping or
    // rearranging its children, and the observer handles client-side navigation.

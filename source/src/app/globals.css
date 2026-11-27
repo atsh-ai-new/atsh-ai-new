@@ -1123,3 +1123,28 @@ input,textarea,select,option,optgroup{font-weight:500}
 
 .atsh-news-slot{min-height:0;min-width:0}
 .platform>.atsh-news-slot,.managed-page>.atsh-news-slot{width:100vw;margin-inline:calc((100% - 100vw)/2)}
+
+/* Compact homepage header: identity/menu on row one, counts/action on row two. */
+@media(max-width:650px){
+ .platform[lang] .platform-header:has(.home-visitor-stats){
+  display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,auto);
+  grid-template-rows:auto auto;gap:6px 8px;min-height:0;padding-block:7px
+ }
+ .platform-header:has(.home-visitor-stats)>.platform-brand{grid-area:1/1;min-width:0;gap:6px}
+ .platform-header:has(.home-visitor-stats)>.platform-brand>span{min-width:0}
+ .platform-header:has(.home-visitor-stats)>.platform-brand small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .platform-header:has(.home-visitor-stats)>.atsh-social-inline-slot{grid-area:1/2;margin:0}
+ .platform-header:has(.home-visitor-stats)>.atsh-mobile-nav{grid-area:1/3;justify-self:end}
+ .platform[lang] .platform-header:has(.home-visitor-stats)>.platform-header-actions{
+  grid-area:2/3;justify-self:end;margin:0;gap:4px;max-width:110px
+ }
+ .platform[lang] .platform-header:has(.home-visitor-stats) .platform-header-actions>.button{
+  font-size:12px;min-height:32px;padding:5px 8px;gap:5px;white-space:nowrap
+ }
+ .platform-header:has(.home-visitor-stats) .platform-header-actions>.button span{font-size:14px}
+ .platform-header:has(.home-visitor-stats)>.home-visitor-stats{
+  grid-area:2/1/3/3;justify-self:start;justify-content:flex-start;gap:5px;max-width:100%
+ }
+ .home-visitor-stats .home-visitor-stat{min-width:0;gap:4px}
+ .home-visitor-stats .home-visitor-count-label{font-size:11px}
+}
