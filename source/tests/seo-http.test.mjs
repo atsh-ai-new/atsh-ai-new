@@ -45,9 +45,16 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
     assert.match((await get("/en/customer-portal")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/catalog/hadnty/pricing")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/ar")).body,/<h1[^>]*>شركة تطوير المواقع في مصر<\/h1>/);
-    assert.match((await get("/ar")).body,/زوار الموقع هذا الشهر: <strong>١٬٢٣٤<\/strong>/);
-    assert.match((await get("/en")).body,/Website visitors this month: <strong>1,234<\/strong>/);
+    for(const [path,count] of [["/ar","١٬٢٣٤"],["/en","1,234"]]){
+      const page=await get(path);
+      const header=page.body.match(/<header class="platform-header">[\s\S]*?<\/header>/)?.[0];
+      assert.ok(header);
+      assert.match(header,new RegExp('class="home-monthly-visitors"[^>]*><span[^>]*>[^<]+</span><bdi>'+count+'</bdi>'));
+      assert.equal((page.body.match(/class="home-monthly-visitors"/g)??[]).length,1);
+    }
     monthly=0;
+    assert.match((await get("/en")).body,/<bdi>0<\/bdi>/);
+    monthly=null;
     assert.doesNotMatch((await get("/ar")).body,/class="home-monthly-visitors"/);
     assert.match((await get("/about")).body,/<h1[^>]*>عن شركتنا<\/h1>/);
     assert.match((await get("/ar/services/ecommerce")).body,/<h1[^>]*>برمجة المتاجر الإلكترونية وأنظمة المبيعات<\/h1>/);
