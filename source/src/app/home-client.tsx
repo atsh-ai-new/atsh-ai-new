@@ -14,6 +14,8 @@ import AddonGroups from "@/components/addon-groups";
 import type {CategorizedAddon} from "@/lib/addon-categories";
 import DomainLookup from "@/components/domain-lookup";
 import HomeCatalogShowcase, {type HomeCatalogItem} from "@/components/home-catalog-showcase";
+import {NewsBubbles,type NewsTickerData} from "@/components/news-bubbles";
+import {normalizeNewsTickerPosition,type NewsTickerPosition} from "@/lib/news-ticker-position";
 import { combinedQuoteSummary } from "@/lib/quote-breakdown";
 
 type Customer = { name: string; company: string; email: string; phone: string; details: string; compliance: string };
@@ -37,13 +39,27 @@ function FeaturedLiveDemo({item,base,assetId}:{item:HomeCatalogItem;base:string;
  <SystemThumbnail slug={item.slug} name={item.name} assetId={assetId||item.previewAssetId} imageUrl={item.imageUrl}/>
  </a>;
 }
-export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly=false,initialConfig,initialPages,initialArabicReference,visitorCounts}:{visitorCounts?:{monthly?:number;daily?:number};initialConfig?:SiteConfig;initialPages?:PageLink[];initialArabicReference?:Record<string,unknown>;locale?:"ar"|"en";configuratorOnly?:boolean;pricingOnly?:boolean}) {
+export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly=false,initialConfig,initialPages,initialArabicReference,visitorCounts,isPreview=false}:{isPreview?:boolean;visitorCounts?:{monthly?:number;daily?:number};initialConfig?:SiteConfig;initialPages?:PageLink[];initialArabicReference?:Record<string,unknown>;locale?:"ar"|"en";configuratorOnly?:boolean;pricingOnly?:boolean}) {
   const isEnglish=locale==="en";
   const groupedPricing=pricingOnly||!configuratorOnly;
   const money=(value:number)=>isEnglish?englishPrice(value):formatEgp(value);
   const localizeOption=(code:string,original:string,type:"name"|"description"="name")=>isEnglish?(englishOptions[code]?.[type] || (type==="name" ? original : "Available on request")):original;
   const localizePackage=(id:string,original:string,type:"name"|"short"|"description")=>isEnglish?(englishPackages[id]?.[type] || original):original;
   const t=(ar:string,en:string)=>isEnglish?en:ar;
+  const localizedSeed=initialConfig?.page?.content?.newsTicker;
+  const fallbackToArabic=isEnglish&&localizedSeed==null&&initialArabicReference?.newsTicker!=null;
+  const seed=fallbackToArabic?initialArabicReference?.newsTicker:localizedSeed;
+  const canSeed=!isPreview&&!configuratorOnly&&!pricingOnly&&typeof seed==="object"&&seed!==null;
+  const rawTicker=canSeed?seed as Partial<NewsTickerData>&{enabled?:boolean;position?:unknown}:undefined;
+  const bubbles=Array.isArray(rawTicker?.bubbles)?rawTicker.bubbles.filter(b=>b&&typeof b.text==="string"):undefined;
+  const newsText=typeof rawTicker?.text==="string"?rawTicker.text:"";
+  const homeTicker=rawTicker?.enabled===true&&(bubbles?bubbles.some(b=>b.visible&&b.text.trim()):newsText.trim())
+    ?{text:fallbackToArabic?"Explore ATSH AI websites and apps ✦ Customize your system now":newsText,url:rawTicker.url??"",speed:rawTicker.speed??25,color:rawTicker.color??"#14243C",background:rawTicker.background??"#ffffff",bubbles:fallbackToArabic?undefined:bubbles}
+    :null;
+  const tickerPosition=normalizeNewsTickerPosition(rawTicker?.position);
+  const newsAt=(position:NewsTickerPosition)=>homeTicker&&position===tickerPosition
+    ?<div className="atsh-news-slot" data-home-ticker-seeded><NewsBubbles ticker={homeTicker} english={isEnglish}/></div>
+    :null;
   const [showOtherDetails,setShowOtherDetails]=useState(false);
   const [signedInCustomerName,setSignedInCustomerName]=useState("");
   const [sessionEnding,setSessionEnding]=useState(false);
@@ -522,6 +538,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
 
   return (
     <main className="platform" lang={locale} dir={isEnglish?"ltr":"rtl"} style={{ "--navy": siteConfig.theme?.navy, "--navy-2": siteConfig.theme?.blue, "--blue": siteConfig.theme?.blue, "--gold": siteConfig.theme?.gold, "--page": siteConfig.theme?.page, "--site-font": siteConfig.theme?.fontFamily ? `\"${siteConfig.theme.fontFamily}\", system-ui, sans-serif` : undefined, "--card-radius": siteConfig.theme?.cardRadius === undefined ? undefined : `${siteConfig.theme.cardRadius}px`, backgroundImage: siteConfig.theme?.backgroundImageUrl ? `linear-gradient(rgba(250,249,245,.94), rgba(250,249,245,.94)), url(${JSON.stringify(siteConfig.theme.backgroundImageUrl)})` : undefined, backgroundSize: siteConfig.theme?.backgroundImageUrl ? "cover" : undefined, backgroundAttachment: siteConfig.theme?.backgroundImageUrl ? "fixed" : undefined } as CSSProperties}>
+      {newsAt("top")}
       {!configuratorOnly&&<header className="platform-header">
         <a className="platform-brand" href="#top" aria-label={copy("homeAriaLabel")}>
           <img src={siteConfig.theme?.logoUrl || "/images/atsh-logo.jpg"} alt={copy("logoAlt")} />
@@ -538,6 +555,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
         <div className="platform-header-actions">{customerSignedIn&&<a className="atsh-signed-in-badge" href={isEnglish?"/en/account/dashboard":"/account/dashboard"} aria-label={t(`حساب ${signedInCustomerName||"العميل"}`,`Account ${signedInCustomerName||"customer"}`)}><span className="atsh-signed-in-badge-icon" aria-hidden="true">●</span><span>{t("حساب","Account")} {signedInCustomerName||t("العميل","customer")}</span></a>}<a className="language-pill header-language-switch" href={isEnglish?"/ar":"/en"} hrefLang={isEnglish?"ar":"en"} aria-label={isEnglish?"Switch to Arabic":"Switch to English"} onClick={(event) => { event.preventDefault(); window.location.assign(isEnglish ? "/ar" : "/en"); }}>🌐 {isEnglish?"العربية":"English"}</a><a className="button button-small" href={isEnglish?"/en#packages":"/#packages"}>{copy("navAction")} <span>←</span></a></div>
         {(visitorCounts?.monthly!==undefined||visitorCounts?.daily!==undefined)&&<span className="home-visitor-stats">{([["monthly",t("زوار الشهر","Visitors this month")],["daily",t("زوارنا اليوم","Visitors today")]] as const).map(([period,label])=>{const count=visitorCounts[period];return count===undefined?null:<span key={period} className="home-visitor-stat"><span className="home-visitor-count-label">{label}</span><span className="home-visitor-count" data-period={period}><bdi>{count.toLocaleString(isEnglish?"en-EG":"ar-EG")}</bdi></span></span>;})}</span>}
       </header>}
+      {newsAt("below_header")}
 
       {!configuratorOnly&&<><section className={`build-hero${!copy("heroDescription").trim() ? " build-hero-compact" : ""}`} id="top">
         <div className="build-hero-copy">
@@ -561,6 +579,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
           </div>;})()}
         </div>
       </section>
+      {newsAt("after_hero")}
 
       <section className="trust-strip" aria-label={copy("trustStripLabel")}>{trustItems.filter((item) => item.title).map((item, index) => <span key={item.id ?? index}>✓ {item.title}</span>)}</section>
 
@@ -707,6 +726,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
 
       <section className="final-cta"><div><span className="section-kicker">{copy("finalKicker")}</span><h2>{copy("finalTitle")}</h2><p>{copy("finalDescription")}</p></div><button data-analytics-action="start_order" className="button" onClick={() => begin()}>{copy("finalCta")} <span>←</span></button></section>
       {customerSignedIn&&<div className="atsh-home-end-session"><button type="button" disabled={sessionEnding} onClick={async()=>{setSessionEnding(true);setSessionEndError("");try{const response=await fetch("/api/customer/auth/logout",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:"{}"});if(!response.ok)throw Error("Logout failed");window.location.assign(isEnglish?"/en/account/login":"/account/login");}catch{setSessionEndError(t("تعذر إنهاء الجلسة، حاول مرة أخرى.","Could not end the session. Please retry."));setSessionEnding(false);}}}>{sessionEnding?t("جارٍ إنهاء الجلسة…","Ending session…"):t("إنهاء الجلسة","End session")}</button>{sessionEndError&&<span role="alert">{sessionEndError}</span>}</div>}
+      {newsAt("before_footer")}
       <footer className="platform-footer"><a className="platform-brand" href="#top"><img src={siteConfig.theme?.logoUrl || "/images/atsh-logo.jpg"} alt="" /><span><strong>ATSH <b>AI</b></strong><small>{copy("footerTagline")}</small></span></a><a href={isEnglish?"/en/services":"/services"}>{t("خدماتنا","Services")}</a>{pageLinks.filter(item=>item.slug!=="services").map((item) => <a key={item.slug} href={`${isEnglish?"/en":""}/${item.slug}`}>{item.title}</a>)}<a href={`mailto:${copy("footerInfoEmail")}`}>{copy("footerInfoLabel")}</a><a href={`mailto:${copy("footerSalesEmail")}`}>{copy("footerSalesLabel")}</a><a href={`mailto:${copy("footerSupportEmail")}`}>{copy("footerSupportLabel")}</a><span>{copy("copyrightPrefix")} {new Date().getFullYear()} ATSH AI</span><a href="/admin">{copy("footerAdminLabel")}</a><a href="#top">{copy("footerTopLabel")}</a></footer>
       </>}
     </main>

@@ -6,14 +6,14 @@ import { once } from "node:events";
 const item = {slug:"hadnty",name:"حضانتي",category:"الحضانات",description:"إدارة الأطفال والحضور والمدفوعات",features:["الحضور","أولياء الأمور"],sectorId:"education",subcategoryId:"schools",published:true,modules:["Dashboard"],sampleStats:[],sampleRows:[]};
 test("SEO renders published CMS data in HTML and updates sitemap without indexing hidden systems or private pages", {timeout:120000}, async()=>{
   let aboutPublished=true;
-  let monthly=1234,daily=59;
+  let monthly=1234,daily=59,newsPosition="top";
   let items=[item,{...item,slug:"archived-system",archived:true},{...item,slug:"hidden-system",published:false}];
   const backend=createServer((req,res)=>{
     const url=new URL(req.url,"http://localhost");
     const english=url.searchParams.get("locale")==="en";
     let result={page:null};
     if(url.pathname==="/api/site-content/catalog") result={page:{updated_at:"2026-11-26T12:00:00Z",content:{items:english?items.filter(x=>x.slug==="hadnty").map(x=>({...x,name:"My Nursery",description:"Nursery attendance and parent communication",features:["Attendance","Parent communication"]})):items}}};
-    if(url.pathname==="/api/site-content/home")result={page:{content:{marketingHeroTitle:english?"Web development in Egypt":"شركة تطوير المواقع في مصر"}}};
+    if(url.pathname==="/api/site-content/home")result={page:{content:{newsTicker:{enabled:true,text:english?"Latest news":"أخبار جديدة",position:newsPosition},marketingHeroTitle:english?"Web development in Egypt":"شركة تطوير المواقع في مصر"}}};
     if(url.pathname==="/api/site-content/about"&&aboutPublished)result={page:{content:{title:english?"About our company":"عن شركتنا",description:"Business software"}}};
     if(url.pathname==="/api/visitor/monthly-count")result={monthly,daily};
     if(url.pathname==="/api/site-pages")result={pages:[...(aboutPublished?[{slug:"about",title:"About"}]:[]),{slug:"assistant-knowledge",title:"Internal"},{slug:"catalog",title:"Catalog"}]};
@@ -57,6 +57,15 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
         assert.equal((page.body.match(new RegExp('data-period="'+period+'"','g'))??[]).length,1);
       }
     }
+    const topNews=(await get("/ar")).body;
+    assert.match(topNews,/<main[^>]*><div class="atsh-news-slot" data-home-ticker-seeded="true">/);
+    for(const [position,preceding] of [["below_header","</header>"],["after_hero","</section>"]]){
+      newsPosition=position;
+      const html=(await get("/ar")).body;
+      assert.ok(html.includes(preceding+'<div class="atsh-news-slot" data-home-ticker-seeded="true">'),position);
+    }
+    newsPosition="top";
+    assert.doesNotMatch((await get("/ar?atshPreview=83ab3c99-56e4-4d17-bccd-1c43f1667c52")).body,/<div class="atsh-news-slot" data-home-ticker-seeded="true">/);
     daily=0;
     assert.match((await get("/en")).body,/data-period="daily"><bdi>0<\/bdi>/);
     daily=undefined;

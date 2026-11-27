@@ -3,8 +3,9 @@ import styles from "./news-bubbles.module.css";
 
 const HEX_COLOR=/^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i;
 
+export type NewsTickerData={text:string;url:string;speed:number;color:string;background:string;bubbles?:{text:string;visible:boolean}[]};
 export function NewsBubbles({ticker,english}:{
- ticker:{text:string;url:string;speed:number;color:string;background:string;bubbles?:{text:string;visible:boolean}[]};
+ ticker:NewsTickerData;
  english:boolean;
 }){
  const [paused,setPaused]=useState(false);
