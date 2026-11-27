@@ -5,9 +5,16 @@ export type Locale = "ar" | "en";
 export const absolute = (path: string) => new URL(path, SITE_URL).href;
 export const homePath = (locale: Locale) => "/" + locale;
 export const localPath = (locale: Locale, path: string) => locale === "en" ? "/en" + path : path;
-export const privatePath = (path: string) => /^\/(?:en\/|ar\/)?(?:admin|account|customer-portal|commercial|configure|packages|api|demos|assistant-knowledge)(?:\/|$)/.test(path) || /^\/(?:en\/)?catalog\/[^/]+\/pricing(?:\/|$)/.test(path);
+export const privatePath = (path: string) => /^\/(?:en\/|ar\/)?(?:admin|account|customer-portal|commercial|configure|packages|api|demos|assistant-knowledge)(?:\/|$)/.test(path) || /^\/(?:en\/)?catalog\/[^/]+\/pricing(?:\/|$)/.test(path) || /^\/(?:en\/)?stores\/pricing(?:\/|$)/.test(path);
 export const validPublicSlug = (slug: string) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) && slug.length <= 100 &&
   !new Set(["home","ar","en","catalog","stores","templates","start","admin","account","api","configure","customer-portal","commercial","packages","demos","images","assistant-knowledge"]).has(slug);
+
+export const draftPreviewRequested = (value: unknown) => typeof value === "string" && /^[a-f0-9-]{36}$/.test(value);
+export function publicSeoImage(input: unknown): string | undefined {
+  if (typeof input !== "string" || input.length > 1024) return;
+  if (/^\/(?:images\/[^?]+|api\/site-media\/[0-9a-f-]{36})$/i.test(input) && !input.includes("..")) return input;
+  try { const url = new URL(input); if (url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash && !privatePath(url.pathname) && !/(?:^|\/)(?:preview|draft)(?:\/|$)/i.test(url.pathname)) return url.href; } catch {}
+}
 
 export function cleanText(value: unknown, max = 160): string {
   if (typeof value !== "string") return "";
@@ -27,9 +34,9 @@ export function pageMetadata(locale: Locale, path: string, title: string, descri
     robots:{index:true,follow:true}, openGraph:{title:fullTitle,description:summary,url:canonical,siteName:"ATSH AI",type:"website",locale:locale==="en"?"en_US":"ar_EG",images:[{url:absolute(image),alt:title}]},
     twitter:{card:"summary",title:fullTitle,description:summary,images:[absolute(image)]} };
 }
-export function homeMetadata(locale: Locale) {
-  return pageMetadata(locale,homePath(locale),locale==="ar"?"شركة تصميم مواقع وتطبيقات وأنظمة إدارية":"Web, App & Business Software Development",
-    locale==="ar"?"ATSH AI لتطوير المواقع والتطبيقات والأنظمة الإدارية وحلول الذكاء الاصطناعي. استكشف الأنظمة التفاعلية وباقات البرمجة والأسعار في مصر.":"ATSH AI builds websites, mobile apps, business management systems and AI solutions. Explore interactive demos and transparent software pricing in Egypt.",homePath(locale==="ar"?"en":"ar"));
+export function homeMetadata(locale: Locale, content?:Record<string,unknown>) {
+  return pageMetadata(locale,homePath(locale),cleanText(content?.seoTitle,65)||(locale==="ar"?"شركة تصميم مواقع وتطبيقات وأنظمة إدارية":"Web, App & Business Software Development"),
+    cleanText(content?.seoDescription)||(locale==="ar"?"ATSH AI لتطوير المواقع والتطبيقات والأنظمة الإدارية وحلول الذكاء الاصطناعي. استكشف الأنظمة التفاعلية وباقات البرمجة والأسعار في مصر.":"ATSH AI builds websites, mobile apps, business management systems and AI solutions. Explore interactive demos and transparent software pricing in Egypt."),homePath(locale==="ar"?"en":"ar"),publicSeoImage(content?.seoImageUrl||content?.heroImageUrl));
 }
 export function catalogMetadata(locale: Locale) {
   return pageMetadata(locale,localPath(locale,"/catalog"),locale==="ar"?"أنظمة إدارة الأعمال والبرامج الجاهزة":"Business Management Software & Interactive Demos",

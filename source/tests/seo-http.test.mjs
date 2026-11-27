@@ -5,15 +5,16 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 const item = {slug:"hadnty",name:"حضانتي",category:"الحضانات",description:"إدارة الأطفال والحضور والمدفوعات",features:["الحضور","أولياء الأمور"],sectorId:"education",subcategoryId:"schools",published:true,modules:["Dashboard"],sampleStats:[],sampleRows:[]};
 test("SEO renders published CMS data in HTML and updates sitemap without indexing hidden systems or private pages", {timeout:120000}, async()=>{
+  let aboutPublished=true;
   let items=[item,{...item,slug:"archived-system",archived:true},{...item,slug:"hidden-system",published:false}];
   const backend=createServer((req,res)=>{
     const url=new URL(req.url,"http://localhost");
     const english=url.searchParams.get("locale")==="en";
     let result={page:null};
-    if(url.pathname==="/api/site-content/catalog") result={page:{updated_at:"2026-11-26T12:00:00Z",content:{items:english?items.map(x=>({...x,name:"My Nursery",description:"Nursery attendance and parent communication",features:["Attendance","Parent communication"]})):items}}};
+    if(url.pathname==="/api/site-content/catalog") result={page:{updated_at:"2026-11-26T12:00:00Z",content:{items:english?items.filter(x=>x.slug==="hadnty").map(x=>({...x,name:"My Nursery",description:"Nursery attendance and parent communication",features:["Attendance","Parent communication"]})):items}}};
     if(url.pathname==="/api/site-content/home")result={page:{content:{marketingHeroTitle:english?"Web development in Egypt":"شركة تطوير المواقع في مصر"}}};
-    if(url.pathname==="/api/site-content/about")result={page:{content:{title:english?"About our company":"عن شركتنا",description:"Business software"}}};
-    if(url.pathname==="/api/site-pages")result={pages:[{slug:"about",title:"About"},{slug:"assistant-knowledge",title:"Internal"},{slug:"catalog",title:"Catalog"}]};
+    if(url.pathname==="/api/site-content/about"&&aboutPublished)result={page:{content:{title:english?"About our company":"عن شركتنا",description:"Business software"}}};
+    if(url.pathname==="/api/site-pages")result={pages:[...(aboutPublished?[{slug:"about",title:"About"}]:[]),{slug:"assistant-knowledge",title:"Internal"},{slug:"catalog",title:"Catalog"}]};
     res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify(result));
   });
   backend.listen(0,"127.0.0.1");await once(backend,"listening");
@@ -29,9 +30,16 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
     const map=await get("/sitemap.xml");assert.equal(map.status,200);assert.match(map.body,/<loc>https:\/\/atsh-ai\.com\/catalog\/hadnty<\/loc>/);assert.match(map.body,/<loc>https:\/\/atsh-ai\.com\/en\/catalog\/hadnty<\/loc>/);assert.match(map.body,/<loc>https:\/\/atsh-ai\.com\/about<\/loc>/);assert.doesNotMatch(map.body,/archived-system|hidden-system|assistant-knowledge|\/pricing/);
     const gallery=await get("/catalog");assert.match(gallery.body,/<h3[^>]*><a[^>]*href="\/catalog\/hadnty"/);assert.match(gallery.body,/إدارة الأطفال والحضور والمدفوعات/);
     for(const [path,name,lang] of [["/catalog/hadnty","حضانتي","ar"],["/en/catalog/hadnty","My Nursery","en"]]){
-      const r=await get(path);assert.equal(r.status,200);assert.match(r.body,new RegExp('<html lang="'+lang+'"'));assert.match(r.body,new RegExp('<title>'+name));assert.ok(r.body.includes('rel="canonical" href="https://atsh-ai.com'+path+'"'));assert.match(r.body,new RegExp('<h1[^>]*>'+name+'</h1>'));assert.match(r.body,/hrefLang="en"/i);
+      const r=await get(path);assert.equal(r.status,200);assert.match(r.body,new RegExp('<html lang="'+lang+'"'));assert.match(r.body,new RegExp('<title>'+name));assert.ok(r.body.includes('rel="canonical" href="https://atsh-ai.com'+path+'"'));assert.match(r.body,new RegExp('<h1[^>]*>'+name+'</h1>'));assert.match(r.body,/hrefLang="en"/i);assert.equal((r.body.match(/<h1(?:\s|>)/g)||[]).length,1);
     }
-    assert.match((await get("/catalog/archived-system")).body,/<meta name="robots" content="noindex, follow"/);
+    const archived=await get("/catalog/archived-system");
+    assert.equal(archived.status,404);assert.match(archived.body,/<meta name="robots" content="noindex/);
+    const missing=await get("/completely-missing");
+    assert.equal(missing.status,404);assert.match(missing.body,/<meta name="robots" content="noindex/);
+    const draft=await get("/completely-missing?atshPreview=83ab3c99-56e4-4d17-bccd-1c43f1667c52");
+    assert.equal(draft.status,200);assert.match(draft.headers.get("x-robots-tag")||"",/noindex/);
+    assert.match((await get("/en/admin")).headers.get("x-robots-tag")||"",/noindex/);
+    assert.match((await get("/stores/pricing")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/en/customer-portal")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/catalog/hadnty/pricing")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/ar")).body,/<h1[^>]*>شركة تطوير المواقع في مصر<\/h1>/);
@@ -39,7 +47,22 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
     assert.match((await get("/ar/services/ecommerce")).body,/<h1[^>]*>برمجة المتاجر الإلكترونية وأنظمة المبيعات<\/h1>/);
     assert.match((await get("/en/services/ecommerce")).body,/<h1[^>]*>E-commerce &amp; sales software development<\/h1>/);
     assert.match(map.body,/<loc>https:\/\/atsh-ai\.com\/services\/ai-solutions<\/loc>/);
-    items=[...items,{...item,slug:"new-school"}];
-    assert.match((await get("/sitemap.xml")).body,/<loc>https:\/\/atsh-ai\.com\/catalog\/new-school<\/loc>/);
+    const storeSector=await get("/stores/sectors/furniture");
+    assert.equal(storeSector.status,200);assert.match(storeSector.body,/<h1>تصميم متجر إلكتروني لقطاع أثاث وديكور<\/h1>/);
+    assert.match(storeSector.body,/href="\/stores\/furniture-atelier"/);
+    assert.match((await get("/stores/furniture-atelier")).body,/<meta name="robots" content="noindex, follow"/);
+    assert.match(map.body,/<loc>https:\/\/atsh-ai\.com\/en\/stores\/sectors\/furniture<\/loc>/);
+    assert.doesNotMatch(map.body,/\/stores\/furniture-atelier/);
+    items=[...items,{...item,slug:"new-school",updatedAt:"2026-11-27T12:00:00Z",seoTitle:"عنوان النظام التجريبي"}];
+    const updatedMap=await get("/sitemap.xml");
+    assert.match(updatedMap.body,/<loc>https:\/\/atsh-ai\.com\/catalog\/new-school<\/loc>\s*<lastmod>2026-11-27/);
+    assert.doesNotMatch(updatedMap.body,/\/en\/catalog\/new-school/);
+    const unlocalized=await get("/en/catalog/new-school");
+    assert.match(unlocalized.body,/<meta name="robots" content="noindex, follow"/);
+    assert.match((await get("/catalog/new-school")).body,/<title>عنوان النظام التجريبي/);
+    items=items.map(x=>x.slug==="new-school"?{...x,archived:true}:x);aboutPublished=false;
+    assert.doesNotMatch((await get("/sitemap.xml")).body,/new-school|\/about/);
+    assert.equal((await get("/catalog/new-school")).status,404);
+    assert.equal((await get("/about")).status,404);
   }finally{next.kill("SIGTERM");backend.close();}
 });

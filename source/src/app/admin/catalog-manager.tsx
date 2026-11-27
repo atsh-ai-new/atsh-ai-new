@@ -7,7 +7,7 @@ import { sectorTemplates, interactiveDemoPaths, type SectorTemplate } from "@/li
 import { normalizeCatalogSectors, defaultCatalogPlacements, resolvePlacement, validCatalogId, canRemoveSector, canRemoveSubcategory, type CatalogSector } from "@/lib/catalog-sectors";
 
 type PricedAddon={code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"};
-type CatalogItem = SectorTemplate & {previewHtml?:string;previewHtmlName?:string;previewAssetId?:string;hasPreviewHtml?:boolean;published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; demoSlug?:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[];sectorId?:string;subcategoryId?:string};
+type CatalogItem = SectorTemplate & {seoTitle?:string;seoDescription?:string;updatedAt?:string;previewHtml?:string;previewHtmlName?:string;previewAssetId?:string;hasPreviewHtml?:boolean;published:boolean; archived:boolean; sortOrder:number; imageUrl:string; previewUrl:string; demoSlug?:string; basePrice:number|null; addons:string[];pricedAddons:PricedAddon[];sectorId?:string;subcategoryId?:string};
 const seed = (): CatalogItem[] => sectorTemplates.map((s,i)=>({...s,published:true,archived:false,sortOrder:i*10,imageUrl:"",previewUrl:"",demoSlug:s.slug,basePrice:null,addons:[],pricedAddons:[]}));
 const empty = (): CatalogItem => ({slug:"",name:"",category:"",icon:"📁",description:"",features:[],modules:["لوحة القيادة"],sampleStats:[],sampleRows:[],note:"معاينة تجريبية",published:false,archived:false,sortOrder:100,imageUrl:"",previewUrl:"",demoSlug:"",basePrice:null,addons:[],pricedAddons:[]});
 const normalize = (v: unknown): CatalogItem[] => Array.isArray(v) ? v.filter(x=>x && typeof x==="object" && typeof x.slug==="string" && typeof x.name==="string").map(x=>({...empty(),...x,features:Array.isArray(x.features)?x.features:[],modules:Array.isArray(x.modules)?x.modules:[],sampleStats:Array.isArray(x.sampleStats)?x.sampleStats:[],sampleRows:Array.isArray(x.sampleRows)?x.sampleRows:[],addons:Array.isArray(x.addons)?x.addons:[],pricedAddons:Array.isArray(x.pricedAddons)?x.pricedAddons.filter((option:PricedAddon)=>!["logo_design","visual_identity"].includes(option.code)):[]})) : seed();
@@ -114,7 +114,7 @@ export default function CatalogManager({initialCommerceOffer=false}:{initialComm
     if(slug!==originalSlug && items.some(x=>x.slug===slug)){setError("الرابط مستخدم بالفعل.");return;}
     if(draft.previewUrl.trim()){try{const url=new URL(draft.previewUrl.trim());if(url.protocol!=="https:")throw Error();}catch{setError("رابط المعاينة يجب أن يكون رابط HTTPS صالحًا للنظام المنشور.");return;}}
     if(draft.basePrice!==null&&(!Number.isFinite(draft.basePrice)||draft.basePrice<0)){setError("أدخل سعر بيع صحيحًا للنظام مخصص، أو اتركه فارغًا حتى تحديد السعر.");return;}
-    const updated={...draft,previewHtml:draft.previewAssetId?undefined:draft.previewHtml,previewUrl:draft.previewUrl.trim(),pricedAddons:[],slug,name:draft.name.trim(),description:draft.description.trim()};
+    const updated={...draft,updatedAt:new Date().toISOString(),seoTitle:draft.seoTitle?.trim(),seoDescription:draft.seoDescription?.trim(),previewHtml:draft.previewAssetId?undefined:draft.previewHtml,previewUrl:draft.previewUrl.trim(),pricedAddons:[],slug,name:draft.name.trim(),description:draft.description.trim()};
     if(!updated.name){setError("اسم النظام المخصص مطلوب.");return;}
     const placement=resolvePlacement(updated,sectors);
     if(!initialCommerceOffer&&(!placement.sector||!updated.sectorId)){setError("اختر قطاعًا رئيسيًا صالحًا.");return;}
@@ -394,6 +394,7 @@ export default function CatalogManager({initialCommerceOffer=false}:{initialComm
         </select></label>
         {field("الأيقونة",draft.icon,v=>update("icon",v))}
         {field("الوصف",draft.description,v=>update("description",v),true)}
+        <details><summary>تحسين الظهور في نتائج البحث (اختياري)</summary><p>اترك الحقول فارغة لاستخدام اسم النظام ووصفه تلقائيًا.</p><label className="admin-field">عنوان البحث<input value={draft.seoTitle??""} maxLength={65} onChange={e=>update("seoTitle",e.target.value)}/></label><label className="admin-field">وصف نتائج البحث<textarea value={draft.seoDescription??""} maxLength={160} rows={2} onChange={e=>update("seoDescription",e.target.value)}/></label></details>
         {field("المزايا — كل ميزة بسطر",draft.features.join("\n"),v=>update("features",v.split("\n").map(x=>x.trim()).filter(Boolean)),true)}
         {field("أقسام المعاينة — كل قسم بسطر",draft.modules.join("\n"),v=>update("modules",v.split("\n").map(x=>x.trim()).filter(Boolean)),true)}
         <label className="admin-field">محرك المعاينة التفاعلية الكاملة

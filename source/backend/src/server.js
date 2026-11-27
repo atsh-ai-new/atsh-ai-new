@@ -125,6 +125,7 @@ const route = fn => (req,res,next) => Promise.resolve(fn(req,res,next)).catch(ne
 app.disable("x-powered-by");
 app.use(helmet());
 app.use(cors({ origin(origin, cb) { if (!origin || origins.includes(origin)) return cb(null,true); cb(new Error("Origin not allowed")); }, credentials: true }));
+app.use(["/api/admin","/api/customer","/api/orders","/api/commercial","/api/internal","/api/integrations"], (_req,res,next)=>{res.set("X-Robots-Tag","noindex, follow");next();});
 app.use("/api/admin", (req,res,next) => {
   if (["POST","PATCH","PUT","DELETE"].includes(req.method)) {
     const origin=req.get("origin");
@@ -627,10 +628,8 @@ app.get("/api/site-content/:slug", route(async(req,res)=>{
   const publishedPage=page.rows[0]||null;
   if(publishedPage&&!metadata)publishedPage.content=await expandDemoAssets(pool,req.params.slug,publishedPage.content);
   if(req.params.slug==="catalog"&&Array.isArray(publishedPage?.content?.items)){
-    publishedPage.content={...publishedPage.content,items:(await pricedSectorCatalog(pool,publishedPage.content.items.filter(item=>item?.slug!=="commerce-engine"||item.published===true&&!item.archived))).map(item=>{
-      if(!item||typeof item!=="object"||item.published!==false&&!item.archived)return item;
-      const {previewHtml,previewHtmlName,hasPreviewHtml,previewAssetId,...rest}=item;return rest;
-    })};
+    const items=publishedPage.content.items.filter(item=>item&&typeof item==="object"&&item.published!==false&&!item.archived&&(item.slug!=="commerce-engine"||item.published===true));
+    publishedPage.content={...publishedPage.content,items:await pricedSectorCatalog(pool,items)};
   }
   res.set("Cache-Control","no-store").json({page:publishedPage,theme:settings.rows[0]?.theme||null,vatRate:Number(settings.rows[0]?.vat_rate??14)});
 }));

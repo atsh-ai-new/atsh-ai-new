@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { absolute, homePath, localPath, type Locale } from "@/lib/seo";
 import { publicCatalog, publicPages } from "@/lib/public-seo-data";
+import {storeSectorSlugs} from "@/lib/store-sector-seo";
 import {serviceSlugs} from "@/lib/seo-services";
 export const dynamic="force-dynamic";
 export default async function sitemap():Promise<MetadataRoute.Sitemap> {
@@ -16,8 +17,13 @@ export default async function sitemap():Promise<MetadataRoute.Sitemap> {
     const other=locale==="ar"?"en":"ar";
     add(homePath(locale),homePath(other),locale);
     add(localPath(locale,"/stores"),localPath(other,"/stores"),locale);
+    for(const slug of storeSectorSlugs)add(localPath(locale,"/stores/sectors/"+slug),localPath(other,"/stores/sectors/"+slug),locale);
     add(localPath(locale,"/catalog"),localPath(other,"/catalog"),locale,catalog?.updatedAt);
-    for(const item of catalog?.items??[])add(localPath(locale,"/catalog/"+item.slug),localPath(other,"/catalog/"+item.slug),locale,catalog?.updatedAt);
+    for(const item of catalog?.items??[]){
+      const bilingual=catalog?.translatedSlugs.has(item.slug);
+      if(locale==="en"&&!bilingual)continue;
+      add(localPath(locale,"/catalog/"+item.slug),bilingual?localPath(other,"/catalog/"+item.slug):undefined,locale,item.updatedAt);
+    }
     add(localPath(locale,"/services"),localPath(other,"/services"),locale);
     for(const slug of serviceSlugs)add(localPath(locale,"/services/"+slug),localPath(other,"/services/"+slug),locale);
     const pages=locale==="ar"?arPages:enPages;
