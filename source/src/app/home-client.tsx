@@ -37,7 +37,7 @@ function FeaturedLiveDemo({item,base,assetId}:{item:HomeCatalogItem;base:string;
  <SystemThumbnail slug={item.slug} name={item.name} assetId={assetId||item.previewAssetId} imageUrl={item.imageUrl}/>
  </a>;
 }
-export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly=false,initialConfig,initialPages,initialArabicReference}:{initialConfig?:SiteConfig;initialPages?:PageLink[];initialArabicReference?:Record<string,unknown>;locale?:"ar"|"en";configuratorOnly?:boolean;pricingOnly?:boolean}) {
+export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly=false,initialConfig,initialPages,initialArabicReference,monthlyVisitors}:{monthlyVisitors?:number;initialConfig?:SiteConfig;initialPages?:PageLink[];initialArabicReference?:Record<string,unknown>;locale?:"ar"|"en";configuratorOnly?:boolean;pricingOnly?:boolean}) {
   const isEnglish=locale==="en";
   const groupedPricing=pricingOnly||!configuratorOnly;
   const money=(value:number)=>isEnglish?englishPrice(value):formatEgp(value);
@@ -706,6 +706,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
 
       <section className="final-cta"><div><span className="section-kicker">{copy("finalKicker")}</span><h2>{copy("finalTitle")}</h2><p>{copy("finalDescription")}</p></div><button className="button" onClick={() => begin()}>{copy("finalCta")} <span>←</span></button></section>
       {customerSignedIn&&<div className="atsh-home-end-session"><button type="button" disabled={sessionEnding} onClick={async()=>{setSessionEnding(true);setSessionEndError("");try{const response=await fetch("/api/customer/auth/logout",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:"{}"});if(!response.ok)throw Error("Logout failed");window.location.assign(isEnglish?"/en/account/login":"/account/login");}catch{setSessionEndError(t("تعذر إنهاء الجلسة، حاول مرة أخرى.","Could not end the session. Please retry."));setSessionEnding(false);}}}>{sessionEnding?t("جارٍ إنهاء الجلسة…","Ending session…"):t("إنهاء الجلسة","End session")}</button>{sessionEndError&&<span role="alert">{sessionEndError}</span>}</div>}
+      {monthlyVisitors!==undefined&&<p className="home-monthly-visitors">{t("زوار الموقع هذا الشهر: ","Website visitors this month: ")}<strong>{monthlyVisitors.toLocaleString(isEnglish?"en-EG":"ar-EG")}</strong></p>}
       <footer className="platform-footer"><a className="platform-brand" href="#top"><img src={siteConfig.theme?.logoUrl || "/images/atsh-logo.jpg"} alt="" /><span><strong>ATSH <b>AI</b></strong><small>{copy("footerTagline")}</small></span></a><a href={isEnglish?"/en/services":"/services"}>{t("خدماتنا","Services")}</a>{pageLinks.filter(item=>item.slug!=="services").map((item) => <a key={item.slug} href={`${isEnglish?"/en":""}/${item.slug}`}>{item.title}</a>)}<a href={`mailto:${copy("footerInfoEmail")}`}>{copy("footerInfoLabel")}</a><a href={`mailto:${copy("footerSalesEmail")}`}>{copy("footerSalesLabel")}</a><a href={`mailto:${copy("footerSupportEmail")}`}>{copy("footerSupportLabel")}</a><span>{copy("copyrightPrefix")} {new Date().getFullYear()} ATSH AI</span><a href="/admin">{copy("footerAdminLabel")}</a><a href="#top">{copy("footerTopLabel")}</a></footer>
       </>}
     </main>

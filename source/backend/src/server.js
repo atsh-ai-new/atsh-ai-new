@@ -941,11 +941,25 @@ app.post("/api/visitor/analytics",rateLimit({windowMs:60000,limit:300,standardHe
  }
  res.sendStatus(204);
 }));
+const monthlyVisitorCountSql = `(SELECT count(DISTINCT visitor_id)::int FROM visitor_analytics_daily,today WHERE day BETWEEN date_trunc('month',d)::date AND d)`;
+let monthlyVisitorSnapshot;
+app.get("/api/visitor/monthly-count", route(async(_req,res)=>{
+ // Cache the aggregate, including concurrent misses. Expose no analytics detail.
+ if(!monthlyVisitorSnapshot || monthlyVisitorSnapshot.expires<=Date.now()){
+   const snapshot={expires:Date.now()+60_000,value:null};
+   snapshot.value=pool.query(`WITH today AS (SELECT (now() AT TIME ZONE 'Africa/Cairo')::date AS d) SELECT ${monthlyVisitorCountSql} AS monthly`)
+     .then(result=>result.rows[0].monthly)
+     .catch(error=>{if(monthlyVisitorSnapshot===snapshot)monthlyVisitorSnapshot=undefined;throw error;});
+   monthlyVisitorSnapshot=snapshot;
+ }
+ const monthly=await monthlyVisitorSnapshot.value;
+ res.set("Cache-Control","public, max-age=60").set("X-Robots-Tag","noindex").json({monthly});
+}));
 app.get("/api/admin/visitor-analytics",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{
  const result=await pool.query(`WITH today AS (SELECT (now() AT TIME ZONE 'Africa/Cairo')::date AS d)
  SELECT (SELECT count(*)::int FROM visitor_analytics_sessions WHERE last_seen>now()-interval '90 seconds') AS online,
  (SELECT count(DISTINCT visitor_id)::int FROM visitor_analytics_daily,today WHERE day=d) AS daily,
- (SELECT count(DISTINCT visitor_id)::int FROM visitor_analytics_daily,today WHERE day>=date_trunc('month',d)::date) AS monthly,
+ ${monthlyVisitorCountSql} AS monthly,
  (SELECT count(*)::int FROM visitor_analytics_sessions) AS total,
  (SELECT coalesce(json_agg(x),'[]'::json) FROM (SELECT days.d::date::text AS day,count(DISTINCT visitor_id)::int AS visitors FROM today CROSS JOIN generate_series(today.d-6,today.d,interval '1 day') AS days(d) LEFT JOIN visitor_analytics_daily v ON v.day=days.d::date GROUP BY days.d ORDER BY days.d) x) AS week,
  (SELECT coalesce(json_agg(x),'[]'::json) FROM (SELECT path,sum(views)::int AS views FROM visitor_analytics_daily,today WHERE day>=d-6 GROUP BY path ORDER BY views DESC LIMIT 10) x) AS pages,

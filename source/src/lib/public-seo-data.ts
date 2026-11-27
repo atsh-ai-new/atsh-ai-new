@@ -16,14 +16,18 @@ function apiOrigin() {
   } catch {}
   return null;
 }
-async function publicJson<T>(path:string):Promise<T|null> {
+async function publicJson<T>(path:string,timeoutMs=5000):Promise<T|null> {
   const origin=apiOrigin();
   if(!origin)return null;
   try {
-    const response=await fetch(new URL(path,origin),{cache:"no-store",signal:AbortSignal.timeout(5000)});
+    const response=await fetch(new URL(path,origin),{cache:"no-store",signal:AbortSignal.timeout(timeoutMs)});
     return response.ok?await response.json() as T:null;
   } catch {return null;}
 }
+export const publicMonthlyVisitorCount=cache(async()=>{
+  const result=await publicJson<{monthly:number}>("/api/visitor/monthly-count",1200);
+  return result&&Number.isSafeInteger(result.monthly)&&result.monthly>0?result.monthly:undefined;
+});
 export const publicPage=cache((slug:string,locale:Locale)=>publicJson<SiteConfig>("/api/site-content/"+encodeURIComponent(slug)+"?metadata=1&locale="+locale));
 export const publicPages=cache(async(locale:Locale)=>{
   const data=await publicJson<{pages?:PageLink[]}>("/api/site-pages?locale="+locale);

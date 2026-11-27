@@ -201,6 +201,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .final-cta{display:flex;justify-content:space-between;align-items:center;gap:25px;padding:36px 38px;margin-bottom:30px;border:1px solid #d6dce1;border-radius:17px;background:linear-gradient(115deg,#edf1f2,#f8f7f2)}
 .final-cta h2{font-size:clamp(23px,2.8vw,34px)}
 .final-cta p{font-size:14px;color:#707881;margin:7px 0 0;font-weight:600}
+.home-monthly-visitors{margin:22px 0 12px;color:#45576a;font-size:14px}.home-monthly-visitors strong{color:var(--navy);font-variant-numeric:tabular-nums}
 .platform-footer{min-height:82px;display:flex;align-items:center;justify-content:space-between;gap:18px;border-top:1px solid var(--line);color:#777d83;font-size:14px;font-weight:600}
 .platform-footer .platform-brand{min-width:160px}.platform-footer .platform-brand img{width:34px;height:34px}.platform-footer .platform-brand strong{font-size:14px}.platform-footer .platform-brand small{font-size:14px;font-weight:600}
 
