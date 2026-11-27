@@ -6,32 +6,28 @@ a substitute for a separately reviewed dialect and identity. The existing
 MSA provider remains separate. The browser sends the selected stable ID;
 the private server synthesizes it. Scene audio is never sent to a cloud API.
 
-## Candidates (not deployed or auditioned)
+## Candidates (not deployed)
 
-- Piper: Emirati female candidate, pinned upstream revision by the installer.
-  Review its MIT metadata, original training-data provenance and speaker
-  rights before approval.
+- The previous Emirati Piper candidate failed owner listening review. Its exact model digest is now rejected by the registry; it is no longer downloaded by default.
+- Egyptian-first: KemeTone (82M, Cairene female only) is being evaluated in a separate offline CPU trial, not registered for production. It uses its own Egyptian G2P and diacritized text. Model card lists Apache-2.0; review voice/source rights before commercial approval. Never label it Alexandrian or Saidi.
 - Audar Flash Q4_K_M: CPU GGUF, upstream AudarAI Open License v1.0
   permits commercial use subject to its conditions; preserve its license.
   Upstream supports Arabic including Gulf dialects, but specific regional
   accent and speaker quality must be checked individually. NeuCodec is a
   separate dependency; review its Apache-2.0 license, accept gated access
   and pin a reviewed revision. No noncommercial models are included.
-- The other nine reference slots require distinct consented voices with
-  matching transcripts, not fabricated dialect labels. If the Emirati
-  candidate fails review, use an independently consented Gulf female
-  reference and an Audar profile instead.
+- All ten reference slots require distinct consented voices with matching transcripts, or independently approved licensed models. No fake dialect or gender aliases. Egyptian, Alexandrian and Saidi male/female are the first six review targets.
 
 Sources:
 https://huggingface.co/audarai/Audar-TTS-V1-Flash
 https://huggingface.co/neuphonic/neucodec
-https://huggingface.co/vadimbelsky/arabic-emirati-female-piper
+https://huggingface.co/Rabe3/kemetone
 
 ## Staging, before production
 
 1. Use an isolated host/maintenance slot with adequate disk and RAM.
    Install huggingface_hub in a staging Python environment. Run
-   `python install_candidates.py /srv/atsh/voices` for the Piper candidate.
+   `python install_candidates.py /srv/atsh/voices` to initialize the private registry.
    For Audar append `--audar --codec-revision FULL_REVIEWED_REVISION`
    after authenticating to the model host and accepting the codec terms.
    Verify/download all codec transitive assets (including any semantic
@@ -50,7 +46,7 @@ https://huggingface.co/vadimbelsky/arabic-emirati-female-piper
    `docker compose -f compose.yaml -f compose.audar.yaml build` and the
    same compose file options for subsequent commands. No host port mapping.
 4. With a private writable output directory owned by UID 10001, run
-   `docker compose run --rm -v /srv/atsh/auditions:/auditions dialect-voice python service.py --audition /auditions gulf-female`
+   `docker compose run --rm -v /srv/atsh/auditions:/auditions dialect-voice python service.py --audition /auditions egyptian-female`
    (same overlay options if using Audar). Repeat by voice ID. A speaker
    of the target dialect should review naturalness, identity/gender,
    pronunciation and dialogue, and measure time and memory on representative
@@ -61,9 +57,7 @@ https://huggingface.co/vadimbelsky/arabic-emirati-female-piper
    CHARACTER_DIALECT_VOICES of approved IDs. Verify the authenticated
    /voices and actual rendered video, and verify unavailable voices
    remain unavailable. Do not expose the private service publicly.
-6. CPU limits are two cores, one inference at a time, 2 GiB (Piper)
-   or 3 GiB (experimental Audar overlay). Actual resource use and timing
-   have not been verified. If over limits, do not deploy alongside live
+6. The shared live VPS was measured at 2 vCPU / 3.7 GiB total RAM, 1.6 GiB available during inspection. Never run the existing 2–3 GiB service presets there without further profiling. The isolated Egyptian quality job caps CPU to one core and RAM to 1200 MiB with no swap. It does not prove suitability for live concurrent use. If over limits, do not deploy alongside live
    services. No paid inference API or automatic fallback is configured.
 
 Tests: `python -m unittest -v test_voices` checks registry, unique

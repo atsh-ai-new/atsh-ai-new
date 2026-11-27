@@ -12,6 +12,7 @@ def local_asset(root, value, suffix=None, directory=False):
     return path
 def sha(path):
     with path.open("rb") as f:return hashlib.file_digest(f,"sha256").hexdigest()
+REJECTED_MODEL_HASHES={"1578a9b27d01a0626227225b148179628b770607dd61bdbbc41865bd399106b1"}
 def registry(root, config, candidates=False):
     root=Path(root).resolve(); result={}; seen=set()
     if not isinstance(config,dict):raise ValueError("Invalid voice registry")
@@ -28,7 +29,9 @@ def registry(root, config, candidates=False):
             config_data=json.loads(Path(str(model)+".json").read_text())
             count=config_data.get("num_speakers",1)
             if type(count) is not int or count<1 or (speaker is not None and speaker>=count) or (count>1 and speaker is None):raise ValueError("Explicit valid speaker required")
-            identity=(sha(model),speaker or 0)
+            model_hash=sha(model)
+            if model_hash in REJECTED_MODEL_HASHES:raise ValueError("Model rejected by listening review")
+            identity=(model_hash,speaker or 0)
             item={"engine":engine,"model":str(model),"speaker":speaker}
         elif engine=="audar":
             if entry.get("commercialRights") is not True:raise ValueError("Reference rights not confirmed")
@@ -120,3 +123,4 @@ def main():
             self.reply(200,audio,"audio/wav")
     ThreadingHTTPServer(("0.0.0.0",8080),Handler).serve_forever()
 if __name__=="__main__":main()
+

@@ -1,4 +1,4 @@
-name: Studio voice candidate smoke (no deployment)
+name: Egyptian voice quality trial (no deployment)
 on:
   push:
     branches: [feat/integrated-server-studio-20261127]
@@ -9,9 +9,9 @@ on:
 permissions:
   contents: read
 jobs:
-  piper-candidate:
+  egyptian-audition:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
     defaults:
       run:
         working-directory: source/dialect-voice-engine
@@ -20,38 +20,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install FFmpeg for reference import test
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: python -m unittest -v test_voices test_prepare_reference
-      - name: Download pinned public candidate assets
+      - name: Download pinned Cairene quality candidate
         run: |
           python -m pip install huggingface_hub==0.36.0
-          python install_candidates.py "$RUNNER_TEMP/voice-models"
-      - name: Build private CPU voice service
-        run: docker build -t studio-voice-smoke .
-      - name: Generate audition with no networking or production credentials
-        run: |
-          mkdir -p "$RUNNER_TEMP/voice-auditions"
-          sudo chown 10001:10001 "$RUNNER_TEMP/voice-auditions"
-          docker run --rm --network none --cpus 2 --memory 2g --pids-limit 128 \
-            --read-only --tmpfs /tmp:size=96m,mode=1777 \
-            --cap-drop ALL --security-opt no-new-privileges \
-            -v "$RUNNER_TEMP/voice-models:/models:ro" \
-            -v "$RUNNER_TEMP/voice-auditions:/auditions" \
-            studio-voice-smoke python service.py --audition /auditions gulf-female
-          sudo chmod -R a+rX "$RUNNER_TEMP/voice-auditions"
-          python - "$RUNNER_TEMP/voice-auditions/gulf-female.wav" <<'PY'
-          import sys, wave, array, json
-          with wave.open(sys.argv[1], "rb") as w:
-              assert (w.getnchannels(), w.getframerate(), w.getsampwidth()) == (1, 16000, 2)
-              pcm = array.array("h", w.readframes(w.getnframes()))
-              assert 16000 < len(pcm) <= 512000
-              assert max(abs(x) for x in pcm) > 100
-              print(json.dumps({"durationSeconds": len(pcm)/16000, "peak": max(abs(x) for x in pcm), "sampleRate": 16000}))
+          python - <<'PY'
+          import os
+          from huggingface_hub import snapshot_download
+          snapshot_download("Rabe3/kemetone",revision="9d65fab8cd71bc31a248e53bd18fe94941753aa6",local_dir=os.path.join(os.environ["RUNNER_TEMP"],"kemetone"),allow_patterns=["config.json","kemetone.pth","voices/kemetone.pt","kemetone/*","kemetone/**/*","README.md"])
           PY
+      - name: Build isolated neural runtime
+        run: docker build -f Dockerfile.egyptian-trial -t atsh-egyptian-trial .
+      - name: Generate NEW Egyptian dialogue and ads offline, bounded memory
+        run: |
+          mkdir -p "$RUNNER_TEMP/egyptian-auditions"
+          sudo chown 10001:10001 "$RUNNER_TEMP/egyptian-auditions"
+          docker run --rm --network none --cpus 1 --memory 1200m --memory-swap 1200m --pids-limit 128 \
+            --read-only --tmpfs /tmp:size=64m,mode=1777 --cap-drop ALL --security-opt no-new-privileges \
+            -v "$RUNNER_TEMP/kemetone:/model:ro" -v "$RUNNER_TEMP/egyptian-auditions:/auditions" atsh-egyptian-trial
+          sudo chmod -R a+rX "$RUNNER_TEMP/egyptian-auditions"
+          cat "$RUNNER_TEMP/egyptian-auditions/metrics.json"
       - uses: actions/upload-artifact@v4
         with:
-          name: gulf-female-candidate-audition
-          path: ${{ runner.temp }}/voice-auditions/gulf-female.wav
+          name: egyptian-female-quality-auditions
+          path: ${{ runner.temp }}/egyptian-auditions/
           if-no-files-found: error
           retention-days: 3

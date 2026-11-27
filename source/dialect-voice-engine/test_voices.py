@@ -32,6 +32,12 @@ class VoiceTests(unittest.TestCase):
         c["commercialRights"]=True
         self.assertIn("saidi-female",registry(self.root,{"saidi-female":c}))
         with self.assertRaises(ValueError):registry(self.root,{"saidi-female":c,"alexandrian-male":c})
+    def test_rejected_model_cannot_be_enabled_or_auditioned(self):
+        from unittest.mock import patch
+        c={"model":"voice.onnx","speaker":0,"approved":True}
+        with patch("service.sha",return_value="1578a9b27d01a0626227225b148179628b770607dd61bdbbc41865bd399106b1"):
+            for candidate in (False,True):
+                with self.assertRaisesRegex(ValueError,"rejected"):registry(self.root,{"gulf-female":c},candidate)
     def test_no_silent_fallback(self):
         with self.assertRaisesRegex(ValueError,"Unavailable voice"):synthesize({},{"voiceId":"saidi-female","text":"أهلًا"})
     def test_prompt_and_decoder(self):
@@ -41,3 +47,4 @@ class VoiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):generate_speech_codes(StubLlama([2]*10),"prompt")
         with self.assertRaises(ValueError):generate_speech_codes(StubLlama([-1,999]),"prompt")
 if __name__=="__main__":unittest.main()
+
