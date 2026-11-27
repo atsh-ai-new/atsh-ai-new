@@ -201,9 +201,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .final-cta{display:flex;justify-content:space-between;align-items:center;gap:25px;padding:36px 38px;margin-bottom:30px;border:1px solid #d6dce1;border-radius:17px;background:linear-gradient(115deg,#edf1f2,#f8f7f2)}
 .final-cta h2{font-size:clamp(23px,2.8vw,34px)}
 .final-cta p{font-size:14px;color:#707881;margin:7px 0 0;font-weight:600}
-.home-monthly-visitors{display:inline-grid;flex:none;place-items:center;min-inline-size:30px;min-block-size:30px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--navy);font-size:13px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}
-.home-visitor-stat{display:inline-flex;align-items:center;gap:5px;flex:0 1 auto;font-size:12px;line-height:1.25;color:var(--navy);font-weight:600}.home-visitor-count-label{max-inline-size:11em}
-@media(max-width:380px){.home-visitor-stat{gap:4px;font-size:11px}.home-visitor-count-label{max-inline-size:6.5em}.home-monthly-visitors{font-size:12px;min-inline-size:26px;min-block-size:26px;padding-inline:4px}}
+.home-visitor-count{display:inline-grid;flex:none;place-items:center;min-inline-size:30px;min-block-size:30px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--navy);font-size:13px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.platform-header:has(.home-visitor-stats){height:auto;min-height:76px;padding-block:8px}
+@media(max-width:840px){.platform-header:has(.home-visitor-stats){min-height:68px}}
+.home-visitor-stats{display:inline-flex;align-items:center;justify-content:flex-end;gap:6px 9px;flex-wrap:wrap;min-width:0}.home-visitor-stat{display:inline-flex;align-items:center;gap:5px;flex:0 1 auto;font-size:12px;line-height:1.25;color:var(--navy);font-weight:600}.home-visitor-count-label{max-inline-size:11em}
+@media(max-width:380px){.home-visitor-stat{gap:4px;font-size:11px}.home-visitor-count-label{max-inline-size:6.5em}.home-visitor-count{font-size:12px;min-inline-size:26px;min-block-size:26px;padding-inline:4px}}
 .platform-footer{min-height:82px;display:flex;align-items:center;justify-content:space-between;gap:18px;border-top:1px solid var(--line);color:#777d83;font-size:14px;font-weight:600}
 .platform-footer .platform-brand{min-width:160px}.platform-footer .platform-brand img{width:34px;height:34px}.platform-footer .platform-brand strong{font-size:14px}.platform-footer .platform-brand small{font-size:14px;font-weight:600}
 
