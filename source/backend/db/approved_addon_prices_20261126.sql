@@ -106,3 +106,38 @@ BEGIN
   NEW.initial_unit_label=NEW.unit_label;
   RETURN NEW;
 END $$;
+-- Additive approved EGP launch tariff; never reset an existing administrator definition.
+-- Each row is a one-time implementation scope, not hosting or an external subscription.
+-- The existing shared_addon triggers capture initial/list prices and project into every package.
+DO $$
+DECLARE applied text;
+BEGIN
+  PERFORM pg_advisory_xact_lock(20261127,20);
+  INSERT INTO schema_migrations(version) VALUES('2026-11-27-addon-market-expansion')
+  ON CONFLICT(version) DO NOTHING RETURNING version INTO applied;
+  IF applied IS NOT NULL THEN
+    INSERT INTO shared_addons(code,name,description,price,pricing_type,unit_label,is_required,is_active,category_code,sort_order)
+    VALUES
+      ('news_ticker','شريط الأخبار والإعلانات المتحرك','شريط واحد قابل للإيقاف وتعديل النص والروابط والسرعة. تُطلب فقط إذا لم تكن مشمولة في النظام.',500,'fixed','ميزة',false,true,'foundation',110),
+      ('image_slider','سلايدر الصور والعروض','سلايدر متجاوب واحد حتى 5 شرائح؛ الصور يقدمها العميل. تُطلب فقط إذا لم تكن مشمولة في النظام.',750,'fixed','ميزة',false,true,'foundation',120),
+      ('internal_search','محرك البحث الداخلي','بحث نصي داخل نوع محتوى واحد مع النتائج والترقيم؛ دون محرك بحث خارجي. تُطلب فقط إذا لم تكن مشمولة في النظام.',2000,'fixed','ميزة',false,true,'foundation',130),
+      ('blog_cms','مدونة ونظام نشر المقالات','قائمة وتصنيفات وصفحة مقال وإدارة النشر؛ كتابة المقالات منفصلة. تُطلب فقط إذا لم تكن مشمولة في النظام.',2100,'fixed','ميزة',false,true,'foundation',140),
+      ('media_gallery','معرض الصور والفيديوهات المتقدم','معرض واحد بتصنيفات وعرض مكبر وروابط فيديو؛ إنتاج الوسائط والاستضافة منفصلان. تُطلب فقط إذا لم تكن مشمولة في النظام.',1500,'fixed','ميزة',false,true,'foundation',150),
+      ('customer_reviews','تقييمات وآراء العملاء','إرسال تقييمات وعرضها بعد اعتماد الإدارة؛ دون جلب تقييمات خارجية مدفوعة. تُطلب فقط إذا لم تكن مشمولة في النظام.',1500,'fixed','ميزة',false,true,'marketing',80),
+      ('promo_popup','النوافذ الإعلانية المنبثقة','نافذة إعلان واحدة مع الإغلاق والتحكم بوقت العرض وتكراره. تُطلب فقط إذا لم تكن مشمولة في النظام.',750,'fixed','ميزة',false,true,'marketing',90),
+      ('countdown_timer','عداد تنازلي للعروض','عداد واحد مرتبط بموعد انتهاء العرض مع إخفائه بعد الانتهاء. تُطلب فقط إذا لم تكن مشمولة في النظام.',500,'fixed','ميزة',false,true,'marketing',100),
+      ('coupons_discounts','نظام الكوبونات والخصومات','كوبونات لنوع طلب واحد مع نسبة أو مبلغ وحدود صلاحية واستخدام. تُطلب فقط إذا لم تكن مشمولة في النظام.',2500,'fixed','ميزة',false,true,'marketing',110),
+      ('loyalty_rewards','نظام نقاط الولاء والمكافآت','قواعد اكتساب واستبدال النقاط وسجل الحركات لنوع طلب واحد. تُطلب فقط إذا لم تكن مشمولة في النظام.',4000,'fixed','ميزة',false,true,'marketing',120),
+      ('newsletter_subscriptions','النشرة البريدية والاشتراكات','نموذج اشتراك وإلغاء اشتراك وربط قائمة بريدية واحدة؛ رسوم الإرسال منفصلة. تُطلب فقط إذا لم تكن مشمولة في النظام.',1250,'fixed','ميزة',false,true,'marketing',130),
+      ('dynamic_qr','إنشاء رموز QR ديناميكية','إنشاء روابط QR قابلة لتعديل الوجهة مع لوحة إدارة أساسية؛ خدمات خارجية منفصلة. تُطلب فقط إذا لم تكن مشمولة في النظام.',2000,'fixed','ميزة',false,true,'integrations',130),
+      ('support_tickets','نظام تذاكر الدعم الفني','فتح التذاكر وتصنيفها وتعيينها ومتابعة الردود والحالة؛ دون تكلفة الرسائل الخارجية. تُطلب فقط إذا لم تكن مشمولة في النظام.',3500,'fixed','ميزة',false,true,'conversation',70),
+      ('excel_pdf_import_export','تصدير واستيراد Excel وPDF','استيراد وتصدير Excel لكيان بيانات واحد مع تحقق من الأعمدة، وتصدير PDF بتقرير واحد. تُطلب فقط إذا لم تكن مشمولة في النظام.',3000,'fixed','ميزة',false,true,'integrations',140),
+      ('advanced_staff_roles','صلاحيات الموظفين المتقدمة','مصفوفة صلاحيات وحدات إضافية وسجل تغييرات للأدوار؛ الحماية الأساسية مشمولة أصلًا. تُطلب فقط إذا لم تكن مشمولة في النظام.',3500,'fixed','ميزة',false,true,'integrations',150),
+      ('multi_branch','نظام الفروع المتعددة','إدارة الفروع وعزل بياناتها وصلاحياتها وتقاريرها ضمن مشروع واحد؛ دون ترحيل بيانات. تُطلب فقط إذا لم تكن مشمولة في النظام.',5500,'fixed','ميزة',false,true,'integrations',160),
+      ('paid_memberships','نظام الاشتراكات والعضويات المدفوعة','خطط عضوية وحالات اشتراك وتجديد وصلاحيات وصول؛ ربط بوابة الدفع ورسومها منفصلان إذا لم يكونا موجودين. تُطلب فقط إذا لم تكن مشمولة في النظام.',5000,'fixed','ميزة',false,true,'integrations',170),
+      ('google_sign_in','تسجيل الدخول بحساب Google','ربط Google OAuth لمشروع واحد بحسابات العميل؛ لا يشمل رسوم أو خدمات خارجية. تُطلب فقط إذا لم تكن مشمولة في النظام.',1750,'fixed','ميزة',false,true,'integrations',180),
+      ('advanced_2fa','المصادقة الثنائية المتقدمة 2FA','إدارة سياسات 2FA للأدوار وحسابات الاسترداد كامتداد اختياري؛ لا تُباع الحماية الأساسية كإضافة. تُطلب فقط إذا لم تكن مشمولة في النظام.',2000,'fixed','ميزة',false,true,'hosting',60),
+      ('electronic_signature','ربط التوقيع الإلكتروني للمستندات','ربط مزود توقيع واحد لمستند نموذجي ومسار متابعة؛ التراخيص والشهادات والتحقق القانوني منفصلة. تُطلب فقط إذا لم تكن مشمولة في النظام.',2500,'fixed','ميزة',false,true,'integrations',190)
+    ON CONFLICT(code) DO NOTHING;
+  END IF;
+END $$;
