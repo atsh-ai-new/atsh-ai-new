@@ -20,6 +20,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install FFmpeg for reference import test
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: python -m unittest -v test_voices test_prepare_reference
       - name: Download pinned public candidate assets
         run: |
