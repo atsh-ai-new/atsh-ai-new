@@ -1,0 +1,26 @@
+name: Commerce engine validation (no deployment)
+on:
+  push:
+    branches: [feature/atsh-commerce-engine]
+    paths: ['source/commerce-engine/**','source/backend/src/commerce-addon-bridge.js','source/backend/src/server.js','.github/workflows/commerce-engine.yml']
+  pull_request:
+    paths: ['source/commerce-engine/**','source/backend/src/commerce-addon-bridge.js']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --check source/backend/src/server.js
+      - run: node --check source/commerce-engine/public/app.js
+      - run: node --test source/commerce-engine/test/*.test.js source/backend/test/unified-pricing.test.js source/backend/test/sector-pricing-stage41.test.js
+      - run: npm install --no-save --no-package-lock playwright
+        working-directory: source/commerce-engine
+      - run: npx playwright install --with-deps chromium
+        working-directory: source/commerce-engine
+      - run: node test/browser-smoke.cjs
+        working-directory: source/commerce-engine

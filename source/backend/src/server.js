@@ -22,7 +22,8 @@ import jwt from "jsonwebtoken";
 import pg from "pg";
 import { z } from "zod";
 import {characterAnimationSchema,refineCharacterPlan,characterDraftView,characterWorkflow,characterConfigured,registerCharacterRoutes} from "./character-studio.js";
-import { createHash, randomBytes } from "node:crypto";
+import { commerceAddonSnapshot } from "./commerce-addon-bridge.js";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
 import { buildVisitorInstructions } from "./visitor-assistant.js";
@@ -537,6 +538,17 @@ app.post("/api/visitor/assistant",
   })
 );
 
+// Optional private runtime bridge. Disabled until an explicit service secret is configured.
+app.get("/api/internal/commerce/projects/:id/addons",route(async(req,res)=>{
+  const secret=process.env.COMMERCE_BRIDGE_SECRET;
+  const presented=req.get("authorization")??"";
+  if(!secret||secret.length<32||!timingSafeEqual(createHash("sha256").update(presented).digest(),createHash("sha256").update("Bearer "+secret).digest()))return res.status(401).json({error:"Unauthorized"});
+  const id=z.string().uuid().safeParse(req.params.id);
+  if(!id.success)return res.status(400).json({error:"Invalid project"});
+  const snapshot=await commerceAddonSnapshot(pool,id.data);
+  if(!snapshot)return res.status(404).json({error:"Project not found"});
+  res.set("Cache-Control","no-store").json(snapshot);
+}));
 app.get("/api/catalog", route(async (_req,res) => {
   const [p,o,shared,categories] = await Promise.all([
     pool.query("SELECT id,name,tagline,description,price,list_price,discount_percent,currency,features,is_featured,is_custom_quote FROM packages WHERE is_published=true AND deleted_at IS NULL ORDER BY sort_order,created_at"),
