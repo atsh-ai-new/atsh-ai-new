@@ -164,12 +164,17 @@ test("products are nested under platform content while package and add-on pricin
  await expect(nav.getByRole("button",{name:"المنتجات",exact:true})).toHaveCount(0);
  await nav.getByRole("button",{name:"محتوى المنصة",exact:true}).click();
  const contentButtons=nav.getByRole("button",{name:"محتوى المنصة",exact:true}).locator("..").locator(":scope > div > button");
- await expect(contentButtons).toHaveCount(4);
- for(const [index,label] of ["صفحات المنصة","المنتجات","منشئ المحتوى","إدارة الفيديوهات"].entries()){
+ await expect(contentButtons).toHaveCount(3);
+ for(const [index,label] of ["صفحات المنصة","المنتجات","المتاجر"].entries()){
   await expect(contentButtons.nth(index)).toHaveAccessibleName(label);
  }
- await expect(nav.getByRole("button",{name:"منشئ المحتوى",exact:true})).toBeVisible();
- await expect(nav.getByRole("button",{name:"إدارة الفيديوهات",exact:true})).toBeVisible();
+ await expect(nav.getByRole("button",{name:"منشئ المحتوى",exact:true})).toHaveCount(0);
+ await nav.getByRole("button",{name:"فيديو",exact:true}).click();
+ const videoButtons=nav.getByRole("button",{name:"فيديو",exact:true}).locator("..").locator(":scope > div > button");
+ await expect(videoButtons).toHaveCount(2);
+ await expect(videoButtons.nth(0)).toHaveAccessibleName("منشئ المحتوى");
+ await expect(videoButtons.nth(1)).toHaveAccessibleName("فيديوهات المنصة");
+ await nav.getByRole("button",{name:"محتوى المنصة",exact:true}).click();
  await nav.getByRole("button",{name:"المنتجات",exact:true}).click();
  const packageCard=page.locator(".admin-package-quarter-grid .admin-package-editor").first();
  await packageCard.getByLabel("السعر قبل الخصم").fill("5500");
@@ -206,11 +211,13 @@ for(const products of [true,false]){
   await nav.getByRole("button",{name:"محتوى المنصة",exact:true}).click();
   const product=nav.getByRole("button",{name:"المنتجات",exact:true});
   if(products){
+   await expect(nav.getByRole("button",{name:"المتاجر",exact:true})).toBeVisible();
    await expect(product).toBeVisible();
    await expect(nav.getByRole("button",{name:"صفحات المنصة",exact:true})).toHaveCount(0);
    await product.click();
    await expect(page.locator("#unified-package-pricing")).toBeVisible();
   }else{
+   await expect(nav.getByRole("button",{name:"المتاجر",exact:true})).toHaveCount(0);
    await expect(product).toHaveCount(0);
    await expect(page.locator("#unified-package-pricing")).toHaveCount(0);
    await expect(nav.getByRole("button",{name:"صفحات المنصة",exact:true})).toBeVisible();
