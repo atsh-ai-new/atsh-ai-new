@@ -61,8 +61,61 @@ export function resolveOwnership(prices,mode){
  return prices[mode];
 }
 
-// Only the recalculated executable-copy tier has an agreed online amount.
-// Keep other rates internally for audit/reset; they are not public offers.
+// Generic listings expose only the executable-copy tier. Packages still have
+// no other agreed online amount.
+// Confirmed online settlement tariffs. This allowlist authorizes exact existing
+// database list prices; it neither seeds those prices nor changes their discounts.
+const approvedSystemTiers=Object.freeze({
+ eyadaty:[9900,54900],
+ agzakhana:[12900,62900],
+ supermarket:[14900,69900],
+ avocato:[9900,54900],
+ sofra:[11900,61900],
+ academia:[27900,99900],
+ center:[15900,77900],
+ accounting:[15900,84900],
+ cinema:[17900,74900],
+ news:[12900,65900],
+ market:[18500,89900],
+ taalm:[14900,72900],
+ gzaar:[10900,47900],
+ khodra:[11900,58900],
+ wnsh:[19900,88900],
+ mosla:[19900,89900],
+ toktok:[17900,81900],
+ torsekl:[19900,91900],
+ mkawel:[12900,64900],
+ mosek:[11900,59900],
+ emtsal:[15900,74900],
+ ebtsama:[12900,68900],
+ hehaa:[12900,65900],
+ nabd:[13900,69900],
+ otstodyo:[13900,68900],
+ bas:[18900,82900],
+ hadnty:[11900,64900],
+ madrsty:[21900,94900],
+ naghma:[24900,109900],
+ liqaa:[34900,129900],
+}); // [annual rental, source ownership]
+export const isApprovedSystemTierScope=key=>Object.hasOwn(approvedSystemTiers,key);
+export async function readApprovedSystemOwnership(db,key,{configuration=false}={}){
+ if(!isApprovedSystemTierScope(key))return null;
+ const [rent,code]=approvedSystemTiers[key];
+ const approved={rent,code};
+ const modes=configuration?['copy','rent','code']:['copy'];
+ const {rows}=await db.query(
+  "SELECT mode,list_price,initial_price,discount_percent FROM product_ownership_prices WHERE scope='sector' AND owner_key=$1 AND mode=ANY($2::text[])",
+  [key,modes]
+ );
+ const prices=effectiveOwnership(rows.filter(row=>{
+  if(!modes.includes(row.mode)||row.list_price==null||row.discount_percent==null)return false;
+  const list=Number(row.list_price),discount=Number(row.discount_percent);
+  return Number.isFinite(list)&&list>=0&&Number.isFinite(discount)&&discount>=0&&discount<=100&&
+   (row.mode==='copy'||list===approved[row.mode]);
+ }));
+ return prices.copy ? prices : null;
+}
+
 const recalculatedPackages=new Set([
  '11111111-1111-4111-8111-111111111111',
  '22222222-2222-4222-8222-222222222222',
@@ -70,7 +123,7 @@ const recalculatedPackages=new Set([
 ]);
 // New CMS entries with one scoped delivery price must not expose invented rental or source rates.
 const copyPricedCatalogItems=new Set(['naghma','liqaa']);
-export const isNewCatalogOffer=(scope,key)=>scope==='package'?recalculatedPackages.has(key):scope==='sector'&&(copyPricedCatalogItems.has(key)||Boolean(sectorTariff(key)));
+export const isNewCatalogOffer=(scope,key)=>scope==='package'?recalculatedPackages.has(key):scope==='sector'&&(isApprovedSystemTierScope(key)||copyPricedCatalogItems.has(key)||Boolean(sectorTariff(key)));
 export function publicOwnership(scope,key,prices){
  return prices&&isNewCatalogOffer(scope,key)?{copy:prices.copy}:prices;
 }

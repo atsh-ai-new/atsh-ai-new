@@ -30,6 +30,10 @@ export async function GET(request: Request, context: RouteContext) {
   const locale = query.get("locale");
   const demo = query.get("demo");
   const thumbnail = query.get("thumbnail");
+  const system = query.get("system");
+  if (system !== null && (slug!=="catalog" || demo || thumbnail || query.get("metadata")!=="1" || system.length>100 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(system))) {
+    return NextResponse.json({message:"Invalid system"},{status:400});
+  }
   if (thumbnail) {
     if(slug!=="catalog"||! /^[a-f0-9]{64}$/.test(thumbnail))return NextResponse.json({message:"Invalid thumbnail"},{status:400});
     target.pathname="/api/site-content/demo-thumbnail/"+thumbnail;
@@ -38,6 +42,7 @@ export async function GET(request: Request, context: RouteContext) {
     target.pathname += "/demo/"+encodeURIComponent(demo);
   } else if (query.get("metadata")==="1") target.searchParams.set("metadata","1");
   if (locale) target.searchParams.set("locale", locale);
+  if (system!==null) target.searchParams.set("system",system);
   try {
     const upstream = await fetch(target, { cache: "no-store", signal: AbortSignal.timeout(["home","catalog"].includes(slug)?120000:12000) });
     if(demo && query.get("document")==="1" && upstream.ok){

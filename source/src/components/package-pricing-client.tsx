@@ -29,10 +29,30 @@ export default function PackagePricingPage({locale="ar"}:{locale?:"ar"|"en"}){
  const [submission,setSubmission]=useState("");
  const [domainName,setDomainName]=useState("");
  const [requestDomainBooking,setRequestDomainBooking]=useState(false);
- useEffect(()=>{let active=true;Promise.all([
-  fetch("/api/catalog",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("catalog");return r.json()}),
-  fetch(`/api/site-content/home?locale=${en?"en":"ar"}`,{cache:"no-store"}).then(async r=>r.ok?r.json():null).catch(()=>null)
- ]).then(([data,config])=>{if(!active)return;setCatalog(data);const rate=Number(config?.vatRate);setVat(Number.isFinite(rate)&&rate>=0&&rate<=100?rate:null);}).catch(()=>{if(active)setError(t("تعذر تحميل الأسعار المعتمدة. حاول مجددًا.","Unable to load current prices. Please retry."))});return()=>{active=false}},[en]);
+ useEffect(()=>{
+  const request=new AbortController();
+  const validVat=(value:unknown)=>{
+   if(typeof value!=="number"&&typeof value!=="string")return null;
+   if(typeof value==="string"&&!value.trim())return null;
+   const rate=Number(value);
+   return Number.isFinite(rate)&&rate>=0&&rate<=100?rate:null;
+  };
+  void (async()=>{
+   try{
+    const r=await fetch("/api/catalog",{cache:"no-store",signal:request.signal});
+    if(!r.ok)throw Error("catalog");
+    const data=await r.json();
+    if(request.signal.aborted)return;
+    setCatalog(data);
+    const rate=validVat(data?.vatRate);
+    if(rate!==null){setVat(rate);return;}
+    // Rolling-deployment fallback: let add-ons render while older servers provide VAT separately.
+    const settings=await fetch(`/api/site-content/home?locale=${en?"en":"ar"}&metadata=1`,{cache:"no-store",signal:request.signal}).then(r=>r.ok?r.json():null).catch(()=>null);
+    if(!request.signal.aborted)setVat(validVat(settings?.vatRate));
+   }catch{if(!request.signal.aborted)setError(en?"Unable to load current prices. Please retry.":"تعذر تحميل الأسعار المعتمدة. حاول مجددًا.");}
+  })();
+  return()=>request.abort();
+ },[en]);
  const pkg=catalog?.packages.find(p=>p.id===(aliases[params.packageId]??params.packageId));
  // Domain registration is requested via the live domain lookup above, not as a duplicate priced add-on.
  const options=useMemo(()=>catalog?.options.filter(o=>o.package_id===pkg?.id&&!(/(?:^|[_-])domain(?:[_-]|$)/i.test(o.code)||/^(?:نطاق|دومين)\s*\.(?:com|eg)\b/i.test(o.name)||/^(?:نطاق|دومين)\s+(?:com|eg)\b/i.test(o.name)))??[],[catalog,pkg?.id]);
