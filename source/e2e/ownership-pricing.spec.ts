@@ -7,15 +7,16 @@ const system={slug:"test-system",name:"نظام تجريبي",published:true,bas
 for(const kind of ["package","sector"] as const)test(kind+" ownership selector, independent hosting, same project update",async({page})=>{
  const direct=kind==="package"?"/packages/"+pkgId+"/pricing":"/catalog/test-system/pricing";
  let saved:any=null;
- const draft={id:draftId,revision:7,linked_journey_id:null,draft:{ownershipMode:"copy",domainName:"example.test",...(kind==="package"?{packageId:pkgId,options:[optId],optionQuantities:{}}:{sectorSlug:system.slug,sectorAddonCodes:["payment_gateway"],sectorAddonQuantities:{}})}};
+ const draft={id:draftId,title:"مشروع الاختبار",revision:7,linked_journey_id:null,draft:{ownershipMode:"copy",domainName:"example.test",...(kind==="package"?{packageId:pkgId,options:[optId],optionQuantities:{}}:{sectorSlug:system.slug,sectorAddonCodes:["payment_gateway"],sectorAddonQuantities:{}})}};
  await page.route("**/api/**",async route=>{
   const p=new URL(route.request().url()).pathname;
   if(p==="/api/catalog")return route.fulfill({json:{packages:[pkg],options,sharedOptions:options}});
   if(p==="/api/site-content/catalog")return route.fulfill({json:{vatRate:14,page:{content:{items:[system]}}}});
   if(p.startsWith("/api/site-content/"))return route.fulfill({json:{page:null,vatRate:14}});
-  if(p==="/api/customer/auth/project-drafts/"+draftId){if(route.request().method()==="PATCH"){saved=route.request().postDataJSON();return route.fulfill({json:{projectDraft:{...draft,draft:saved.patch,revision:8}}});}return route.fulfill({json:{projectDraft:draft}});}
+  if(p==="/api/customer/auth/project-drafts/"+draftId){if(route.request().method()==="PATCH"){saved=route.request().postDataJSON();return route.fulfill({json:{projectDraft:{...draft,draft:saved.patch,revision:8}}});}return route.fulfill({json:{projectDraft:saved?{...draft,draft:saved.patch,revision:8}:draft}});}
   if(p==="/api/customer/auth/me")return route.fulfill({json:{customer:{id:"test",name:"Test"}}});
-  if(p==="/api/customer/auth/project-drafts")return route.fulfill({json:{projectDrafts:[draft]}});
+  if(p==="/api/customer/auth/projects")return route.fulfill({json:{projects:[]}});
+  if(p==="/api/customer/auth/project-drafts")return route.fulfill({json:{projectDrafts:[saved?{...draft,draft:saved.patch,revision:8}:draft]}});
   return route.fulfill({json:{}});
  });
  await page.goto(kind==="package"?"/configure?package=landing":direct);
@@ -36,8 +37,12 @@ for(const kind of ["package","sector"] as const)test(kind+" ownership selector, 
  await page.locator('input[value="rent_monthly"]').check();
  await page.locator('[data-addon-category="hosting"] summary').click();
  await page.getByRole("button",{name:/استضافة أساسية/}).click();
+ await expect(page.locator("[data-price-initial]")).toHaveAttribute("data-price-initial","540.36");
  await page.getByRole("button",{name:"حفظ الاختيارات والمتابعة"}).click();
  await expect(page).toHaveURL(/account\/dashboard\?view=projects&project=/);
+ await expect(page.locator("[data-price-initial]")).toHaveAttribute("data-price-initial","540.36");
+ await expect(page.getByText("كل شهر",{exact:true})).toBeVisible();
+ await expect(page.getByText("كل سنة",{exact:true})).toBeVisible();
  expect(saved.expectedRevision).toBe(7);expect(saved.patch.ownershipMode).toBe("rent_monthly");expect(saved.patch.domainName).toBe("example.test");expect(saved.patch.draftInvoice.yearly).toBe(225);expect(saved.patch.draftInvoice.monthly).toBe(149);expect(saved.patch.draftInvoice.fixed).toBe(100);expect(saved.patch.draftInvoice.total).toBe(540.36);
 });
 
