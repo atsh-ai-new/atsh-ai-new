@@ -35,3 +35,9 @@ test("explicit team read grants work independently of role, but mutations remain
  }
  assert.equal(hasPermission("viewer",effectivePermissions("viewer",{team:true}),"team"),true);
 });
+
+test("permission override validation accepts one explicit boolean without requiring every key",()=>{
+ const routes=server.split("\n");
+ const validators=routes.filter(line=>line.includes("permissions:z.partialRecord("));
+ assert.equal(validators.length,2);
+});

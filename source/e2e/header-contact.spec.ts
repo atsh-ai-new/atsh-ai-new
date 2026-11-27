@@ -202,3 +202,33 @@ for(const role of ["admin","viewer"] as const){
   expect(requested).toBeGreaterThan(0);
  });
 }
+
+test("owner changes a single team permission and sees the persisted result after refresh",async({page})=>{
+ let member={id:"team-test",email:"manager@example.test",display_name:"مدير اختباري",role:"admin",is_active:true,permission_overrides:{} as Record<string,boolean>};
+ const writes:Record<string,boolean>[]=[];
+ await page.route("**/api/admin/**",route=>{
+  const path=new URL(route.request().url()).pathname;
+  if(path==="/api/admin/me")return route.fulfill({json:{email:"owner@example.test",role:"owner",permissions:{}}});
+  if(path==="/api/admin/team")return route.fulfill({json:{members:[member]}});
+  if(path==="/api/admin/team/team-test"&&route.request().method()==="PATCH"){
+   const permissions=route.request().postDataJSON().permissions;writes.push(permissions);
+   member={...member,permission_overrides:permissions};
+   return route.fulfill({json:{member}});
+  }
+  return route.fulfill({json:{}});
+ });
+ await page.goto("/admin");
+ await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"الفريق",exact:true}).click();
+ const checkbox=page.locator(".admin-team-row").filter({hasText:"مدير اختباري"}).getByLabel("الفريق",{exact:true});
+ await expect(checkbox).not.toBeChecked();
+ await checkbox.click();
+ await expect(checkbox).toBeChecked();
+ await expect(page.getByText("تم حفظ صلاحيات العضو.",{exact:true})).toBeVisible();
+ expect(writes).toEqual([{team:true}]);
+ await page.reload();
+ await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"الفريق",exact:true}).click();
+ await expect(checkbox).toBeChecked();
+ await checkbox.click();
+ await expect(checkbox).not.toBeChecked();
+ expect(writes).toEqual([{team:true},{team:false}]);
+});

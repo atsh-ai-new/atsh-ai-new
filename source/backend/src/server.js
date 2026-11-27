@@ -1415,7 +1415,7 @@ app.get("/api/admin/team",requireAdmin,requirePermission("team"),route(async(_re
   res.json({members:result.rows});
 }));
 app.post("/api/admin/team",requireAdmin,requirePermission("team"),requireRole("owner"),route(async(req,res)=>{
-  const parsed=z.object({email:z.string().email().max(254),displayName:z.string().trim().min(2).max(120),role:z.enum(["admin","editor","sales","viewer"]),password:z.string().min(12).max(200),permissions:z.record(z.enum(["assistant","customers","content","products","settings","team","audit"]),z.boolean()).optional()}).strict().safeParse(req.body);
+  const parsed=z.object({email:z.string().email().max(254),displayName:z.string().trim().min(2).max(120),role:z.enum(["admin","editor","sales","viewer"]),password:z.string().min(12).max(200),permissions:z.partialRecord(z.enum(["assistant","customers","content","products","settings","team","audit"]),z.boolean()).optional()}).strict().safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"Invalid team member",details:parsed.error.issues});
   const x=parsed.data,client=await pool.connect();try{await client.query("BEGIN");
     const passwordHash=await bcrypt.hash(x.password,12);
@@ -1430,7 +1430,7 @@ const safeTeamAuditRecord = member => member && ({
   created_at: member.created_at, updated_at: member.updated_at
 });
 app.patch("/api/admin/team/:id",requireAdmin,requirePermission("team"),requireRole("owner"),route(async(req,res)=>{
-  const parsed=z.object({displayName:z.string().trim().min(2).max(120).optional(),role:z.enum(["admin","editor","sales","viewer"]).optional(),isActive:z.boolean().optional(),password:z.string().min(12).max(200).optional(),permissions:z.record(z.enum(["assistant","customers","content","products","settings","team","audit"]),z.boolean()).optional()}).strict().refine(x=>Object.keys(x).length>0).safeParse(req.body);
+  const parsed=z.object({displayName:z.string().trim().min(2).max(120).optional(),role:z.enum(["admin","editor","sales","viewer"]).optional(),isActive:z.boolean().optional(),password:z.string().min(12).max(200).optional(),permissions:z.partialRecord(z.enum(["assistant","customers","content","products","settings","team","audit"]),z.boolean()).optional()}).strict().refine(x=>Object.keys(x).length>0).safeParse(req.body);
   if(!parsed.success)return res.status(400).json({error:"Invalid team update"});
   const client=await pool.connect();try{await client.query("BEGIN");const before=await client.query("SELECT * FROM team_members WHERE id=$1 FOR UPDATE",[req.params.id]);if(!before.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Team member not found"});}
     const map={displayName:"display_name",role:"role",isActive:"is_active",password:"password_hash",permissions:"permission_overrides"},values=[],sets=[];

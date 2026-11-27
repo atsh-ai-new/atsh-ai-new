@@ -61,14 +61,17 @@ try{
  const teamCookie=id=>"atsh_admin="+jwt.sign({role:"viewer",userId:id,email:id+"@example.test"},process.env.JWT_SECRET,{issuer:"atsh-ai-api",audience:"atsh-admin",expiresIn:"10m"});
  // The owner can grant team-directory visibility independently of stored role.
  assert.equal((await req("/api/admin/team",{cookie:teamCookie(chatA)})).status,403);
- await pool.query("UPDATE team_members SET permission_overrides=$2 WHERE id=$1",[chatA,JSON.stringify({team:true})]);
+ const granted=await req("/api/admin/team/"+chatA,{method:"PATCH",cookie:adminCookie,body:{permissions:{team:true}}});
+ assert.equal(granted.status,200,JSON.stringify(granted));
+ assert.deepEqual(granted.result.member.permission_overrides,{team:true});
  assert.equal((await req("/api/admin/me",{cookie:teamCookie(chatA)})).result.permissions.team,true);
  const teamRead=await req("/api/admin/team",{cookie:teamCookie(chatA)});
  assert.equal(teamRead.status,200);
  assert.ok(teamRead.result.members.some(m=>m.id===chatB));
  assert.ok(teamRead.result.members.every(m=>!("password_hash" in m)));
  assert.equal((await req("/api/admin/team/"+chatB,{method:"PATCH",cookie:teamCookie(chatA),body:{isActive:false}})).status,403);
- await pool.query("UPDATE team_members SET permission_overrides=NULL WHERE id=$1",[chatA]);
+ const revoked=await req("/api/admin/team/"+chatA,{method:"PATCH",cookie:adminCookie,body:{permissions:{team:false}}});
+ assert.equal(revoked.status,200,JSON.stringify(revoked));
  assert.equal((await req("/api/admin/team",{cookie:teamCookie(chatA)})).status,403);
  const chatPath="/api/admin/internal-chat/";
  assert.equal((await req(chatPath+"contacts")).status,401);
