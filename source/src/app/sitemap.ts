@@ -15,6 +15,7 @@ export default async function sitemap():Promise<MetadataRoute.Sitemap> {
   for(const locale of ["ar","en"] as const){
     const other=locale==="ar"?"en":"ar";
     add(homePath(locale),homePath(other),locale);
+    add(localPath(locale,"/stores"),localPath(other,"/stores"),locale);
     add(localPath(locale,"/catalog"),localPath(other,"/catalog"),locale,catalog?.updatedAt);
     for(const item of catalog?.items??[])add(localPath(locale,"/catalog/"+item.slug),localPath(other,"/catalog/"+item.slug),locale,catalog?.updatedAt);
     add(localPath(locale,"/services"),localPath(other,"/services"),locale);

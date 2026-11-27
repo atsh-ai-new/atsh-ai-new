@@ -87,6 +87,7 @@ export default function AdminPage() {
   const [chatTarget,setChatTarget]=useState("");
   const [chatSequence,setChatSequence]=useState(0);
   useEffect(()=>{const open=()=>{const p=new URLSearchParams(window.location.search);if(p.get("view")==="messages"){setChatTarget(p.toString());setChatSequence(n=>n+1);setView("messages");}};open();window.addEventListener("popstate",open);window.addEventListener("atsh-open-chat",open);return()=>{window.removeEventListener("popstate",open);window.removeEventListener("atsh-open-chat",open);};},[]);
+  const [openCommerceOffer,setOpenCommerceOffer]=useState(false);
   const [offeringTab, setOfferingTab] = useState<"packages" | "systems" | "addons" | "preview">("packages");
   const [offerPreviewUrl,setOfferPreviewUrl]=useState("");
   const [orderPreviewUrl,setOrderPreviewUrl]=useState("");
@@ -481,7 +482,8 @@ export default function AdminPage() {
         {view === "content-studio" && canEditContent && <ContentStudio />}
         {view === "journey" && <><JourneyManager mode="projects" showMyTasks={user.role!=="owner"} canManageTasks={canEditOrders} canArchive={user.role === "owner" || user.role === "admin"} canDelete={user.role === "owner"} />{(user.role === "owner" || user.role === "admin") && <CustomerServicesAdmin canEdit={true} />}</>}
       {view === "commercial" && <CommercialManager />}
-        {view === "stores" && canEditCatalog && <CommerceManager canProvision={canEditOrders&&(user.role==="owner"||user.role==="admin")} canCustomers={canEditOrders} openAddons={()=>{setOfferingTab("addons");setView("options");}} openCommercial={()=>setView("commercial")} />}
+        {view === "stores" && canEditCatalog && openCommerceOffer && <CatalogManager initialCommerceOffer />}
+        {view === "stores" && canEditCatalog && <CommerceManager canProvision={canEditOrders&&(user.role==="owner"||user.role==="admin")} canCustomers={canEditOrders} openOffer={()=>setOpenCommerceOffer(v=>!v)} openAddons={()=>{setOpenCommerceOffer(false);setOfferingTab("addons");setView("options");}} openCommercial={()=>setView("commercial")} />}
 
         {view === "options" && <section className="admin-content-card" aria-label="المعروض"><h2>المعروض</h2><p>إدارة الباقات والأنظمة المخصصة من مكان واحد، دون تكرار نماذج الإنشاء.</p><div role="tablist" aria-label="أقسام المعروض" style={{display:"flex",gap:8,flexWrap:"wrap"}}><button type="button" role="tab" aria-selected={offeringTab==="packages"} className={offeringTab==="packages"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("packages")}>الباقات</button><button type="button" role="tab" aria-selected={offeringTab==="systems"} className={offeringTab==="systems"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("systems")}>أنظمة مخصصة</button><button type="button" role="tab" aria-selected={offeringTab==="addons"} className={offeringTab==="addons"?"button button-small":"button button-outline button-small"} onClick={()=>setOfferingTab("addons")}>الإضافات</button><button type="button" role="tab" aria-selected={offeringTab==="preview"} className={offeringTab==="preview"?"button button-small":"button button-outline button-small"} onClick={previewOfferings}>معاينة</button></div></section>}
 

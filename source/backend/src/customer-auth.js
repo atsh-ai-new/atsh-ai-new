@@ -1,5 +1,6 @@
 import {MAX_ADDONS_PER_SELECTION,MAX_ADDON_INVOICE_LINES} from "./addon-limits.js";
 import { Router } from 'express';
+import {validCommerceTheme} from './commerce-selection.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { createHash, randomBytes } from 'node:crypto';
@@ -135,6 +136,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[],priceDraft=
   draftInvoice:draftInvoiceSchema.optional(),
   ownershipMode:z.enum(["rent","copy","code","rent_monthly"]).optional(),
   sectorSlug:z.string().regex(/^[a-z0-9-]{1,100}$/).optional(),
+  commerceTheme:z.string().refine(validCommerceTheme).optional(),
   sectorName:z.string().max(120).optional(),
   packageId:z.string().max(100).optional(),
   businessName:z.string().max(120).optional(),
@@ -238,7 +240,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[],priceDraft=
    const decision=submissionDecision(item);
    if(decision.kind==='existing'){await client.query('COMMIT');return res.json({projectId:decision.projectId,alreadySubmitted:true});}
    if(decision.kind==='invalid'){await client.query('ROLLBACK');return res.status(422).json({code:'PROJECT_REQUIREMENTS_INCOMPLETE',error:'Complete project requirements before submission'});}
-   if(item.draft.ownershipMode){try{item.draft=await priceDraft(client,item.draft);}catch{await client.query('ROLLBACK');return res.status(422).json({error:"تعذر التحقق من الأسعار الحالية"});}await client.query("UPDATE customer_project_drafts SET draft=$2::jsonb WHERE id=$1",[item.id,JSON.stringify(item.draft)]);}
+   if(item.draft.ownershipMode||item.draft.sectorSlug==='commerce-engine'||item.draft.commerceTheme){try{item.draft=await priceDraft(client,item.draft);}catch{await client.query('ROLLBACK');return res.status(422).json({error:"تعذر التحقق من الأسعار الحالية"});}await client.query("UPDATE customer_project_drafts SET draft=$2::jsonb WHERE id=$1",[item.id,JSON.stringify(item.draft)]);}
    const customer=await client.query('SELECT email,name FROM customer_accounts WHERE id=$1',[req.customer.id]);
    const created=await createCustomerJourneyProject(client,{customerName:item.title,customerEmail:customer.rows[0]?.email??null,customerAccountId:req.customer.id,createdBy:'customer-portal'});
    const projectId=created.id;
@@ -247,6 +249,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[],priceDraft=
     'Project: '+item.title,
     'Package: '+(item.draft.packageId||'Custom'),
     'Sector: '+(item.draft.sectorName||item.draft.sectorSlug||'—'),
+    ...(item.draft.commerceTheme?['Store design: '+item.draft.commerceTheme]:[]),
     'Solution: '+(item.draft.solutionType||'—'),
     'Features: '+[...(item.draft.options||[]),...(item.draft.sectorAddonCodes||[])].join(', '),
     'Delivery: '+(item.draft.ownershipMode||item.draft.deliveryMethod||'undecided'),
@@ -296,9 +299,9 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[],priceDraft=
   const parsed=z.object({expectedRevision:z.union([z.number().int().positive(),z.string().regex(/^[1-9]\d*$/).transform(Number).pipe(z.number().int().positive())]),title:z.string().trim().min(1).max(120).optional(),patch:draftSchema.optional()}).strict().safeParse(req.body);
   if(!parsed.success||(!parsed.data.title&&!parsed.data.patch))return res.status(400).json({error:'Invalid project draft update'});
   let patch=parsed.data.patch??{};
-  if(patch.ownershipMode){try{patch=await priceDraft(pool,patch);}catch{return res.status(422).json({error:"تعذر التحقق من الأسعار الحالية"});}}
+  if(patch.ownershipMode||patch.commerceTheme||patch.sectorSlug==='commerce-engine'){try{patch=await priceDraft(pool,patch);}catch{return res.status(422).json({error:"تعذر التحقق من الأسعار الحالية"});}}
   const result=await pool.query(`UPDATE customer_project_drafts SET
-    title=COALESCE($3,title),draft=draft||$4::jsonb,revision=revision+1,updated_at=now()
+    title=COALESCE($3,title),draft=(CASE WHEN $4::jsonb ? 'sectorSlug' AND $4::jsonb->>'sectorSlug'<>'commerce-engine' OR $4::jsonb ? 'packageId' THEN CASE WHEN draft ? 'commerceTheme' THEN draft-ARRAY['commerceTheme','solutionType'] ELSE draft END ELSE draft END)||$4::jsonb,revision=revision+1,updated_at=now()
     WHERE id=$1 AND customer_id=$2 AND revision=$5 AND linked_journey_id IS NULL
     RETURNING id,title,draft,revision,linked_journey_id,updated_at`,
     [req.params.id,req.customer.id,parsed.data.title??null,JSON.stringify(patch),parsed.data.expectedRevision]);
@@ -401,7 +404,7 @@ export function customerAuthRouter({pool,sendEmail,allowedOrigins=[],priceDraft=
   // Atomic top-level merge, so entering through another section does not erase existing choices.
   const result=await pool.query(`INSERT INTO customer_workspace_drafts(customer_id,draft)
    VALUES($1,$2::jsonb)
-   ON CONFLICT(customer_id) DO UPDATE SET draft=customer_workspace_drafts.draft||EXCLUDED.draft,
+   ON CONFLICT(customer_id) DO UPDATE SET draft=(CASE WHEN EXCLUDED.draft ? 'sectorSlug' AND EXCLUDED.draft->>'sectorSlug'<>'commerce-engine' OR EXCLUDED.draft ? 'packageId' THEN CASE WHEN customer_workspace_drafts.draft ? 'commerceTheme' THEN customer_workspace_drafts.draft-ARRAY['commerceTheme','solutionType'] ELSE customer_workspace_drafts.draft END ELSE customer_workspace_drafts.draft END)||EXCLUDED.draft,
       revision=customer_workspace_drafts.revision+1,updated_at=now()
    RETURNING draft,revision,updated_at`,[req.customer.id,JSON.stringify(priced)]);
   res.set('Cache-Control','no-store').json({workspace:result.rows[0]});

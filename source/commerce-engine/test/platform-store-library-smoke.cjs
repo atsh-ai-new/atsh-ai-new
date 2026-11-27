@@ -1,0 +1,48 @@
+const {chromium}=require('playwright');
+const assert=require('node:assert/strict');
+(async()=>{
+ const base=process.env.ATSH_ADMIN_TEST_URL||'http://127.0.0.1:3301';
+ const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--no-sandbox','--disable-dev-shm-usage']});
+ try{
+ const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ let approved=false;
+ const tariffs=Object.fromEntries(['rent','rent_monthly','copy','code'].map((m,i)=>[m,{price:1000*(i+1),list_price:1000*(i+1),initial_price:1000*(i+1),discount_percent:0,period:m==='rent'?'yearly':m==='rent_monthly'?'monthly':'fixed'}]));
+ await page.route('**/api/site-content/catalog?metadata=1',r=>r.fulfill({json:{page:{content:{items:[{slug:'commerce-engine',name:'ATSH Store',published:approved,basePrice:null,ownershipPrices:tariffs}]}},vatRate:14}}));
+ await page.route('**/api/catalog',r=>r.fulfill({json:{sharedOptions:[{code:'extra_page',name:'Additional pages',price:690,pricing_type:'per_page',list_price:690,discount_percent:0,visibility:'all'}]}}));
+ await page.route('**/api/customer/auth/me',r=>r.fulfill({status:401,json:{}}));
+ await page.goto(base+'/en/stores');
+ await page.getByText('168 designs',{exact:true}).waitFor();
+ assert.equal(await page.locator('.cl-card').count(),12);
+ await page.getByRole('button',{name:'Furniture',exact:true}).click();
+ await page.getByText('8 designs',{exact:true}).waitFor();
+ await page.getByRole('searchbox',{name:'Search designs'}).fill('Atelier');
+ await page.getByText('1 designs',{exact:true}).waitFor();
+ await page.locator('a[href="/en/stores/furniture-atelier"]').first().click();
+ await page.getByText('Pricing pending approval',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Mobile',exact:true}).click();
+ assert.equal(await page.locator('.cp-mobile').count(),1);
+ await page.locator('.cd-product-art').first().click();
+ await page.getByRole('dialog',{name:'Product details'}).getByRole('button',{name:'Add to cart',exact:true}).click();
+ const cart=page.getByRole('dialog',{name:'Shopping cart'});
+ await cart.getByRole('button',{name:'Increase quantity'}).click();
+ await cart.getByRole('button',{name:'Simulate checkout'}).click();
+ await cart.getByRole('button',{name:'Confirm demo order'}).click();
+ await cart.getByText('Demo order complete').waitFor();
+ await cart.getByRole('button',{name:/Close/}).click();
+ await page.setViewportSize({width:390,height:844});
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'mobile overflow');
+ approved=true;await page.reload();
+ await page.getByRole('link',{name:/Choose design & configure/}).click();
+ await page.waitForURL('**/en/stores/pricing?commerceTheme=furniture-atelier');
+ await page.getByText('Atelier · Furniture',{exact:false}).first().waitFor();
+ await page.locator('details[data-addon-category="foundation"] summary').click();
+ const add=page.getByRole('button',{name:'Add page',exact:true});await add.click();await add.click();
+ await page.getByRole('button',{name:'Save selections and continue'}).click();
+ await page.waitForURL('**/en/account/register');
+ const saved=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('atsh_customer_workspace_v1')));
+ assert.equal(saved.commerceTheme,'furniture-atelier');assert.equal(saved.sectorSlug,'commerce-engine');assert.equal(saved.solutionType,'store');assert.equal(saved.sectorAddonQuantities.extra_page,2);
+ assert.equal((await page.goto(base+'/stores/not-a-theme')).status(),404);
+ assert.deepEqual(errors,[]);
+ console.log('Store library, mobile demo, simulated checkout, central pricing and guest handoff passed');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1});

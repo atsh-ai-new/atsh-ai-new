@@ -22,6 +22,7 @@ import jwt from "jsonwebtoken";
 import pg from "pg";
 import { z } from "zod";
 import {characterAnimationSchema,refineCharacterPlan,characterDraftView,characterWorkflow,characterConfigured,registerCharacterRoutes} from "./character-studio.js";
+import {validateCommerceSelection} from "./commerce-selection.js";
 import {commerceConfig,runtimeRequest,commerceProjects,provisionCommerce} from "./commerce-admin.js";
 import {listExtensions,activateExtension,AddonRequestError} from "./project-addon-requests.js";
 import { commerceAddonSnapshot } from "./commerce-addon-bridge.js";
@@ -694,6 +695,7 @@ async function pricedSectorCatalog(db,items){
 // A customer draft carries identifiers, not trusted browser amounts. Use the
 // same pricing engine and tariff registry on creation, edits and submission.
 async function priceOwnershipDraft(db,draft){
+ validateCommerceSelection(draft);
  if(!draft.ownershipMode)return draft;
  const mode=draft.ownershipMode;
  let price, title, calculated;
@@ -754,6 +756,7 @@ app.post("/api/orders", route(async (req,res) => {
   const parsed=orderSchema.safeParse(req.body);
   if(!parsed.success) return res.status(400).json({error:"Invalid order details",details:parsed.error.issues.map(x=>({path:x.path,message:x.message}))});
   const input=parsed.data;
+  if(input.sectorSlug==="commerce-engine")return res.status(400).json({error:"Choose the store design and submit through the customer project journey"});
   // Unlinked orders require a retry UUID; draft submissions can opt in without breaking existing clients.
   const submissionKey=req.get("Idempotency-Key");
   if((!input.projectDraftId || submissionKey) && (!submissionKey || !z.string().uuid().safeParse(submissionKey).success))return res.status(400).json({error:"Idempotency-Key UUID header required"});
@@ -1527,6 +1530,10 @@ app.patch("/api/admin/ownership-prices/:scope/:key",requireAdmin,requirePermissi
   const p=await ownershipProduct(client,scope,key);
   if(!p){await client.query("ROLLBACK");return res.status(404).json({error:"Product unavailable"});}
   const before=await ensureOwnership(client,scope,key,p.name,p.base??parsed.data.copy.list_price);
+  if(scope==="sector"&&key==="commerce-engine"){
+   if(ownershipModes.some(m=>!parsed.data[m]||Math.round(parsed.data[m].list_price*(100-parsed.data[m].discount_percent))<=0)){await client.query("ROLLBACK");return res.status(400).json({error:"Enter four positive approved store prices (after discounts)"});}
+   for(const mode of ownershipModes){const x=parsed.data[mode];await client.query("INSERT INTO product_ownership_prices(scope,owner_key,mode,list_price,initial_price,discount_percent) VALUES($1,$2,$3,$4,$4,$5) ON CONFLICT(scope,owner_key,mode) DO UPDATE SET list_price=EXCLUDED.list_price,discount_percent=EXCLUDED.discount_percent",[scope,key,mode,x.list_price,x.discount_percent]);}
+  }else
   for(const mode of ownershipModes){const x=parsed.data[mode];if(!x)continue;await client.query("UPDATE product_ownership_prices SET list_price=$4,discount_percent=$5 WHERE scope=$1 AND owner_key=$2 AND mode=$3",[scope,key,mode,x.list_price,x.discount_percent]);}
   const prices=await ensureOwnership(client,scope,key,p.name,p.base??parsed.data.copy.list_price);
   await auditChange(client,req.admin.email,"ownership.prices_updated",scope,scope==="package"?key:"00000000-0000-4000-8000-000000000001",{key,prices:before},{key,prices});

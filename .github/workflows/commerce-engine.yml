@@ -55,3 +55,4 @@ jobs:
           trap 'kill "$PID" 2>/dev/null || true' EXIT
           for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:3301/admin && break; sleep 1; done
           node commerce-engine/test/platform-admin-smoke.cjs
+          node commerce-engine/test/platform-store-library-smoke.cjs

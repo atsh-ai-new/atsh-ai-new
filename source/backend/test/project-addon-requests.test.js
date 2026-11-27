@@ -55,8 +55,9 @@ test('runtime provisioning uses paid project ownership, private config and no br
  assert.equal(config.publicOrigin,'https://shops.example.com');assert.equal(commerceConfig({COMMERCE_RUNTIME_INTERNAL_URL:'https://user:pass@host',COMMERCE_PROVISION_SECRET:'x'.repeat(32)}),null);
  let payload;
  const fetcher=async(url,options)=>{assert.equal(url.href,'http://commerce:3200/api/stores');assert.equal(options.headers.authorization,'Bearer '+'x'.repeat(32));payload=JSON.parse(options.body);return {ok:true,json:async()=>({store:{slug:'test'},token:'single-use-display'})}};
- const pool={query:async()=>({rows:[{id:'project',mode:'rent_monthly',status:'paid'}]})};
+ const pool={query:async()=>({rows:[{id:'project',mode:'rent_monthly',status:'paid',draft:{solutionType:'store',sectorSlug:'commerce-engine',commerceTheme:'fashion-canvas',source:'catalog'}}]})};
  await provisionCommerce(pool,config,{projectId:'project',name:'Test',slug:'test',theme:'fashion-canvas',shipping:500},fetcher);
+ await assert.rejects(()=>provisionCommerce(pool,config,{projectId:'project',theme:'fashion-atelier'},fetcher),/approved store design/);
  assert.equal(payload.mode,'rent_monthly');assert.equal(payload.projectId,'project');
  await assert.rejects(()=>provisionCommerce({query:async()=>({rows:[{id:'p',mode:'copy',status:'quoted'}]})},config,{projectId:'p'},fetcher),/paid project/);
  await assert.rejects(()=>runtimeRequest(null,'/api/stores'),/not configured/);

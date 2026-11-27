@@ -7,7 +7,7 @@ export const homePath = (locale: Locale) => "/" + locale;
 export const localPath = (locale: Locale, path: string) => locale === "en" ? "/en" + path : path;
 export const privatePath = (path: string) => /^\/(?:en\/|ar\/)?(?:admin|account|customer-portal|commercial|configure|packages|api|demos|assistant-knowledge)(?:\/|$)/.test(path) || /^\/(?:en\/)?catalog\/[^/]+\/pricing(?:\/|$)/.test(path);
 export const validPublicSlug = (slug: string) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) && slug.length <= 100 &&
-  !new Set(["home","ar","en","catalog","templates","start","admin","account","api","configure","customer-portal","commercial","packages","demos","images","assistant-knowledge"]).has(slug);
+  !new Set(["home","ar","en","catalog","stores","templates","start","admin","account","api","configure","customer-portal","commercial","packages","demos","images","assistant-knowledge"]).has(slug);
 
 export function cleanText(value: unknown, max = 160): string {
   if (typeof value !== "string") return "";
