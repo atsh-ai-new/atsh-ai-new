@@ -277,7 +277,30 @@ export const englishPackages: Record<string,{name:string;short:string;descriptio
     ]
   }
 };
+export const englishExpansionOptions: Record<string,{name:string;description:string}> = {
+  "news_ticker": {"name": "News & announcement ticker", "description": "One pausable ticker with configurable text, links and speed. Only order if not included in the system."},
+  "image_slider": {"name": "Image & offer slider", "description": "One responsive slider with up to 5 slides; client supplies images. Only order if not included in the system."},
+  "internal_search": {"name": "Internal search", "description": "Text search and paginated results for one content type; external search service excluded. Only order if not included in the system."},
+  "blog_cms": {"name": "Blog & publishing", "description": "Article list, categories, article page and publishing management; writing excluded. Only order if not included in the system."},
+  "media_gallery": {"name": "Advanced media gallery", "description": "One categorized gallery with lightbox and video links; production and hosting excluded. Only order if not included in the system."},
+  "customer_reviews": {"name": "Customer reviews", "description": "Submit reviews and display them after moderation; paid external review feeds excluded. Only order if not included in the system."},
+  "promo_popup": {"name": "Promotional popup", "description": "One dismissible promotional popup with display timing and frequency. Only order if not included in the system."},
+  "countdown_timer": {"name": "Offer countdown timer", "description": "One offer timer that hides after expiry. Only order if not included in the system."},
+  "coupons_discounts": {"name": "Coupons & discounts", "description": "Coupons for one order type with percentage or fixed reduction, expiry and usage limits. Only order if not included in the system."},
+  "loyalty_rewards": {"name": "Loyalty & rewards", "description": "Earn and redeem points with a transaction ledger for one order type. Only order if not included in the system."},
+  "newsletter_subscriptions": {"name": "Newsletter signup", "description": "Signup, unsubscribe and one mailing list integration; sending fees excluded. Only order if not included in the system."},
+  "dynamic_qr": {"name": "Dynamic QR codes", "description": "Editable destination QR links with basic management; external service fees excluded. Only order if not included in the system."},
+  "support_tickets": {"name": "Support tickets", "description": "Create, categorize, assign and track tickets and replies; external messaging fees excluded. Only order if not included in the system."},
+  "excel_pdf_import_export": {"name": "Excel import/export & PDF export", "description": "Excel import and export for one data entity with validation, plus one PDF report export. Only order if not included in the system."},
+  "advanced_staff_roles": {"name": "Advanced staff permissions", "description": "Additional module permission matrix and role change log; baseline security is not an extra. Only order if not included in the system."},
+  "multi_branch": {"name": "Multi-branch management", "description": "Manage branches with data isolation, permissions and reports in one project; migration excluded. Only order if not included in the system."},
+  "paid_memberships": {"name": "Paid subscriptions & memberships", "description": "Membership plans, subscription lifecycle, renewals and access; payment gateway setup and fees excluded if not present. Only order if not included in the system."},
+  "google_sign_in": {"name": "Google sign-in", "description": "Google OAuth for one project using client accounts; external services excluded. Only order if not included in the system."},
+  "advanced_2fa": {"name": "Advanced two-factor policies", "description": "Optional role-based 2FA policies and recovery controls; baseline security is not an extra. Only order if not included in the system."},
+  "electronic_signature": {"name": "Electronic signature integration", "description": "Integrate one signature provider for one document template and status tracking; licensing, certificates and legal validation excluded. Only order if not included in the system."},
+};
 export const englishOptions: Record<string,{name:string;description:string}> = {
+  ...englishExpansionOptions,
   "provided": {
     "name": "Use my existing logo",
     "description": "Upload your logo now or send it later."

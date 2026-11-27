@@ -18,7 +18,7 @@ try {
   const all=await api("/api/admin/options/reset-prices","POST",{});
   assert.equal(all.status,200);assert.equal((await all.json()).reset,1);
   const catalog=await (await api("/api/catalog")).json();
-  assert.equal(catalog.sharedOptions.length,41);
+  assert.equal(catalog.sharedOptions.length,61);
   assert.ok(catalog.options.filter(a=>a.code==="admin_dashboard").every(a=>Number(a.price)===1500));
   assert.ok(!catalog.sharedOptions.some(a=>a.code==="ios_app"));
   // Price before discount is independent from the current effective price and reset baseline.
@@ -33,19 +33,43 @@ try {
   discounted=(await (await api("/api/catalog")).json()).sharedOptions.find(a=>a.code==="admin_dashboard");
   assert.equal(Number(discounted.price),1600);
   const bulk=await api("/api/admin/options/discount","POST",{discountPercent:10});
-  assert.equal(bulk.status,200);assert.equal((await bulk.json()).updated,45);
+  assert.equal(bulk.status,200);assert.equal((await bulk.json()).updated,65);
   const promo=(await (await api("/api/catalog")).json()).sharedOptions;
-  assert.equal(promo.length,41);
+  assert.equal(promo.length,61);
   assert.ok(promo.every(a=>Number(a.discount_percent)===10));
   assert.equal(Number(promo.find(a=>a.code==="promo_video").price),2250);
   const effective=await client.query("SELECT COUNT(*)::int AS n FROM package_options o JOIN shared_addons a ON a.code=o.code JOIN unified_price_items u ON u.scope='package_option' AND u.owner_key=o.package_id::text AND u.code=o.code JOIN packages p ON p.id=o.package_id WHERE p.deleted_at IS NULL AND (o.price<>a.price OR u.amount<>a.price)");
   assert.equal(effective.rows[0].n,0);
   const rollbackDiscount=await api("/api/admin/options/reset-prices","POST",{});
-  assert.equal(rollbackDiscount.status,200);assert.equal((await rollbackDiscount.json()).reset,45);
+  assert.equal(rollbackDiscount.status,200);assert.equal((await rollbackDiscount.json()).reset,65);
   await client.query("BEGIN");
   const result=await client.query("SELECT * FROM shared_addons");
   const map=new Map(result.rows.map(a=>[a.code,a]));
-  assert.equal(map.size,45);
+  assert.equal(map.size,65);
+  const expansion = [["news_ticker", "foundation", 500], ["image_slider", "foundation", 750], ["internal_search", "foundation", 2000], ["blog_cms", "foundation", 2100], ["media_gallery", "foundation", 1500], ["customer_reviews", "marketing", 1500], ["promo_popup", "marketing", 750], ["countdown_timer", "marketing", 500], ["coupons_discounts", "marketing", 2500], ["loyalty_rewards", "marketing", 4000], ["newsletter_subscriptions", "marketing", 1250], ["dynamic_qr", "integrations", 2000], ["support_tickets", "conversation", 3500], ["excel_pdf_import_export", "integrations", 3000], ["advanced_staff_roles", "integrations", 3500], ["multi_branch", "integrations", 5500], ["paid_memberships", "integrations", 5000], ["google_sign_in", "integrations", 1750], ["advanced_2fa", "hosting", 2000], ["electronic_signature", "integrations", 2500]];
+  for(const [code,category,price] of expansion){
+    const item=map.get(code);
+    assert.ok(item,code);
+    assert.equal(item.category_code,category);
+    assert.equal(Number(item.price),price);
+    assert.equal(Number(item.initial_price),price);
+    assert.equal(Number(item.list_price),price);
+    assert.equal(Number(item.discount_percent),0);
+    assert.equal(item.pricing_type,"fixed");
+    assert.equal(item.is_active,true);
+    assert.equal(item.is_required,false);
+    assert.ok(catalog.options.filter(o=>o.code===code).length>0,code);
+    assert.ok(catalog.options.filter(o=>o.code===code).every(o=>Number(o.price)===price&&o.category_code===category&&o.visibility==="both"),code);
+  }
+  const expansionMigration=await readFile(new URL("../db/approved_addon_prices_20261126.sql",import.meta.url),"utf8");
+  await client.query("UPDATE shared_addons SET price=777,is_active=false,category_code='creative' WHERE code='news_ticker'");
+  await client.query(expansionMigration);
+  const preserved=(await client.query("SELECT * FROM shared_addons WHERE code='news_ticker'")).rows[0];
+  assert.equal(Number(preserved.price),777);
+  assert.equal(Number(preserved.initial_price),500);
+  assert.equal(preserved.is_active,false);
+  assert.equal(preserved.category_code,"creative");
+
   assert.deepEqual([...map.values()].filter(a=>!a.is_active).map(a=>a.code).sort(),["ads_management","android_app","ios_app","social_management"].sort());
   assert.equal(Number(map.get("admin_dashboard").price),1500);
   assert.equal(Number(map.get("customer_portal").price),3500);
@@ -84,5 +108,5 @@ try {
   const later=(await client.query("SELECT * FROM shared_addons WHERE id=$1",[added.id])).rows[0];
   assert.equal(Number(later.initial_price),321);
   assert.equal(Number(later.price),987);
-  console.log("PASS: 45 initial prices, 41 enabled, 4 deferred, stable initial tariff and availability, projections and new add-on baselines");
+  console.log("PASS: 65 initial prices, 61 enabled, 4 deferred, stable initial tariff and availability, projections and new add-on baselines");
 } finally {await client.query("ROLLBACK");await client.end();}
