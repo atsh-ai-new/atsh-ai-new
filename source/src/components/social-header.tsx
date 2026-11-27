@@ -26,7 +26,7 @@ export default function SocialHeader(){
    if(!header){if(holder.isConnected)holder.remove();setHost(null);if(bar.parentElement!==document.body)document.body.prepend(bar);setTickerHost(bar);return;}
    if(brand?.parentElement===header){if(holder.parentElement!==header||holder.previousElementSibling!==brand)brand.insertAdjacentElement("afterend",holder);}
    else if(holder.parentElement!==header)header.prepend(holder);
-   if(holder.isConnected)setHost(holder);if(bar.previousElementSibling!==header)header.after(bar);setTickerHost(bar);
+   if(holder.isConnected)setHost(holder);if(bar.nextElementSibling!==header)header.before(bar);setTickerHost(bar);
   };
   place();const observer=new MutationObserver(place);observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["data-catalog-immersive"]});
   return ()=>{observer.disconnect();holder.remove();bar.remove();};

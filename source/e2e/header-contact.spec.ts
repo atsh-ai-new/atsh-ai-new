@@ -22,16 +22,17 @@ for (const locale of ["ar","en"]) {
  });
 }
 
-test("news ticker stays immediately below the homepage header rather than covering the viewport",async({page})=>{
+test("news ticker stays at the very top above the homepage header rather than covering the viewport",async({page})=>{
  await page.route("**/api/site-content/home?locale=*",route=>route.fulfill({json:{page:{content:{newsTicker:{enabled:true,text:"Test news",speed:25,background:"#fff",color:"#14243C",url:""}}}}}));
  await page.goto("/ar");
  const header=page.locator(".platform-header");
- const ticker=page.locator(".platform-header + .atsh-news-slot .atsh-news-ticker");
+ const ticker=page.locator(".atsh-news-slot:has(+ .platform-header) .atsh-news-ticker");
  await expect(ticker).toBeVisible();
  await expect(ticker).toHaveCSS("font-size","14px");
  await expect(ticker).toHaveCSS("font-weight","600");
  const initial=await ticker.boundingBox(),headerBounds=await header.boundingBox();
- expect(Math.abs(initial!.y-(headerBounds!.y+headerBounds!.height))).toBeLessThan(2);
+ expect(Math.abs(initial!.y)).toBeLessThan(2);
+ expect(Math.abs(initial!.y+initial!.height-headerBounds!.y)).toBeLessThan(2);
  await page.evaluate(()=>window.scrollBy(0,500));
  await expect.poll(async()=>ticker.evaluate(el=>el.getBoundingClientRect().bottom)).toBeLessThan(0);
 });
