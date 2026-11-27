@@ -40,3 +40,15 @@ for(const kind of ["package","sector"] as const)test(kind+" ownership selector, 
  await expect(page).toHaveURL(/account\/dashboard\?view=projects&project=/);
  expect(saved.expectedRevision).toBe(7);expect(saved.patch.ownershipMode).toBe("rent_monthly");expect(saved.patch.domainName).toBe("example.test");expect(saved.patch.draftInvoice.yearly).toBe(225);expect(saved.patch.draftInvoice.monthly).toBe(149);expect(saved.patch.draftInvoice.fixed).toBe(100);expect(saved.patch.draftInvoice.total).toBe(540.36);
 });
+
+for(const locale of ["ar","en"] as const)test("homepage package tariff excludes hosting ("+locale+")",async({page})=>{
+ await page.route("**/api/catalog",route=>route.fulfill({json:{packages:[pkg],options,sharedOptions:options}}));
+ await page.route("**/api/site-content/**",route=>route.fulfill({json:{page:null,vatRate:14}}));
+ await page.goto("/"+locale);
+ const card=page.locator(".package-card").first();
+ await expect(card).toBeVisible();
+ const price=card.locator(".package-price");
+ await expect(price).toContainText(new Intl.NumberFormat(locale==="en"?"en-EG":"ar-EG").format(prices.rent.price));
+ await expect(price).toContainText(locale==="ar"?"إيجار سنوي للنظام فقط — الاستضافة منفصلة":"Annual software rental only — hosting billed separately");
+ await expect(price).not.toContainText(new Intl.NumberFormat(locale==="en"?"en-EG":"ar-EG").format(prices.rent.price+225));
+});
