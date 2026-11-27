@@ -26,7 +26,7 @@ test("news ticker stays at the very top above the homepage header rather than co
  await page.route("**/api/site-content/home?locale=*",route=>route.fulfill({json:{page:{content:{newsTicker:{enabled:true,text:"Test news",speed:25,background:"#fff",color:"#14243C",url:""}}}}}));
  await page.goto("/ar");
  const header=page.locator(".platform-header");
- const ticker=page.locator(".atsh-news-slot:has(+ .platform-header) .atsh-news-ticker");
+ const ticker=page.locator("body > .atsh-news-slot:first-child .atsh-news-ticker");
  await expect(ticker).toBeVisible();
  await expect(ticker).toHaveCSS("font-size","14px");
  await expect(ticker).toHaveCSS("font-weight","600");
@@ -68,7 +68,7 @@ for (const [position,anchor] of [
  ["below_header",".platform-header + .atsh-news-slot"],
  ["after_hero",".build-hero + .atsh-news-slot"],
  ["before_footer",".atsh-news-slot:has(+ .platform-footer)"],
- ["invalid-value",".atsh-news-slot:has(+ .platform-header)"]
+ ["invalid-value","body > .atsh-news-slot:first-child"]
 ]) {
  test("news ticker uses the saved position "+position,async({page})=>{
   await page.route("**/api/site-content/home?locale=*",route=>route.fulfill({json:{page:{content:{newsTicker:{enabled:true,text:"Position test",speed:25,position}}}}}));
@@ -111,4 +111,26 @@ test("admin moves the ticker, previews the draft, publishes and reloads its posi
  await page.reload();
  await page.getByRole("navigation",{name:"أقسام لوحة الإدارة"}).getByRole("button",{name:"محتوى المنصة",exact:true}).click();
  await expect(page.getByLabel("موضع الشريط في الصفحة")).toHaveValue("before_footer");
+});
+
+test("default ticker starts above the complete administration and customer portal layouts",async({page})=>{
+ await page.route("**/api/site-content/home?locale=*",route=>route.fulfill({json:{page:{content:{newsTicker:{enabled:true,text:"Global news",speed:25}}}}}));
+ await page.route("**/api/admin/**",route=>{
+  const path=new URL(route.request().url()).pathname;
+  return route.fulfill({json:path==="/api/admin/me"?{email:"owner@example.test",role:"owner",permissions:{content:true,products:true}}:{}});
+ });
+ await page.route("**/api/customer/auth/**",route=>{
+  const path=new URL(route.request().url()).pathname;
+  return route.fulfill({json:path.endsWith("/me")?{customer:{name:"عميل تجريبي",email:"client@example.test"}}:path.endsWith("/workspace")?{workspace:{draft:{}}}:{drafts:[],previews:[],projects:[],messages:[]}});
+ });
+ await page.route("**/api/customer/commercial/**",route=>route.fulfill({json:{orders:[],quotes:[],contracts:[],invoices:[]}}));
+ await page.route("**/api/customer/deliverables",route=>route.fulfill({json:{deliverables:[]}}));
+ for(const path of ["/admin","/account/dashboard","/account/login","/catalog"]){
+  await page.goto(path);
+  const ticker=page.locator("body > .atsh-news-slot:first-child .atsh-news-ticker");
+  await expect(ticker).toBeVisible();
+  await expect(page.locator(".atsh-news-ticker")).toHaveCount(1);
+  expect(Math.abs((await ticker.boundingBox())!.y)).toBeLessThan(2);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2)).toBe(true);
+ }
 });

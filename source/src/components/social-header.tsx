@@ -15,6 +15,7 @@ export default function SocialHeader(){
  const position=normalizeNewsTickerPosition(ticker?.position);
  useEffect(()=>{
   const holder=document.createElement("div");holder.className="atsh-social-inline-slot";if(!/^\/(?:ar|en)?\/?$/.test(pathname)&&!/^\/(?:ar\/|en\/)?(?:admin|account|team)(?:\/|$)/.test(pathname))holder.dataset.internalPublic="true";const bar=document.createElement("div");bar.className="atsh-news-slot";
+  const placeAtPageTop=()=>{if(document.body.firstElementChild!==bar)document.body.prepend(bar);};
   const place=()=>{
    // A full-screen or embedded demo is its own viewport. Never insert the
    // platform ticker (or social links) ahead of its iframe.
@@ -25,7 +26,7 @@ export default function SocialHeader(){
    }
    const brand=document.querySelector<HTMLElement>(".platform-header .platform-brand, .managed-header .managed-brand, header .atsh-start-brand, header .admin-brand, header a[href=\"/\"]");
    const header=brand?.closest("header")||document.querySelector<HTMLElement>(".platform-header, .managed-header, .admin-topbar, .admin-header, .customer-header, .atsh-start-header, main > header");
-   if(!header){if(holder.isConnected)holder.remove();setHost(null);if(bar.parentElement!==document.body)document.body.prepend(bar);setTickerHost(bar);return;}
+   if(!header){if(holder.isConnected)holder.remove();setHost(null);placeAtPageTop();setTickerHost(bar);return;}
    if(brand?.parentElement===header){if(holder.parentElement!==header||holder.previousElementSibling!==brand)brand.insertAdjacentElement("afterend",holder);}
    else if(holder.parentElement!==header)header.prepend(holder);
    if(holder.isConnected)setHost(holder);
@@ -36,9 +37,10 @@ export default function SocialHeader(){
    const hero=parent?.querySelector<HTMLElement>(":scope > .build-hero, :scope > .managed-hero");
    const footer=parent?.querySelector<HTMLElement>(":scope > .platform-footer, :scope > .managed-footer, :scope > footer");
    const after=position==="below_header"?header:position==="after_hero"?hero:null;
-   const before=position==="before_footer"&&footer?footer:header;
+   const before=position==="before_footer"?footer:null;
    if(after){if(bar.previousElementSibling!==after)after.after(bar);}
-   else if(bar.nextElementSibling!==before)before.before(bar);
+   else if(before){if(bar.nextElementSibling!==before)before.before(bar);}
+   else placeAtPageTop();
    setTickerHost(bar);
   };
   place();const observer=new MutationObserver(place);observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["data-catalog-immersive"]});
