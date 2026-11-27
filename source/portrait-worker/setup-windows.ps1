@@ -1,7 +1,7 @@
 # ATSH AI workstation setup. Run as the signed-in Windows user, not as admin.
 # Installs only missing prerequisites, then isolated CPU dependencies and official model files.
 # No server credentials, no automatic production activation.
-param([string]$Root = (Join-Path $env:LOCALAPPDATA 'ATSH-AI-Portrait'))
+param([string]$Root = (Join-Path $env:LOCALAPPDATA 'ATSH-AI-Portrait'), [string]$PythonExe = '')
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $Commit = 'cd4c0465ae0b54a6f85af57f5c65fec9fe23e7f8'
@@ -22,15 +22,20 @@ function Find-Command([string]$Name) {
 function Install-Package([string]$Id) {
     $winget = Find-Command 'winget.exe'
     if (!$winget) { throw 'Windows Package Manager (winget) is missing. Install Microsoft App Installer first.' }
-    Run $winget @('install','--id',$Id,'--exact','--source','winget','--accept-package-agreements','--accept-source-agreements')
+    Write-Host "Checking/installing $Id ..."
+    & $winget @('install','--id',$Id,'--exact','--source','winget','--accept-package-agreements','--accept-source-agreements')
+    $code = $LASTEXITCODE
+    if ($code -ne 0 -and $code -ne -1978335189) { throw "$Id installation failed with exit code $code" }
     Refresh-Path
 }
 function Confirm-Python310([string]$Path) {
     if (!$Path -or $Path -match '\\WindowsApps\\' -or !(Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
     try {
-        $p = & $Path -c 'import sys,struct; print(sys.executable) if sys.version_info[:2] == (3,10) and struct.calcsize("P") == 8 else sys.exit(1)' 2>$null | Select-Object -First 1
+        # Avoid nested quotes, which Windows PowerShell 5.1 strips from native arguments.
+        $p = & $Path -c 'import sys; print(sys.executable) if sys.version_info[:2] == (3,10) and sys.maxsize > 2**32 else sys.exit(1)' 2>$null | Select-Object -First 1
         if ($LASTEXITCODE -eq 0 -and $p -and (Test-Path -LiteralPath $p -PathType Leaf)) { return "$p" }
-    } catch {}
+        Write-Host "Python candidate rejected: $Path (exit $LASTEXITCODE)"
+    } catch { Write-Host "Python candidate failed: $Path ($($_.Exception.Message))" }
     return $null
 }
 function Python310 {
@@ -94,8 +99,13 @@ try {
     New-Item -ItemType Directory -Force -Path $Root | Out-Null
     Write-Host '1/5 Checking Windows prerequisites...'
     Refresh-Path
-    $python = Python310
-    if (!$python) { Install-Package 'Python.Python.3.10'; $python = Python310 }
+    if ($PythonExe) {
+        $python = Confirm-Python310 $PythonExe
+        if (!$python) { throw 'The supplied PythonExe must be an existing 64-bit Python 3.10 executable.' }
+    } else {
+        $python = Python310
+        if (!$python) { Install-Package 'Python.Python.3.10'; $python = Python310 }
+    }
     if (!$python) { throw '64-bit Python 3.10 not found in registered or standard locations. Check the installation path before reinstalling.' }
     Write-Host "Using Python: $python"
     $git = Find-Command 'git.exe'
