@@ -1132,7 +1132,7 @@ input,textarea,select,option,optgroup{font-weight:500}
  }
  .platform-header:has(.home-visitor-stats)>.platform-brand{grid-area:1/1;min-width:0;gap:6px}
  .platform-header:has(.home-visitor-stats)>.platform-brand>span{min-width:0}
- .platform-header:has(.home-visitor-stats)>.platform-brand small{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .platform-header:has(.home-visitor-stats)>.platform-brand small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  .platform-header:has(.home-visitor-stats)>.atsh-social-inline-slot{grid-area:1/2;margin:0}
  .platform-header:has(.home-visitor-stats)>.atsh-mobile-nav{grid-area:1/3;justify-self:end}
  .platform[lang] .platform-header:has(.home-visitor-stats)>.platform-header-actions{
