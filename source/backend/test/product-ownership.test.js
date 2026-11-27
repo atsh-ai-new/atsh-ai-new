@@ -102,3 +102,15 @@ test('new sale prices expose only executable-copy amounts and do not quote old d
  assert.equal(priceSectorSelection(catalog,slug,[],{},'copy').subtotal,28870);
  for(const m of ['code','rent_monthly','rent'])assert.equal(priceSectorSelection(catalog,slug,[],{},m).needsCustomQuote,true);
 });
+
+test('new audio and matching offers use their CMS copy price without auto-generated public rental/source rates',()=>{
+ for(const [slug,copy] of [['naghma',51530],['liqaa',55530]]){
+   const amounts=initialOwnership('sector',slug,copy);
+   const internal=effectiveOwnership(ownershipModes.map(mode=>({mode,list_price:amounts[mode],initial_price:amounts[mode],discount_percent:0})));
+   const published=publicOwnership('sector',slug,internal);
+   assert.deepEqual(Object.keys(published),['copy']);
+   const catalog=[{slug,name:slug,published:true,basePrice:copy,ownershipPrices:published,pricedAddons:[]}];
+   assert.equal(priceSectorSelection(catalog,slug,[],{},'copy').subtotal,copy);
+   for(const mode of ['rent_monthly','rent','code'])assert.equal(priceSectorSelection(catalog,slug,[],{},mode).needsCustomQuote,true);
+ }
+});
