@@ -3,14 +3,16 @@ import {useEffect,useState} from "react";
 import {usePathname} from "next/navigation";
 import {readPagePreview} from "@/lib/page-preview";
 import {createPortal} from "react-dom";
+import {normalizeNewsTickerPosition,type NewsTickerPosition} from "@/lib/news-ticker-position";
 
 export default function SocialHeader(){
- const [ticker,setTicker]=useState<{enabled:boolean;text:string;url:string;speed:number;background:string;color:string}|null>(null);
+ const [ticker,setTicker]=useState<{enabled:boolean;text:string;url:string;speed:number;background:string;color:string;position?:NewsTickerPosition}|null>(null);
  const [tickerHost,setTickerHost]=useState<HTMLElement|null>(null);
  const [duration,setDuration]=useState(12);
  const pathname=usePathname();
  useEffect(()=>{const locale=pathname.startsWith("/en")?"en":"ar";let live=true;setTicker(null);const valid=(t:any)=>t?.enabled&&typeof t.text==="string"&&t.text.trim();const apply=(t:any)=>{if(live)setTicker(valid(t)?t:null);};const preview=readPagePreview("home",locale);if(preview){apply(preview.content.newsTicker);return()=>{live=false;};}const load=async(lang:string)=>{try{const r=await fetch("/api/site-content/home?locale="+lang,{cache:"no-store"});return r.ok?(await r.json())?.page?.content?.newsTicker:null;}catch{return null;}};void (async()=>{const local=await load(locale);if(valid(local)){apply(local);return;}const other=await load(locale==="en"?"ar":"en");apply(valid(other)?{...other,text:locale==="en"?"Explore ATSH AI websites and apps ✦ Customize your system now":"اكتشف مواقع وتطبيقات ATSH AI ✦ خصص نظامك الآن"}:null);})();return()=>{live=false;};},[pathname]);
  const [host,setHost]=useState<HTMLElement|null>(null);
+ const position=normalizeNewsTickerPosition(ticker?.position);
  useEffect(()=>{
   const holder=document.createElement("div");holder.className="atsh-social-inline-slot";if(!/^\/(?:ar|en)?\/?$/.test(pathname)&&!/^\/(?:ar\/|en\/)?(?:admin|account|team)(?:\/|$)/.test(pathname))holder.dataset.internalPublic="true";const bar=document.createElement("div");bar.className="atsh-news-slot";
   const place=()=>{
@@ -26,11 +28,22 @@ export default function SocialHeader(){
    if(!header){if(holder.isConnected)holder.remove();setHost(null);if(bar.parentElement!==document.body)document.body.prepend(bar);setTickerHost(bar);return;}
    if(brand?.parentElement===header){if(holder.parentElement!==header||holder.previousElementSibling!==brand)brand.insertAdjacentElement("afterend",holder);}
    else if(holder.parentElement!==header)header.prepend(holder);
-   if(holder.isConnected)setHost(holder);if(bar.nextElementSibling!==header)header.before(bar);setTickerHost(bar);
+   if(holder.isConnected)setHost(holder);
+   // Resolve only known page landmarks in the same container as the header.
+   // Empty or unavailable anchors fall back above the header without wrapping or
+   // rearranging its children, and the observer handles client-side navigation.
+   const parent=header.parentElement;
+   const hero=parent?.querySelector<HTMLElement>(":scope > .build-hero, :scope > .managed-hero");
+   const footer=parent?.querySelector<HTMLElement>(":scope > .platform-footer, :scope > .managed-footer, :scope > footer");
+   const after=position==="below_header"?header:position==="after_hero"?hero:null;
+   const before=position==="before_footer"&&footer?footer:header;
+   if(after){if(bar.previousElementSibling!==after)after.after(bar);}
+   else if(bar.nextElementSibling!==before)before.before(bar);
+   setTickerHost(bar);
   };
   place();const observer=new MutationObserver(place);observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["data-catalog-immersive"]});
   return ()=>{observer.disconnect();holder.remove();bar.remove();};
- },[pathname]);
+ },[pathname,position]);
  useEffect(()=>{if(!ticker)return;const track=tickerHost?.querySelector(".atsh-news-track");if(!track)return;const measure=()=>setDuration(Math.max(3,track.scrollWidth/2/(75*25/Math.max(8,Math.min(90,Number(ticker.speed)||25)))));measure();const observer=new ResizeObserver(measure);observer.observe(track);return()=>observer.disconnect();},[ticker,tickerHost]);
  return <>{ticker&&tickerHost&&createPortal(<div className="atsh-news-ticker" dir="ltr" ><div className="atsh-news-track" style={{animationDuration:duration+"s",animationDirection:pathname.startsWith("/en")?"reverse":"normal"}}><div className="atsh-news-copy" dir={pathname.startsWith("/en")?"ltr":"rtl"}>{/^\/(?!\/)|^https:\/\//i.test(ticker.url||"")?<a href={ticker.url}>{ticker.text}</a>:<span>{ticker.text}</span>}</div><div className="atsh-news-copy" dir={pathname.startsWith("/en")?"ltr":"rtl"} aria-hidden="true">{/^\/(?!\/)|^https:\/\//i.test(ticker.url||"")?<a tabIndex={-1} href={ticker.url}>{ticker.text}</a>:<span>{ticker.text}</span>}</div></div><style>{`.atsh-news-slot{min-height:0;min-width:0}.platform>.atsh-news-slot,.managed-page>.atsh-news-slot{width:100vw;margin-inline:calc((100% - 100vw)/2)}.atsh-news-ticker{position:relative;width:100%;box-sizing:border-box;background:#fff;color:#14243C;text-shadow:none;-webkit-text-stroke:0;filter:none;border-bottom:1px solid #dceef9;font-weight:700;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;overflow:hidden;min-height:30px;display:flex;align-items:center;font-size:14px;font-weight:600;line-height:1.5}.atsh-news-track{display:flex;direction:ltr;flex:none;width:max-content;animation:atsh-news-move linear infinite;white-space:nowrap;text-align:center}.atsh-news-copy{flex:0 0 auto;min-width:100vw;padding:5px 24px;box-sizing:border-box;unicode-bidi:plaintext}.atsh-news-ticker .atsh-news-copy,.atsh-news-ticker .atsh-news-copy a,.atsh-news-ticker .atsh-news-copy span{color:#14243C;font-weight:700;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;text-shadow:none;-webkit-text-stroke:0;filter:none}.atsh-news-ticker:hover .atsh-news-track,.atsh-news-ticker:focus-within .atsh-news-track{animation-play-state:paused}@keyframes atsh-news-move{from{transform:translateX(-50%)}to{transform:translateX(0)}}@media(prefers-reduced-motion:reduce){.atsh-news-track{animation:none;white-space:normal;width:100%;min-width:100%}.atsh-news-copy[aria-hidden=true]{display:none}}`}</style></div>,tickerHost)}{host&&createPortal(
  <nav className="atsh-social-header" aria-label="ATSH AI social media">
