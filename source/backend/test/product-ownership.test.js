@@ -1,11 +1,12 @@
 import test from 'node:test';
+import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
-import {initialOwnership,effectiveOwnership,resolveOwnership,ensureOwnership,sectorTariff,resetOwnership,ownershipModes} from '../src/product-ownership.js';
+import {initialOwnership,effectiveOwnership,resolveOwnership,ensureOwnership,sectorTariff,resetOwnership,ownershipModes,publicOwnership} from '../src/product-ownership.js';
 import {priceSectorSelection} from '../src/sector-pricing.js';
 import {calculateUnifiedPricing} from '../src/pricing-engine.js';
 import {deriveQuoteFromOrder} from '../src/order-quote.js';
-test('independent tariffs preserve the approved rental and copy proposal; code is separate',()=>{
- assert.deepEqual(initialOwnership('sector','eyadaty',999999),{rent:1490,copy:2490,code:7490,rent_monthly:149});
+test('independent tariffs apply the calculated copy price without changing the other rate schedules',()=>{
+ assert.deepEqual(initialOwnership('sector','eyadaty',999999),{rent:1490,copy:28870,code:7490,rent_monthly:149});
  assert.deepEqual(initialOwnership('package','Basic',1250),{rent:750,copy:1250,code:3000,rent_monthly:75});
  assert.equal(initialOwnership('sector','Unknown',null),null);
 });
@@ -45,10 +46,12 @@ test('package rental period reaches billing and contractual quote',()=>{
  assert.equal(quote.totalPiasters,Math.round(priced.total*100));
 });
 
-test('all 28 registry keys use independent defaults and ten-month annual pricing',()=>{
+test('all 28 sector copy tariffs match the migration while the rent and source remain independent',()=>{
+ const sql=readFileSync(new URL('../db/catalog_offers_20261127.sql',import.meta.url),'utf8');
+ const systems=JSON.parse(sql.split('$systems$')[1]);
  const keys='eyadaty agzakhana ebtsama hehaa nabd supermarket sofra market gzaar khodra mkawel avocato accounting mosek emtsal center academia taalm hadnty madrsty news otstodyo cinema bas wnsh mosla toktok torsekl'.split(' ');
  assert.equal(new Set(keys).size,28);
- for(const key of keys){const tariff=sectorTariff(key);assert.ok(tariff);assert.equal(tariff.rent,tariff.rent_monthly*10);assert.ok(tariff.code>tariff.copy);assert.ok(tariff.copy>tariff.rent);assert.deepEqual(initialOwnership('sector',key,null),tariff);}
+ for(const key of keys){const tariff=sectorTariff(key);assert.ok(tariff);assert.equal(tariff.rent,tariff.rent_monthly*10);assert.equal(tariff.copy,systems[key][0]);assert.ok(tariff.code>0);assert.deepEqual(initialOwnership('sector',key,null),tariff);}
  assert.equal(sectorTariff('__proto__'),null);
  assert.equal(sectorTariff('toString'),null);
  assert.equal(initialOwnership('sector','unknown',null),null);
@@ -84,6 +87,18 @@ test('registry upgrade preserves edited amounts and discounts, then explicit res
  const result=await ensureOwnership(db,'sector','eyadaty','Renamed',5000);
  assert.equal(result.code.price,7490);assert.equal(result.copy.price,2850);assert.equal(result.rent.discount_percent,10);assert.equal(result.rent_monthly.price,149);
  const reset=await resetOwnership(db,'sector','eyadaty','Renamed',5000);
- assert.equal(reset.before.copy.price,2850);assert.equal(reset.prices.copy.price,2490);assert.equal(reset.prices.rent.discount_percent,0);
+ assert.equal(reset.before.copy.price,2850);assert.equal(reset.prices.copy.price,28870);assert.equal(reset.prices.rent.discount_percent,0);
  assert.deepEqual(Object.keys(reset.prices).sort(),[...ownershipModes].sort());
+});
+
+test('new sale prices expose only executable-copy amounts and do not quote old delivery prices',()=>{
+ const slug='eyadaty';
+ const computed=effectiveOwnership(ownershipModes.map(mode=>({mode,list_price:sectorTariff(slug)[mode],initial_price:sectorTariff(slug)[mode],discount_percent:0})));
+ const published=publicOwnership('sector',slug,computed);
+ assert.deepEqual(Object.keys(published),['copy']);
+ assert.deepEqual(Object.keys(publicOwnership('package','11111111-1111-4111-8111-111111111111',computed)),['copy']);
+ assert.equal(publicOwnership('sector','unrelated-product',computed),computed);
+ const catalog=[{slug,name:'عيادتي',published:true,basePrice:28870,ownershipPrices:published,pricedAddons:[]}];
+ assert.equal(priceSectorSelection(catalog,slug,[],{},'copy').subtotal,28870);
+ for(const m of ['code','rent_monthly','rent'])assert.equal(priceSectorSelection(catalog,slug,[],{},m).needsCustomQuote,true);
 });

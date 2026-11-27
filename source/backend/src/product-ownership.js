@@ -3,14 +3,14 @@ export const ownershipLabels={rent:'إيجار سنوي',rent_monthly:'إيجا�
 const money=n=>Math.round(n*100)/100;
 // Stable catalog slugs, not display names. Each amount is independently set.
 const sectorTariffs=Object.freeze({
- eyadaty:[1490,2490,7490],agzakhana:[2490,4490,10900],ebtsama:[2790,4990,12900],hehaa:[2290,3990,9900],nabd:[2990,5490,13900],
- supermarket:[1090,2290,6490],sofra:[2490,3490,8990],market:[1990,3490,7990],gzaar:[1290,1790,5490],khodra:[1190,1690,4990],mkawel:[3990,9900,24900],
- avocato:[1790,3490,8490],accounting:[2490,4990,11900],mosek:[2190,4490,10900],emtsal:[3990,7900,18900],
- center:[2990,5490,12900],academia:[4490,9900,23900],taalm:[3490,7490,17900],
+ eyadaty:[1490,28870,7490],agzakhana:[2490,37520,10900],ebtsama:[2790,35530,12900],hehaa:[2290,34200,9900],nabd:[2990,34870,13900],
+ supermarket:[1090,34190,6490],sofra:[2490,32870,8990],market:[1990,46870,7990],gzaar:[1290,31520,5490],khodra:[1190,30190,4990],mkawel:[3990,34200,24900],
+ avocato:[1790,25530,8490],accounting:[2490,38190,11900],mosek:[2190,32190,10900],emtsal:[3990,38190,18900],
+ center:[2990,30190,12900],academia:[4490,36860,23900],taalm:[3490,31520,17900],
  // Education systems published in the catalog; tariffs do not create products.
- hadnty:[1690,3290,8900],madrsty:[1890,5990,16900],
- news:[2990,6900,15900],otstodyo:[3290,6490,14900],cinema:[7900,19900,44900],bas:[8900,21900,49900],
- wnsh:[8900,19900,44900],mosla:[11900,27900,64900],toktok:[7900,17900,39900],torsekl:[8900,19900,44900]
+ hadnty:[1690,34180,8900],madrsty:[1890,43530,16900],
+ news:[2990,26190,15900],otstodyo:[3290,36860,14900],cinema:[7900,33520,44900],bas:[8900,37520,49900],
+ wnsh:[8900,46870,44900],mosla:[11900,48860,64900],toktok:[7900,44200,39900],torsekl:[8900,47520,44900]
 });
 export function sectorTariff(key){
  const amounts=Object.hasOwn(sectorTariffs,key)?sectorTariffs[key]:null;
@@ -56,4 +56,16 @@ export async function resetOwnership(db,scope,key,name,base){
 export function resolveOwnership(prices,mode){
  if(!ownershipModes.includes(mode)||!prices?.[mode]||!Number.isFinite(prices[mode].price)||prices[mode].price<0)throw Error('Ownership price unavailable');
  return prices[mode];
+}
+
+// Only the recalculated executable-copy tier has an agreed online amount.
+// Keep other rates internally for audit/reset; they are not public offers.
+const recalculatedPackages=new Set([
+ '11111111-1111-4111-8111-111111111111',
+ '22222222-2222-4222-8222-222222222222',
+ '33333333-3333-4333-8333-333333333333'
+]);
+export const isNewCatalogOffer=(scope,key)=>scope==='package'?recalculatedPackages.has(key):scope==='sector'&&Boolean(sectorTariff(key));
+export function publicOwnership(scope,key,prices){
+ return prices&&isNewCatalogOffer(scope,key)?{copy:prices.copy}:prices;
 }

@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import Link from "next/link";
+import {englishTemplateFeatures} from "@/lib/sector-en";
 import AddonPrice from "@/components/addon-price";
 import AddonGroups from "@/components/addon-groups";
 import {englishExpansionOptions} from "@/lib/site-copy-en";
@@ -10,9 +11,9 @@ import {loadGuestWorkspace,loadAccountWorkspace,loadPricingDraft,savePricingDraf
 import OwnershipSelector,{ownershipName,ownershipPeriod,isRental,type OwnershipMode,type OwnershipPrices} from "@/components/ownership-selector";
 
 type Addon=CategorizedAddon & {list_price?:number|string;discount_percent?:number|string;required?:boolean;code:string;name:string;description?:string;price:number;pricingType:"fixed"|"monthly"|"yearly"|"per_page"};
-type Catalog={ownershipPrices?:OwnershipPrices|null;slug:string;name:string;basePrice:number|null;pricedAddons?:Addon[];published?:boolean;archived?:boolean};
+type Catalog={description?:string;features?:string[];note?:string;includedAddonCodes?:string[];ownershipPrices?:OwnershipPrices|null;slug:string;name:string;basePrice:number|null;pricedAddons?:Addon[];published?:boolean;archived?:boolean};
 export default function CatalogPricingClient({slug}:{slug:string}){
- const [mode,setMode]=useState<OwnershipMode>("rent");
+ const [mode,setMode]=useState<OwnershipMode>("copy");
  const [edit,setEdit]=useState<PricingDraft|null>(null);const [editReady,setEditReady]=useState(false);const [saveError,setSaveError]=useState("");const [vat,setVat]=useState(14);
  const [catalog,setCatalog]=useState<Catalog|null>(null);
  const [sharedAddons,setSharedAddons]=useState<Addon[]>([]);
@@ -28,12 +29,12 @@ export default function CatalogPricingClient({slug}:{slug:string}){
   let active=true;
   loadPricingDraft().then(async d=>{if(!active)return;setEdit(d);const saved=d?.draft??(new URLSearchParams(window.location.search).has("editWorkspace")?await loadAccountWorkspace():null)??loadGuestWorkspace();
   if(d&&saved.sectorSlug!==slug)throw Error("Project system mismatch");
-  if(saved.sectorSlug===slug){setMode(saved.ownershipMode??"rent");setDetails(saved.businessDescription??"");}
+  if(saved.sectorSlug===slug){setMode(saved.ownershipMode??"copy");setDetails(saved.businessDescription??"");}
   if(saved.sectorSlug===slug)setDomainName(saved.domainName??"");
   if(saved.sectorSlug===slug&&Array.isArray(saved.sectorAddonCodes)){setSelected(saved.sectorAddonCodes.filter(code=>code!=="extra_page"));setPages(saved.sectorAddonCodes.includes("extra_page")?saved.sectorAddonQuantities?.extra_page??1:0);setWritingPages(Object.entries(saved.sectorAddonQuantities??{}).find(([code])=>code!=="extra_page")?.[1]??1);}
   setEditReady(true);}).catch(e=>{if(active)setSaveError(e.message)});
 
-  fetch("/api/site-content/catalog",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();return r.json()}).then(data=>{
+  fetch("/api/site-content/catalog?metadata=1",{cache:"no-store"}).then(async r=>{if(!r.ok)throw Error();return r.json()}).then(data=>{
    if(!active)return;
    const item=(data?.page?.content?.items??[]).find((x:Catalog)=>x.slug===slug&&x.published!==false&&!x.archived);
    if(!item){setStatus("missing");return;}
@@ -53,7 +54,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
   return()=>{active=false};
  },[slug]);
  const en=locale==="en",t=(ar:string,english:string)=>en?english:ar;
- const addons=sharedAddons;
+ const addons=sharedAddons.filter(a=>!catalog?.includedAddonCodes?.includes(a.code));
  const pageAddon=addons.find(a=>a.code==="extra_page");
  const base=catalog?.ownershipPrices?.[mode]?.price??null;
  const chosen=[...new Set([...selected.filter(code=>addons.some(a=>a.code===code)),...addons.filter(a=>a.required&&a.code!=="extra_page").map(a=>a.code)])];
@@ -72,10 +73,11 @@ export default function CatalogPricingClient({slug}:{slug:string}){
  return <main lang={locale} dir={en?"ltr":"rtl"} style={{maxWidth:780,margin:"0 auto",padding:"18px 14px 70px",color:"#203958"}}>
   <Link href={en?"/en/catalog":"/catalog"} style={{color:"#203958"}}>{t("← العودة","← Back")}</Link>
   {status==="loading"?<p>{t("جارٍ تحميل التسعير...","Loading pricing...")}</p>:status==="missing"?<p role="alert">{t("تعذر تحميل النظام المخصص. حاول مجددًا.","Catalog unavailable. Please try again.")}</p>:<div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr)",gap:13,marginTop:20}}>
-   <header><small>{t("تخصيص النظام المخصص","Catalog configuration")}</small><h1 style={{fontSize:"clamp(24px,5vw,34px)",margin:"5px 0"}}>{catalog?.name}</h1><p style={{margin:0,color:"#60728a"}}>{t("النظام المخصص جاهز؛ أضف فقط ما تحتاجه دون اختيار باقة موقع جديدة.","Your catalog is already selected. Add only the features you need.")}</p></header>
-   <section style={cardStyle}><strong>{t("سعر النظام المخصص الأساسي","Catalog base price")}</strong><p style={{fontSize:24,fontWeight:800,margin:"7px 0"}}>{base===null?t("السعر يحدده المسؤول","Price pending admin setup"):money(base)}</p></section>
+   <header><small>{t("تخصيص النظام المخصص","Catalog configuration")}</small><h1 style={{fontSize:"clamp(24px,5vw,34px)",margin:"5px 0"}}>{catalog?.name}</h1><p style={{margin:0,color:"#60728a"}}>{t("المعاينة للتجربة. السعر للعرض الموضح، قبل الاستضافة والدومين والإضافات الاختيارية.","The demo is illustrative. This price covers the listed scope, excluding hosting, domain and optional add-ons.")}</p></header>
+   <section style={cardStyle}><strong>{t("إجمالي النظام حسب طريقة التشغيل","System total for selected delivery type")}</strong><p style={{fontSize:24,fontWeight:800,margin:"7px 0"}}>{base===null?t("يحتاج عرض سعر","Price on request"):money(base)}</p></section>
    <section style={cardStyle}><h2 style={{fontSize:18,margin:"0 0 10px"}}>{t("البحث عن الدومين","Search for a domain")}</h2><DomainLookup locale={locale} source="catalog" value={domainName} onDomainChange={setDomainName}/>{domainName&&<p><small>{t("الدومين المختار","Selected domain")}: <b dir="ltr">{domainName}</b></small></p>}</section>
    <section style={cardStyle}><OwnershipSelector prices={catalog?.ownershipPrices} mode={mode} onChange={setMode} locale={locale}/></section>
+   {!!catalog?.features?.length&&<section style={cardStyle}><h2 style={{fontSize:19}}>{t("المشمول في سعر النظام","Included in the system price")}</h2><ul>{(en?englishTemplateFeatures(slug,catalog.features):catalog.features).map(x=><li key={x}>{x}</li>)}</ul>{catalog.note&&!en&&<p>{catalog.note}</p>}</section>}
    <section className="catalog-addon-section"><h2 style={{fontSize:19,margin:"4px 0 12px"}}>{t("الإضافات والتكاملات","Add-ons and integrations")}</h2>
     <AddonGroups addons={addons} locale={locale} isSelected={a=>a.code==="extra_page"?pages>0||!!a.required:!!a.required||chosen.includes(a.code)} render={a=>a.code==="extra_page"&&pageAddon?<div key={a.code} className={pages>0?"select-card selected":"select-card"} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}><span className="select-card-copy"><strong>{t("صفحات إضافية","Additional pages")}</strong><small>{t("اختر عدد الصفحات الإضافية","Choose additional pages")}</small><AddonPrice item={pageAddon} locale={locale} prefix="+" suffix={t(" / صفحة"," / page")}/></span><span className="page-quantity"><button type="button" disabled={pages<=(pageAddon.required?1:0)} onClick={()=>setPages(n=>Math.max(pageAddon.required?1:0,n-1))} aria-label={t("تقليل الصفحات","Remove page")}>−</button><output aria-live="polite">{pages}</output><button type="button" disabled={pages===5} onClick={()=>setPages(n=>Math.min(5,n+1))} aria-label={t("زيادة الصفحات","Add page")}>+</button></span></div>:<button key={a.code} type="button" disabled={a.required} onClick={()=>setSelected(old=>old.includes(a.code)?old.filter(c=>c!==a.code):[...old,a.code])} aria-pressed={chosen.includes(a.code)} className={chosen.includes(a.code)?"select-card selected":"select-card"} style={{textAlign:"start",cursor:"pointer"}}><span className="select-mark">{chosen.includes(a.code)?"✓":"+"}</span><span className="select-card-copy"><strong>{en?(englishExpansionOptions[a.code]?.name??a.name):a.name}</strong>{a.description&&<small>{en?(englishExpansionOptions[a.code]?.description??a.description):a.description}</small>}<AddonPrice item={a} locale={locale} prefix="+" suffix={a.pricingType==="monthly"?t(" / شهريًا"," / month"):a.pricingType==="yearly"?t(" / سنويًا"," / year"):a.pricingType==="per_page"?t(" / صفحة"," / page"):""}/></span></button>}/>
     {addons.some(a=>a.code!=="extra_page"&&a.pricingType==="per_page"&&chosen.includes(a.code))&&<label style={{display:"grid",gap:6,marginTop:12}}>{t("عدد صفحات المحتوى المطلوب","Number of content pages")}<input type="number" min={1} max={50} value={writingPages} onChange={e=>setWritingPages(Math.max(1,Math.min(50,Math.floor(Number(e.target.value)||1))))}/></label>}
@@ -85,7 +87,7 @@ export default function CatalogPricingClient({slug}:{slug:string}){
     <div style={{color:"#718398",fontSize:14,fontWeight:600}}>{t("ملخص مباشر","Live summary")}</div>
     <h2 style={{fontSize:27,margin:"8px 0 20px"}}>{t("طلبك الحالي","Your current order")}</h2>
     <div style={{background:"#f5f7f9",border:"1px solid #e0e6eb",borderRadius:12,padding:"13px 15px",color:"#718398",fontSize:14,fontWeight:600,marginBottom:18}}>{t("تفاصيل النظام والإضافات المحددة","Selected system and add-ons")}</div>
-    {([{name:catalog?.name??t("النظام المخصص","Custom system"),amount:base??0,period:mode==="rent"?t("سنويًا","Yearly"):mode==="rent_monthly"?t("شهريًا","Monthly"):t("مرة واحدة","One-time")},...addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="monthly"?t("شهريًا","Monthly"):a.pricingType==="yearly"?(a.code==="hosting"?t("اشتراك سنوي لمدة 12 شهرًا","Annual subscription (12 months)"):t("سنويًا","Yearly")):t("مرة واحدة","One-time")})),...(pages>0&&pageAddon?[{name:t(`صفحات إضافية × ${pages}`,`Additional pages × ${pages}`),amount:pages*Number(pageAddon.price),period:t("مرة واحدة","One-time")}]:[]) ]).map((item,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"center",padding:"14px 0",borderBottom:"1px solid #e6e9ed"}}><div style={{textAlign:"start"}}><div>{item.name}</div><small style={{color:"#9aa3ad"}}>{item.period}</small></div><strong style={{whiteSpace:"nowrap",fontSize:14}}>{money(item.amount)}</strong></div>)}
+    {base!==null&&([{name:catalog?.name??t("النظام المخصص","Custom system"),amount:base??0,period:mode==="rent"?t("سنويًا","Yearly"):mode==="rent_monthly"?t("شهريًا","Monthly"):t("مرة واحدة","One-time")},...addons.filter(a=>a.code!=="extra_page"&&chosen.includes(a.code)).map(a=>({name:a.name,amount:amountFor(a),period:a.pricingType==="monthly"?t("شهريًا","Monthly"):a.pricingType==="yearly"?(a.code==="hosting"?t("اشتراك سنوي لمدة 12 شهرًا","Annual subscription (12 months)"):t("سنويًا","Yearly")):t("مرة واحدة","One-time")})),...(pages>0&&pageAddon?[{name:t(`صفحات إضافية × ${pages}`,`Additional pages × ${pages}`),amount:pages*Number(pageAddon.price),period:t("مرة واحدة","One-time")}]:[]) ]).map((item,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:14,alignItems:"center",padding:"14px 0",borderBottom:"1px solid #e6e9ed"}}><div style={{textAlign:"start"}}><div>{item.name}</div><small style={{color:"#9aa3ad"}}>{item.period}</small></div><strong style={{whiteSpace:"nowrap",fontSize:14}}>{money(item.amount)}</strong></div>)}
     <div style={{display:"flex",justifyContent:"space-between",gap:12,padding:"17px 0 10px",color:"#667586"}}><span>{t("المجموع قبل الضريبة","Subtotal before tax")}</span><strong>{base===null?"—":money(baseFixed+fixed+monthly+yearly)}</strong></div>
     <div style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0 17px",borderBottom:"1px solid #dce2e8",color:"#667586"}}><span>{t("ضريبة القيمة المضافة ("+vat+"%)","VAT ("+vat+"%)")}</span><strong>{base===null?"—":money((baseFixed+fixed+monthly+yearly)*vat/100)}</strong></div>
     <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:"20px 0 18px"}}><span style={{color:"#667586"}}>{t("الإجمالي التقديري","Estimated total")}</span><strong style={{fontSize:"clamp(21px,5vw,30px)",color:"#203958",whiteSpace:"nowrap"}}>{base===null?"—":money((baseFixed+fixed+monthly+yearly)*(1+vat/100))}</strong></div>

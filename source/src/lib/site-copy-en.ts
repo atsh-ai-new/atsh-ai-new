@@ -17,14 +17,14 @@ export const siteCopyEn: Record<string,string> = {
   "navFaq": "FAQs",
   "navAction": "Get started",
   "brandTagline": "Digital solutions that make a difference",
-  "heroEyebrow": "Three design concepts and five color directions included",
+  "heroEyebrow": "Choose the website package that fits your needs",
   "heroTitle": "",
   "heroDescription": "Choose your services and see the price as you go.",
   "ctaText": "Configure your project",
   "secondaryCta": "Explore packages",
   "heroTrust1": "Transparent, itemized pricing",
   "heroTrust2": "Flexible customization",
-  "heroTrust3": "Dedicated Arabic-language support",
+  "heroTrust3": "Arabic-language communication",
   "heroPriceLabel": "Indicative business website estimate",
   "heroBrandLine": "Building a smarter digital presence",
   "heroIdentityLine": "Extended brand identity",
@@ -33,7 +33,7 @@ export const siteCopyEn: Record<string,string> = {
   "heroPriceFootnote": "Illustrative estimate — updates with your selections",
   "trust1": "See a price breakdown before submitting",
   "trust2": "Clear design and branding options",
-  "trust3": "Dedicated technical support",
+  "trust3": "Clear project communication",
   "trust4": "From initial request through delivery",
   "whyKicker": "A streamlined process",
   "whyTitle": "A clear path from idea to launch",
@@ -41,7 +41,7 @@ export const siteCopyEn: Record<string,string> = {
   "benefit1Title": "Straightforward pricing",
   "benefit1Description": "Each option is itemized, with tax and recurring charges shown separately.",
   "benefit2Title": "Choose your design",
-  "benefit2Description": "Explore three design directions and five color palettes for your website.",
+  "benefit2Description": "Choose a package with a clearly defined scope.",
   "benefit3Title": "Features that fit",
   "benefit3Description": "Add languages, content and functionality to suit the way your business works.",
   "benefit4Title": "A team by your side",
@@ -107,7 +107,7 @@ export const siteCopyEn: Record<string,string> = {
   "priceSummaryPackageFallback": "Multi-page website",
   "packageReviewPrice": "Priced after scope review",
   "packageStartPrice": "Starting at",
-  "packageIncludedBenefits": "3 designs · 5 color directions",
+  "packageIncludedBenefits": "See what this package includes",
   "requestedPagesLabel": "Required number of pages",
   "includedOnePage": "core page",
   "includedManyPages": "core pages",
@@ -141,7 +141,7 @@ export const siteCopyEn: Record<string,string> = {
   "domainLabel": "Preferred domain",
   "domainComLabel": ".com",
   "domainEgLabel": ".eg",
-  "domainIncluded": "First year included",
+  "domainIncluded": "Priced separately",
   "domainOnDemand": "Price on request",
   "domainOwn": "I already have a domain",
   "maintenanceTitle": "Maintenance & technical assistance",
@@ -239,31 +239,30 @@ export const englishPackages: Record<string,{name:string;short:string;descriptio
   "landing": {
     "name": "One-page website",
     "short": "Landing page",
-    "description": "A focused, high-impact website for one service or campaign.",
+    "description": "One responsive landing page for a single offer.",
     "features": [
-      "One page",
-      "Three design concepts",
-      "Five color palettes"
+      "One responsive landing page",
+      "One offer"
     ]
   },
   "multi": {
     "name": "Multi-page website",
     "short": "Business website",
-    "description": "A professional business presence with up to five core pages.",
+    "description": "Up to five pages using a consistent design and customer-supplied content.",
     "features": [
       "Up to 5 pages",
-      "Three design concepts",
-      "Five color palettes"
+      "Consistent design",
+      "Customer-supplied content"
     ]
   },
   "dynamic": {
     "name": "Content-managed website",
     "short": "Dynamic website",
-    "description": "A scalable site with content management and a database.",
+    "description": "Up to five pages with a content management panel and database.",
     "features": [
       "Up to 5 pages",
-      "Content management",
-      "Room to grow"
+      "Content management panel",
+      "Database"
     ]
   },
   "enterprise": {
