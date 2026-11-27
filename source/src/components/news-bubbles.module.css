@@ -1,0 +1,82 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px clamp(6px,1.2vw,16px);
+  background: var(--news-bg);
+  color: var(--news-ink);
+  border-bottom: 1px solid color-mix(in srgb,var(--news-ink) 12%,var(--news-bg));
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.viewport { min-width: 0; flex: 1; overflow: hidden; container-type: inline-size; }
+.track {
+  display: flex;
+  direction: ltr;
+  width: max-content;
+  animation: drift var(--news-duration) linear infinite;
+}
+.bar[dir="rtl"] .track { animation-direction: reverse; }
+.items {
+  display: flex;
+  flex: none;
+  justify-content: space-around;
+  align-items: center;
+  gap: clamp(8px,1.3vw,16px);
+  list-style: none;
+  min-width: 100cqi;
+  margin: 0;
+  padding: 3px 8px;
+}
+.bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-inline-size: min(36rem,calc(100cqi - 16px));
+  min-height: 32px;
+  padding: 5px clamp(10px,1.2vw,16px);
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb,var(--news-ink) 16%,var(--news-bg));
+  background: color-mix(in srgb,var(--news-ink) 5%,var(--news-bg));
+  color: var(--news-ink);
+  overflow-wrap: anywhere;
+}
+.bubble::before {
+  content: "";
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .65;
+}
+a.bubble:hover { text-decoration: underline; }
+.toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb,var(--news-ink) 16%,var(--news-bg));
+  background: var(--news-bg);
+  color: var(--news-ink);
+  cursor: pointer;
+}
+@media (hover: hover) { .bar:hover .track { animation-play-state: paused; } }
+.bar[data-paused="true"] .track,
+.bar:has(.items a:focus-visible) .track { animation: none; width: 100%; }
+.bar[data-paused="true"] .items,
+.bar:has(.items a:focus-visible) .items { flex-wrap: wrap; flex: 1; }
+.bar[data-paused="true"] .items[aria-hidden],
+.bar:has(.items a:focus-visible) .items[aria-hidden] { display: none; }
+
+@keyframes drift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .bar .track { animation: none; width: 100%; }
+  .bar .items { flex-wrap: wrap; flex: 1; }
+  .bar .items[aria-hidden], .bar .toggle { display: none; }
+}
