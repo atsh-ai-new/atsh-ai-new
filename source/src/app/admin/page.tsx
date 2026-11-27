@@ -42,7 +42,7 @@ const nav: Array<{ id: View; label: string; icon: string }> = [
   { id: "pages", label: "صفحات المنصة", icon: "▧" }, { id: "works", label: "سجل الأعمال السابقة", icon: "▣" },
   { id: "options", label: "المنتجات", icon: "▦" },
   { id: "content-studio", label: "منشئ المحتوى", icon: "✦" },
-  { id: "videos", label: "إدارة الفيديوهات", icon: "▶" },
+  { id: "videos", label: "فيديوهات المنصة", icon: "▶" },
   { id: "messages", label: "مركز المراسلات", icon: "✉" },
   { id: "journey", label: "المشاريع", icon: "◎" },
   { id: "commercial", label: "العروض والعقود", icon: "▤" },
@@ -53,7 +53,8 @@ const adminGroups: Array<{label:string;views:View[];showChildren?:boolean}>= [
  {label:"نظرة عامة",views:["overview"]},
  {label:"المراسلات",views:["messages"]},
  {label:"العملاء",views:["inbox","journey"]},
- {label:"محتوى المنصة",views:["pages","options","content-studio","videos"],showChildren:true},
+ {label:"محتوى المنصة",views:["pages","options"],showChildren:true},
+ {label:"فيديو",views:["content-studio","videos"],showChildren:true},
  {label:"الفريق",views:["team"]},
  {label:"المساعد الذكي",views:["assistant-knowledge"]}
 ];
