@@ -19,7 +19,7 @@ for(const kind of ["package","sector"] as const)test(kind+" ownership selector, 
   return route.fulfill({json:{}});
  });
  await page.goto(kind==="package"?"/configure?package=landing":direct);
- await expect(page.locator('input[value="rent"]')).toBeChecked();
+ await expect(page.locator('input[value="copy"]')).toBeChecked();
  await expect(page.getByText("استضافة أساسية",{exact:true})).toHaveCount(1);
  await expect(page.getByText(/معادل الشهر عند الدفع السنوي مقدمًا/)).toBeVisible();
  await page.locator('input[value="rent_monthly"]').check();
