@@ -1,10 +1,5 @@
 name: Egyptian pronunciation A-B refinement (no deployment)
 on:
-  pull_request:
-    paths:
-      - 'source/dialect-voice-engine/pronunciation_trial.py'
-      - 'source/dialect-voice-engine/pronunciation_review.py'
-      - '.github/workflows/studio-egyptian-pronunciation.yml'
   workflow_dispatch:
 permissions:
   contents: read

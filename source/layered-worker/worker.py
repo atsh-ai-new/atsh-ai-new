@@ -38,7 +38,7 @@ def process(api,job):
     result="/api/integrations/content-studio/"+id+"/result"
     def voice(line):
         if cancel.is_set():raise RuntimeError("cancelled")
-        _,b=api.call(prefix+"voice",{**common,"lineId":line},limit=4*1024*1024,timeout=105)
+        _,b=api.call(prefix+"voice",{**common,"lineId":line},limit=4*1024*1024,timeout=195)
         return b
     try:
         with tempfile.TemporaryDirectory(prefix="atsh-layered-") as tmp:

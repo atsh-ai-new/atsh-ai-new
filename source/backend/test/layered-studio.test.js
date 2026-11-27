@@ -23,3 +23,12 @@ test("music library accepts bounded WAV metadata, rejects arbitrary payload",()=
  assert.equal(assetSchema.safeParse(a).success,true);
  assert.equal(assetSchema.safeParse({...a,audio:"bm90LWF1ZGlv"}).success,false);
 });
+
+test("location classification is restricted to reusable backgrounds",()=>{
+ const b=Buffer.alloc(30);b.write("RIFF");b.writeUInt32LE(22,4);b.write("WEBP",8);b.write("VP8X",12);const image=b.toString("base64");
+ const a={kind:"background",name:"مطعم",category:"background",locationType:"restaurant",images:[{pose:"stand",image}]};
+ assert.equal(assetSchema.safeParse(a).success,true);
+ assert.equal(assetSchema.safeParse({...a,locationType:"invalid"}).success,false);
+ assert.equal(assetSchema.safeParse({...a,kind:"prop",category:"object"}).success,false);
+ const {locationType,...legacy}=a;assert.equal(assetSchema.safeParse(legacy).success,true);
+});

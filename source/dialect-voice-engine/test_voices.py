@@ -50,6 +50,20 @@ class VoiceTests(unittest.TestCase):
         with patch("service.sha",return_value="1578a9b27d01a0626227225b148179628b770607dd61bdbbc41865bd399106b1"):
             for candidate in (False,True):
                 with self.assertRaisesRegex(ValueError,"rejected"):registry(self.root,{"gulf-female":c},candidate)
+    def test_provisional_voicetut_is_opt_in(self):
+        import hashlib,os
+        from unittest.mock import patch
+        (self.root/"voicetut").mkdir()
+        ref=self.root/"ref.wav"
+        c={"engine":"voicetut","model":"voicetut","reference":"ref.wav","referenceSha256":hashlib.sha256(ref.read_bytes()).hexdigest(),"transcript":"أهلًا","source":"synthetic","commercialRights":True,"approved":False,"provisional":True}
+        with patch.dict(os.environ,{"ENABLE_PROVISIONAL_EGYPTIAN":"0"}):
+            self.assertEqual(registry(self.root,{"egyptian-male":c}),{})
+        with patch.dict(os.environ,{"ENABLE_PROVISIONAL_EGYPTIAN":"1"}):
+            self.assertTrue(registry(self.root,{"egyptian-male":c})["egyptian-male"]["provisional"])
+            with self.assertRaisesRegex(ValueError,"rights"):
+                registry(self.root,{"egyptian-male":{**c,"commercialRights":False}})
+            with self.assertRaisesRegex(ValueError,"digest"):
+                registry(self.root,{"egyptian-male":{**c,"referenceSha256":"bad"}})
     def test_no_silent_fallback(self):
         with self.assertRaisesRegex(ValueError,"Unavailable voice"):synthesize({},{"voiceId":"saidi-female","text":"أهلًا"})
     def test_prompt_and_decoder(self):

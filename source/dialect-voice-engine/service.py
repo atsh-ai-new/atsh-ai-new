@@ -23,7 +23,7 @@ def registry(root, config, candidates=False):
     for id, entry in config.items():
         if id not in IDS or not isinstance(entry,dict):raise ValueError("Invalid voice ID")
         # A candidate is never exposed to production even if the files exist.
-        if not candidates and entry.get("approved") is not True:continue
+        if not candidates and entry.get("approved") is not True and not (entry.get("engine")=="voicetut" and entry.get("provisional") is True and os.environ.get("ENABLE_PROVISIONAL_EGYPTIAN")=="1"):continue
         engine=entry.get("engine","piper")
         if engine=="piper":
             model=local_asset(root,entry.get("model"),".onnx")
@@ -51,6 +51,19 @@ def registry(root, config, candidates=False):
             with wave.open(str(reference),"rb") as w:
                 identity=("reference",hashlib.sha256(w.readframes(w.getnframes())).hexdigest())
             item={"engine":engine,"model":str(model),"codec":str(codec),"reference":str(reference),"transcript":transcript}
+        elif engine=="voicetut":
+            if id not in EGYPTIAN_IDS or entry.get("commercialRights") is not True:raise ValueError("Egyptian voice rights not confirmed")
+            if entry.get("source") not in ("synthetic","human"):raise ValueError("Document reference origin")
+            if youth_voice(id) and entry.get("source")!="synthetic" and entry.get("guardianConsent") is not True:raise ValueError("Youth reference requires consent")
+            model=local_asset(root,entry.get("model"),directory=True)
+            reference=local_asset(root,entry.get("reference"),".wav")
+            transcript=entry.get("transcript")
+            if not isinstance(transcript,str) or not transcript.strip() or len(transcript)>500 or "<|" in transcript:raise ValueError("Reference transcript required")
+            with wave.open(str(reference),"rb") as w:
+                if w.getnchannels()!=1 or w.getsampwidth()!=2 or w.getframerate() not in (16000,24000) or not 2<=w.getnframes()/w.getframerate()<=15:raise ValueError("Invalid VoiceTut reference")
+                identity=("reference",hashlib.sha256(w.readframes(w.getnframes())).hexdigest())
+            if sha(reference)!=entry.get("referenceSha256"):raise ValueError("Voice reference digest mismatch")
+            item={"engine":engine,"model":str(model),"reference":str(reference),"transcript":transcript,"provisional":entry.get("approved") is not True}
         else:raise ValueError("Unknown engine")
         if identity in seen:raise ValueError("Do not reuse a voice identity under a different dialect/gender")
         seen.add(identity);result[id]=item
@@ -69,6 +82,10 @@ def synthesize(models,body):
             cmd=["piper","-m",entry["model"],"-f",str(target),"--length-scale",str(1/speed)]
             if entry["speaker"] is not None:cmd+=["--speaker",str(entry["speaker"])]
             subprocess.run(cmd,input=text.encode("utf-8"),check=True,timeout=20,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            filters=[]
+        elif entry["engine"]=="voicetut":
+            from voicetut_backend import render
+            render(entry,text,speed,target)
             filters=[]
         else:
             subprocess.run([sys.executable,str(Path(__file__).with_name("audar_backend.py")),str(target)],
@@ -102,6 +119,9 @@ def main():
         import importlib.util
         if any(importlib.util.find_spec(m) is None for m in ("llama_cpp","neucodec","torch","soundfile")):
             raise RuntimeError("Build the Audar runtime before enabling approved profiles")
+    if any(v["engine"]=="voicetut" for v in models.values()):
+        from voicetut_backend import load_model
+        for model in {v["model"] for v in models.values() if v["engine"]=="voicetut"}:load_model(model)
     token=os.environ["CHARACTER_DIALECT_SERVICE_TOKEN"]
     if not re.fullmatch("[a-f0-9]{64}",token):raise ValueError("64 hex token required")
     slot=BoundedSemaphore(1)
@@ -113,7 +133,7 @@ def main():
         def do_GET(self):
             if not self.authorized():return self.reply(401)
             if self.path!="/voices":return self.reply(404)
-            self.reply(200,json.dumps({"voices":sorted(models)}).encode())
+            self.reply(200,json.dumps({"voices":sorted(models),"provisional":[k for k,v in models.items() if v.get("provisional")]}).encode())
         def do_POST(self):
             if not self.authorized():return self.reply(401)
             if self.path!="/voice-preview":return self.reply(404)

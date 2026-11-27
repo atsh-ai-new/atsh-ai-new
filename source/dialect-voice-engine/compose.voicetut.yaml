@@ -1,0 +1,11 @@
+# Dedicated voice host only: never deploy this on the shared 3.7 GiB VPS.
+services:
+  dialect-voice:
+    build:
+      context: .
+      dockerfile: Dockerfile.voicetut
+    mem_limit: 6g
+    environment:
+      ENABLE_PROVISIONAL_EGYPTIAN: ${ENABLE_PROVISIONAL_EGYPTIAN:-0}
+    tmpfs:
+      - /tmp:size=192m,mode=1777

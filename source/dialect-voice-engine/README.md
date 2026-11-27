@@ -126,3 +126,19 @@ specifically compare qaf, gim, emphatic consonants, vowel length, phrasing and
 local identity. If regional pronunciation is not authentic, acquire licensed
 native reference voices rather than relabeling general Egyptian voices. Baseline
 artifacts are short-lived experimental assets; rerun the family audition if expired.
+
+### Temporary Egyptian voice bank (owner accepted for interim work)
+Do not rerun the expensive trials just to reconstruct the same identities.
+Keep the preserved 18-reference archive and manifest privately. These are
+synthetic provisional voices; regional accent authenticity is not certified.
+Stage the archive using `python import_voicetut_refs.py /srv/atsh/voices /private/ATSH-Egyptian-Voice-References.zip`.
+Review commercial model and reference rights before repeating with
+`--rights-reviewed`. Install the exact pinned revision
+`mohammedaly22/VoiceTut-TTS@b36bdf4416864d84f47ca77ce3decf34f6ab16cc`
+under /srv/atsh/voices/voicetut. Use the dedicated host overlay
+`docker compose -f compose.yaml -f compose.voicetut.yaml build`.
+Set ENABLE_PROVISIONAL_EGYPTIAN=1 only on that host after sizing and
+a real end-to-end test, then configure its 18 stable IDs in the backend.
+Never enable on the shared 3.7 GiB VPS. The provisional flag stays visible
+to the administrator; replace an identity by updating its private profile,
+not renaming the project voice ID. Existing approved identities are preserved.

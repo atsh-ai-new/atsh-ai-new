@@ -93,3 +93,14 @@ The render test creates synthetic artwork/audio and verifies the actual
 1920×1080 MP4 containing two scenes and an audio stream. No production
 media or secrets are needed. Actual server and regional voice models still
 require staging certification before deployment.
+
+### Unified studio workspace
+Only `layers-v1` projects appear in the new studio UI. Old records and API
+compatibility are retained, but the previous creation and computer-portrait
+interfaces are not shown. The asset library includes an optional, repeat-safe
+starter import (19 original illustrative assets, 40 variants including talk,
+walk, sit, outfit and door states); use the existing authenticated asset
+routes and the location filter. The graphics are illustrative, not
+photorealistic source material. The temporary VoiceTut voice bank is staged
+separately from the renderer (see dialect-voice-engine/README.md).
+The previously measured shared server must not run the heavy neural engine.

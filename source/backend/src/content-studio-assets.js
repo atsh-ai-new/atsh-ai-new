@@ -25,16 +25,23 @@ const voice=z.object({voiceId:voiceIdSchema.optional(),pitch:z.number().min(-3).
 export const audioData=z.string().max(1400000).refine(s=>{const b=Buffer.from(s,"base64");return b.length>=12&&b.toString("base64")===s&&((b.toString("ascii",0,4)==="RIFF"&&b.toString("ascii",8,12)==="WAVE")||b.toString("ascii",0,3)==="ID3"||(b[0]===255&&(b[1]&224)===224));},"اختر صوت WAV أو MP3 صالحًا");
 export const assetSchema=z.discriminatedUnion("kind",[
  z.object({kind:z.literal("hero"),name:z.string().trim().min(1).max(80),category:z.enum(["human","animal"]).optional(),images:imagesSchema,voice,rig:rigSchema.optional(),outfits:outfitsSchema.optional()}).strict(),
- z.object({kind:z.enum(["background","prop"]),name:z.string().trim().min(1).max(80),category:z.enum(["background","vehicle","door","object"]).optional(),images:z.array(heroImage).min(1).max(3).refine(v=>new Set(v.map(x=>x.pose)).size===v.length)}).strict()
+ z.object({kind:z.enum(["background","prop"]),name:z.string().trim().min(1).max(80),category:z.enum(["background","vehicle","door","object"]).optional(),locationType:z.enum(["restaurant","school","clinic","shop","office","home","street","workshop","hospital","other"]).optional(),images:z.array(heroImage).min(1).max(3).refine(v=>new Set(v.map(x=>x.pose)).size===v.length)}).strict()
 ,
  z.object({kind:z.literal("music"),name:z.string().trim().min(1).max(80),category:z.enum(["music","effect"]),images:z.array(heroImage).length(0),audio:audioData}).strict()
-]).superRefine((asset,ctx)=>{if(asset.kind==="music")return;if(asset.kind!=="hero"){if(!asset.images.some(i=>i.pose==="stand"))ctx.addIssue({code:"custom",message:"أضف الصورة الأساسية"});if(asset.kind==="background"&&asset.images.length!==1)ctx.addIssue({code:"custom",message:"الخلفية صورة واحدة"});}else{const size=[asset,...(asset.outfits||[])].reduce((n,a)=>n+a.images.reduce((m,i)=>m+i.image.length,0)+(a.rig||[]).reduce((m,i)=>m+i.image.length,0),0);if(size>3400000)ctx.addIssue({code:"custom",message:"حجم أصل الشخصية أكبر من الحد المسموح"});}});
+]).superRefine((asset,ctx)=>{if(asset.kind==="music")return;if(asset.kind!=="hero"){if(asset.kind!=="background"&&asset.locationType)ctx.addIssue({code:"custom",message:"تصنيف المكان للخلفيات فقط"});if(!asset.images.some(i=>i.pose==="stand"))ctx.addIssue({code:"custom",message:"أضف الصورة الأساسية"});if(asset.kind==="background"&&asset.images.length!==1)ctx.addIssue({code:"custom",message:"الخلفية صورة واحدة"});}else{const size=[asset,...(asset.outfits||[])].reduce((n,a)=>n+a.images.reduce((m,i)=>m+i.image.length,0)+(a.rig||[]).reduce((m,i)=>m+i.image.length,0),0);if(size>3400000)ctx.addIssue({code:"custom",message:"حجم أصل الشخصية أكبر من الحد المسموح"});}});
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function registerStudioAssetRoutes(app,{pool,requireAdmin,requirePermission,requireRole,roles,route}){
  const auth=[requireAdmin,requirePermission("assistant"),requireRole(...roles)],path="/api/admin/content-studio/assets";
  app.get(path,...auth,route(async(req,res)=>{
-  const q=await pool.query("SELECT id,kind,name,archived,revision,updated_at,payload->>'category' AS category FROM content_studio_assets ORDER BY archived,updated_at DESC LIMIT 200");
+  const q=await pool.query("SELECT id,kind,name,archived,revision,updated_at,payload->>'category' AS category,payload->>'locationType' AS \"locationType\" FROM content_studio_assets ORDER BY archived,updated_at DESC LIMIT 200");
   res.json({assets:q.rows});
+ }));
+ app.get(path+"/:id/thumbnail",...auth,route(async(req,res)=>{
+  if(!uuid.test(req.params.id))return res.status(404).end();
+  const q=await pool.query("SELECT payload->'images'->0->>'image' AS image FROM content_studio_assets WHERE id=$1",[req.params.id]);
+  const image=q.rows[0]?.image;
+  if(!validWebp(image))return res.status(404).end();
+  res.set("Cache-Control","private, max-age=300").type("image/webp").send(Buffer.from(image,"base64"));
  }));
  app.get(path+"/:id",...auth,route(async(req,res)=>{
   if(!uuid.test(req.params.id))return res.status(404).end();

@@ -1120,7 +1120,7 @@ const contentStudioJsonSchema={
 };
 const contentStudioRoles=["owner","admin","editor"];
 const contentStudioId=req=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.params.id);
-function contentStudioSummary(row){return {id:row.id,title:row.title,source_filename:row.source_filename,status:row.status,updated_at:row.updated_at,video_generated_at:row.video_generated_at,video_size:row.video_size,is_cartoon:Boolean(row.is_cartoon),has_video:Boolean(row.video_data||row.video_size)};}
+function contentStudioSummary(row){return {id:row.id,title:row.title,source_filename:row.source_filename,status:row.status,updated_at:row.updated_at,video_generated_at:row.video_generated_at,video_size:row.video_size,is_cartoon:Boolean(row.is_cartoon),renderer:row.renderer||null,has_video:Boolean(row.video_data||row.video_size)};}
 function decodeBase64Header(value,maxBytes){
   if(!value)return "";
   if(value.length>Math.ceil(maxBytes/3)*4+8||!/^[A-Za-z0-9+/]*={0,2}$/.test(value))throw new Error("ملاحظات المدير غير صالحة.");
@@ -1182,7 +1182,7 @@ registerStudioAssetRoutes(app,{pool,requireAdmin,requirePermission,requireRole,r
 registerCharacterRoutes(app,{pool,requireAdmin,requirePermission,requireRole,roles:contentStudioRoles,route,rateLimit,updateSchema:contentStudioUpdateSchema,auditChange});
 app.get("/api/admin/content-studio/status",requireAdmin,requirePermission("assistant"),requireRole(...contentStudioRoles),(_req,res)=>res.json({aiConfigured:Boolean(process.env.OPENAI_API_KEY&&process.env.OPENAI_MODEL),aiModel:process.env.OPENAI_MODEL||null,workflowConfigured:Boolean(process.env.N8N_AD_APPROVED_PLAN_URL&&process.env.N8N_AD_APPROVED_PLAN_TOKEN),characterVideoConfigured:characterConfigured(),characterSpeechLanguage:"ar-MSA",characterVoiceCount:1}));
 app.get("/api/admin/content-studio",requireAdmin,requirePermission("assistant"),requireRole(...contentStudioRoles),route(async(_req,res)=>{
-  const result=await pool.query("SELECT id,title,source_filename,status,updated_at,video_generated_at,video_size,video_size AS has_video,production_plan ? 'animation' AS is_cartoon FROM content_studio_drafts ORDER BY updated_at DESC LIMIT 100");
+  const result=await pool.query("SELECT id,title,source_filename,status,updated_at,video_generated_at,video_size,video_size AS has_video,production_plan ? 'animation' AS is_cartoon,production_plan->'animation'->>'renderer' AS renderer FROM content_studio_drafts WHERE ($1::text IS NULL OR production_plan->'animation'->>'renderer'=$1) ORDER BY updated_at DESC LIMIT 100",[_req.query.renderer==="layers-v1"?"layers-v1":null]);
   res.json({drafts:result.rows.map(contentStudioSummary)});
 }));
 app.post("/api/admin/content-studio/analyze",requireAdmin,requirePermission("assistant"),requireRole(...contentStudioRoles),rateLimit({windowMs:60*60*1000,limit:12,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
