@@ -17,6 +17,11 @@ export function openDb(path){
  CREATE TABLE IF NOT EXISTS order_items(order_id TEXT NOT NULL REFERENCES orders(id),variant_id TEXT NOT NULL REFERENCES variants(id),name TEXT NOT NULL,sku TEXT NOT NULL,quantity INTEGER NOT NULL,price INTEGER NOT NULL,PRIMARY KEY(order_id,variant_id));
  CREATE TABLE IF NOT EXISTS payment_events(id TEXT PRIMARY KEY,store_id TEXT NOT NULL REFERENCES stores(id),order_id TEXT NOT NULL REFERENCES orders(id),created INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY,store_id TEXT NOT NULL REFERENCES stores(id),kind TEXT NOT NULL,payload TEXT NOT NULL,created INTEGER NOT NULL,delivered INTEGER);
+ CREATE TABLE IF NOT EXISTS store_pages(id TEXT PRIMARY KEY,store_id TEXT NOT NULL REFERENCES stores(id),slug TEXT NOT NULL,title TEXT NOT NULL,content TEXT NOT NULL,published INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,UNIQUE(store_id,slug));
+ CREATE TABLE IF NOT EXISTS stock_movements(id TEXT PRIMARY KEY,store_id TEXT NOT NULL REFERENCES stores(id),branch_id TEXT NOT NULL REFERENCES branches(id),variant_id TEXT NOT NULL REFERENCES variants(id),delta INTEGER NOT NULL,balance INTEGER NOT NULL,kind TEXT NOT NULL,reference TEXT,actor TEXT,created INTEGER NOT NULL);
+ CREATE INDEX IF NOT EXISTS movements_by_store ON stock_movements(store_id,created DESC);
+ CREATE TABLE IF NOT EXISTS order_returns(order_id TEXT PRIMARY KEY REFERENCES orders(id),store_id TEXT NOT NULL REFERENCES stores(id),reason TEXT NOT NULL,amount INTEGER NOT NULL,restocked INTEGER NOT NULL,actor TEXT NOT NULL,created INTEGER NOT NULL);
+ CREATE INDEX IF NOT EXISTS orders_by_store ON orders(store_id,created DESC);
  CREATE TABLE IF NOT EXISTS audit(id TEXT PRIMARY KEY,store_id TEXT NOT NULL REFERENCES stores(id),member_id TEXT NOT NULL,action TEXT NOT NULL,data TEXT NOT NULL,created INTEGER NOT NULL);`);
  return db;
 }

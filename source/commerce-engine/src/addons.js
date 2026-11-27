@@ -1,5 +1,5 @@
 // No local prices. The only source of truth is the centrally managed catalog.
-export const nativeCapabilities=new Set(['coupons_discounts','multi_branch']);
+export const nativeCapabilities=new Set(['coupons_discounts','multi_branch','extra_page']);
 export const providerCapabilities=new Set(['payment_gateway','shipping_integration','workflow_automation','notifications','email_sms_integration','api_integration','ai_assistant','smart_bot','whatsapp_bot','campaign_tracking']);
 export const included=new Set(['admin_dashboard','internal_search']);
 export function addonView(snapshot,configured=[]){
@@ -17,3 +17,6 @@ export async function snapshotFor(store,{base,secret,fetcher=fetch}={}){
  return data;
 }
 export function enabled(snapshot,configured=[]){return addonView(snapshot,configured).filter(x=>['enabled','configured','included'].includes(x.status)).map(x=>x.code)}
+
+// One explicitly granted active extra_page entitlement row equals one extra page.
+export function pageQuota(snapshot){const n=snapshot.quantities?.extra_page;return snapshot.activeCodes.includes('extra_page')&&Number.isSafeInteger(n)&&n>0?n:0}
