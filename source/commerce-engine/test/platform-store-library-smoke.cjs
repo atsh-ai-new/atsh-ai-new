@@ -7,7 +7,7 @@ const assert=require('node:assert/strict');
  const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  let approved=false;
  const tariffs=Object.fromEntries(['rent','rent_monthly','copy','code'].map((m,i)=>[m,{price:1000*(i+1),list_price:1000*(i+1),initial_price:1000*(i+1),discount_percent:0,period:m==='rent'?'yearly':m==='rent_monthly'?'monthly':'fixed'}]));
- await page.route('**/api/site-content/catalog?metadata=1',r=>r.fulfill({json:{page:{content:{items:[{slug:'commerce-engine',name:'ATSH Store',published:approved,basePrice:null,ownershipPrices:tariffs}]}},vatRate:14}}));
+ await page.route(url=>url.pathname==='/api/site-content/catalog'&&url.searchParams.get('metadata')==='1'&&(!url.searchParams.has('system')||url.searchParams.get('system')==='commerce-engine'),r=>r.fulfill({json:{page:{content:{items:[{slug:'commerce-engine',name:'ATSH Store',published:approved,basePrice:null,ownershipPrices:tariffs}]}},vatRate:14}}));
  await page.route('**/api/catalog',r=>r.fulfill({json:{sharedOptions:[{code:'extra_page',name:'Additional pages',price:690,pricing_type:'per_page',list_price:690,discount_percent:0,visibility:'all'}]}}));
  await page.route('**/api/customer/auth/me',r=>r.fulfill({status:401,json:{}}));
  await page.goto(base+'/en/stores');
