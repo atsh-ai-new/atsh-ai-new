@@ -7,9 +7,10 @@ test("voice identity catalogue requires distinct configured identities",()=>{
  const original={...process.env};
  try{
  delete process.env.CHARACTER_DIALECT_SERVICE_URL;delete process.env.CHARACTER_DIALECT_SERVICE_TOKEN;
- assert.equal(voiceCatalog().length,11);assert.equal(voiceAvailable("saidi-female"),false);
+ assert.equal(voiceCatalog().length,23);assert.equal(new Set(voiceCatalog().map(v=>v.id)).size,23);assert.equal(voiceAvailable("saidi-female"),false);
  process.env.CHARACTER_DIALECT_SERVICE_URL="http://dialect-voice:8080";process.env.CHARACTER_DIALECT_SERVICE_TOKEN="a".repeat(64);process.env.CHARACTER_DIALECT_VOICES='["egyptian-female"]';
- assert.equal(voiceAvailable("egyptian-female"),true);assert.equal(voiceAvailable("saidi-female"),false);
+ assert.equal(voiceAvailable("egyptian-female"),true);assert.equal(voiceAvailable("saidi-female"),false);assert.equal(voiceAvailable("egyptian-child-female"),false);
+ process.env.CHARACTER_DIALECT_VOICES='["saidi-teen-female","alexandrian-child-male"]';assert.equal(voiceAvailable("saidi-teen-female"),true);assert.equal(voiceAvailable("alexandrian-child-male"),true);assert.equal(voiceAvailable("egyptian-male"),false);
  }finally{for(const k of ["CHARACTER_DIALECT_SERVICE_URL","CHARACTER_DIALECT_SERVICE_TOKEN","CHARACTER_DIALECT_VOICES"]){if(original[k]===undefined)delete process.env[k];else process.env[k]=original[k];}}
 });
 test("worker authentication and missing artwork fail closed",()=>{

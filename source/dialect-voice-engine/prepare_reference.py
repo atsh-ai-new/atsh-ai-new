@@ -1,7 +1,7 @@
 """Local-only registration of consented candidate voices; never switches on a profile."""
 import argparse, hashlib, json, os, subprocess, tempfile, wave
 from pathlib import Path
-from service import IDS
+from service import IDS,youth_voice
 
 def digest_pcm(p):
     with wave.open(str(p),"rb") as w:
@@ -17,16 +17,19 @@ def digest_pcm(p):
             raise ValueError("Recording is silent or too quiet")
         return hashlib.sha256(pcm).hexdigest()
 
-def prepare(root, voice_id, audio, transcript, consent_record):
+def prepare(root, voice_id, audio, transcript, consent_record, *, guardian_record=None, synthetic=False):
     root=Path(root).resolve()
     if voice_id not in IDS:
-        raise ValueError("Unknown dialect/gender ID")
+        raise ValueError("Unknown voice identity")
     transcript=transcript.strip()
     if not transcript or len(transcript)>500 or "<|" in transcript:
         raise ValueError("Exact spoken transcript required")
     consent_record=Path(consent_record).resolve()
     if not consent_record.is_file() or consent_record.stat().st_size<10:
         raise ValueError("Document the speaker's explicit commercial synthesis consent first")
+    if youth_voice(voice_id) and not synthetic:
+        if guardian_record is None or not Path(guardian_record).is_file() or Path(guardian_record).stat().st_size<10:
+            raise ValueError("Youth reference requires documented guardian consent")
     manifest=root/"profiles.json"
     config=json.loads(manifest.read_text(encoding="utf-8"))
     if config.get(voice_id,{}).get("approved"):
@@ -50,7 +53,9 @@ def prepare(root, voice_id, audio, transcript, consent_record):
         if not dest.exists():os.replace(wav,dest)
         config[voice_id]={"engine":"audar","model":"audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
                           "codec":"neucodec","reference":relative,"transcript":transcript,
-                          "commercialRights":True,"approved":False}
+                          "commercialRights":True,"approved":False,
+                          "source":"synthetic" if synthetic else "human",
+                          "guardianConsent":bool(guardian_record and not synthetic)}
         config_tmp=Path(tmp)/"profiles.json"
         config_tmp.write_text(json.dumps(config,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
         os.chmod(config_tmp,0o640)
@@ -65,7 +70,9 @@ def main():
     p.add_argument("--transcript-file",required=True,type=Path)
     p.add_argument("--consent-record",required=True,type=Path,
                    help="Private record of explicit speaker consent; not copied into registry")
+    p.add_argument("--guardian-record",type=Path,help="Private guardian authorization for a real child or teen voice")
+    p.add_argument("--synthetic",action="store_true",help="Licensed fictional reference, not a real minor recording")
     a=p.parse_args()
-    print("Prepared candidate:",prepare(a.root,a.voice_id,a.audio,a.transcript_file.read_text(encoding="utf-8"),a.consent_record))
+    print("Prepared candidate:",prepare(a.root,a.voice_id,a.audio,a.transcript_file.read_text(encoding="utf-8"),a.consent_record,guardian_record=a.guardian_record,synthetic=a.synthetic))
     print("Not enabled. Run audition and native-dialect review first.")
 if __name__=="__main__":main()

@@ -68,8 +68,7 @@ up to 1 MB each. Use licensed artwork and recordings.
   apply; heartbeat refreshes actively running work.
 
 ### Distinct, locally synthesized accents
-The ten voice identities are **Egyptian, Alexandrian, Saidi, Saudi and Gulf,
-male and female** plus the existing MSA voice. Do not mark an identity ready
+The 18 priority Egyptian identities include **Cairene, Alexandrian, Saidi**, each with adult male/female, young child male/female and teen male/female. Four legacy Saudi/Gulf adult identities and the local MSA voice remain compatible. Do not mark an identity ready
 until a genuine model has been sourced, tested with native speakers and
 licensed for this deployment. No accent or gender fallback is used.
 `dialect-voice-engine/` is a private CPU Piper adapter, not bundled model

@@ -17,6 +17,46 @@
     "commercialRights": false,
     "approved": false
   },
+  "egyptian-child-male": {
+    "engine": "audar",
+    "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
+    "codec": "neucodec",
+    "reference": "references/egyptian-child-male.wav",
+    "transcript": "",
+    "commercialRights": false,
+    "approved": false,
+    "guardianConsent": false
+  },
+  "egyptian-child-female": {
+    "engine": "audar",
+    "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
+    "codec": "neucodec",
+    "reference": "references/egyptian-child-female.wav",
+    "transcript": "",
+    "commercialRights": false,
+    "approved": false,
+    "guardianConsent": false
+  },
+  "egyptian-teen-male": {
+    "engine": "audar",
+    "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
+    "codec": "neucodec",
+    "reference": "references/egyptian-teen-male.wav",
+    "transcript": "",
+    "commercialRights": false,
+    "approved": false,
+    "guardianConsent": false
+  },
+  "egyptian-teen-female": {
+    "engine": "audar",
+    "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
+    "codec": "neucodec",
+    "reference": "references/egyptian-teen-female.wav",
+    "transcript": "",
+    "commercialRights": false,
+    "approved": false,
+    "guardianConsent": false
+  },
   "alexandrian-male": {
     "engine": "audar",
     "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
@@ -35,6 +75,46 @@
     "commercialRights": false,
     "approved": false
   },
+  "alexandrian-child-male": {
+    "engine": "audar",
+    "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
+    "codec": "neucodec",
+    "reference": "references/alexandrian-child-male.wav",
+    "transcript": "",
+    "commercialRights": false,
+    "approved": false,
+    "guardianConsent": false
+  },
+  "alexandrian-child-female": {
+    "engine": "audar",
+    "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
+    "codec": "neucodec",
+    "reference": "references/alexandrian-child-female.wav",
+    "transcript": "",
+    "commercialRights": false,
+    "approved": false,
+    "guardianConsent": false
+  },
+  "alexandrian-teen-male": {
+    "engine": "audar",
+    "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
+    "codec": "neucodec",
+    "reference": "references/alexandrian-teen-male.wav",
+    "transcript": "",
+    "commercialRights": false,
+    "approved": false,
+    "guardianConsent": false
+  },
+  "alexandrian-teen-female": {
+    "engine": "audar",
+    "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
+    "codec": "neucodec",
+    "reference": "references/alexandrian-teen-female.wav",
+    "transcript": "",
+    "commercialRights": false,
+    "approved": false,
+    "guardianConsent": false
+  },
   "saidi-male": {
     "engine": "audar",
     "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
@@ -52,6 +132,46 @@
     "transcript": "",
     "commercialRights": false,
     "approved": false
+  },
+  "saidi-child-male": {
+    "engine": "audar",
+    "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
+    "codec": "neucodec",
+    "reference": "references/saidi-child-male.wav",
+    "transcript": "",
+    "commercialRights": false,
+    "approved": false,
+    "guardianConsent": false
+  },
+  "saidi-child-female": {
+    "engine": "audar",
+    "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
+    "codec": "neucodec",
+    "reference": "references/saidi-child-female.wav",
+    "transcript": "",
+    "commercialRights": false,
+    "approved": false,
+    "guardianConsent": false
+  },
+  "saidi-teen-male": {
+    "engine": "audar",
+    "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
+    "codec": "neucodec",
+    "reference": "references/saidi-teen-male.wav",
+    "transcript": "",
+    "commercialRights": false,
+    "approved": false,
+    "guardianConsent": false
+  },
+  "saidi-teen-female": {
+    "engine": "audar",
+    "model": "audar/Audar-TTS-V1-Flash-Q4_K_M.gguf",
+    "codec": "neucodec",
+    "reference": "references/saidi-teen-female.wav",
+    "transcript": "",
+    "commercialRights": false,
+    "approved": false,
+    "guardianConsent": false
   },
   "saudi-male": {
     "engine": "audar",

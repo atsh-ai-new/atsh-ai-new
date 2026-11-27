@@ -1,5 +1,5 @@
 import {z} from "zod";
-export const voiceIds=["local-msa","egyptian-male","egyptian-female","alexandrian-male","alexandrian-female","saidi-male","saidi-female","saudi-male","saudi-female","gulf-male","gulf-female"];
+export const voiceIds=["local-msa","egyptian-male","egyptian-female","egyptian-child-male","egyptian-child-female","egyptian-teen-male","egyptian-teen-female","alexandrian-male","alexandrian-female","alexandrian-child-male","alexandrian-child-female","alexandrian-teen-male","alexandrian-teen-female","saidi-male","saidi-female","saidi-child-male","saidi-child-female","saidi-teen-male","saidi-teen-female","saudi-male","saudi-female","gulf-male","gulf-female"];
 export const voiceIdSchema=z.enum(voiceIds);
 function configuredIds(){
  try{const ids=JSON.parse(process.env.CHARACTER_DIALECT_VOICES||"[]");return new Set(Array.isArray(ids)?ids.filter(id=>voiceIds.includes(id)&&id!=="local-msa"):[]);}catch{return new Set();}

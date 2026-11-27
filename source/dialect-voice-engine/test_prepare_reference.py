@@ -12,6 +12,8 @@ class ReferenceTests(unittest.TestCase):
             with wave.open(str(raw),"wb") as w:
                 w.setnchannels(1);w.setsampwidth(2);w.setframerate(16000)
                 w.writeframes(array("h",(int(2000*math.sin(i/10)) for i in range(16000*6))).tobytes())
+            with self.assertRaisesRegex(ValueError,"guardian"):
+                prepare(root,"egyptian-child-male",raw,"أهلًا",consent)
             path=prepare(root,"egyptian-male",raw,"أهلًا",consent)
             data=json.loads(cfg.read_text())
             self.assertTrue((root/path).exists())

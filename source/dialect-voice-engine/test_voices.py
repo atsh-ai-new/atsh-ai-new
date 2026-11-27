@@ -1,6 +1,6 @@
 import json,tempfile,unittest,wave
 from pathlib import Path
-from service import registry,synthesize
+from service import registry,synthesize,EGYPTIAN_IDS,IDS
 from audar_backend import make_prompt,generate_speech_codes
 class StubLlama:
     def __init__(self,tokens):self.tokens=tokens
@@ -17,6 +17,18 @@ class VoiceTests(unittest.TestCase):
         with wave.open(str(self.root/"ref.wav"),"wb") as f:
             f.setnchannels(1);f.setsampwidth(2);f.setframerate(16000);f.writeframes(bytes(16000*2*5))
     def tearDown(self):self.dir.cleanup()
+    def test_egyptian_voice_matrix(self):
+        self.assertEqual(len(EGYPTIAN_IDS),18)
+        self.assertEqual(len(IDS),22)
+        profiles=json.loads(Path(__file__).with_name("profiles.example.json").read_text())
+        self.assertEqual(set(profiles),IDS)
+        self.assertTrue(all(p["approved"] is False for p in profiles.values()))
+    def test_youth_reference_consent(self):
+        c={"engine":"audar","model":"model.gguf","codec":"codec","reference":"ref.wav","transcript":"أهلًا","approved":True,"commercialRights":True}
+        with self.assertRaisesRegex(ValueError,"guardian"):
+            registry(self.root,{"saidi-child-female":c})
+        self.assertIn("saidi-child-female",registry(self.root,{"saidi-child-female":{**c,"guardianConsent":True}}))
+        self.assertIn("egyptian-teen-male",registry(self.root,{"egyptian-teen-male":{**c,"source":"synthetic"}}))
     def test_candidates_not_live(self):
         c={"egyptian-male":{"model":"voice.onnx","speaker":0,"approved":False}}
         self.assertEqual(registry(self.root,c),{})

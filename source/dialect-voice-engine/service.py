@@ -4,7 +4,10 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from threading import BoundedSemaphore
 from pathlib import Path
 from voice_quality import check_pcm16
-IDS={f"{dialect}-{gender}" for dialect in ("egyptian","alexandrian","saidi","saudi","gulf") for gender in ("male","female")}
+EGYPTIAN_IDS={f"{dialect}-{role}" for dialect in ("egyptian","alexandrian","saidi") for role in ("male","female","child-male","child-female","teen-male","teen-female")}
+IDS=EGYPTIAN_IDS | {f"{dialect}-{gender}" for dialect in ("saudi","gulf") for gender in ("male","female")}
+def youth_voice(id):
+    return "-child-" in id or "-teen-" in id
 def local_asset(root, value, suffix=None, directory=False):
     if not isinstance(value,str) or not value:raise ValueError("Missing asset path")
     path=(root/value).resolve()
@@ -43,7 +46,10 @@ def registry(root, config, candidates=False):
             if not isinstance(transcript,str) or not transcript.strip() or len(transcript)>500 or "<|" in transcript:raise ValueError("Reference transcript required")
             with wave.open(str(reference),"rb") as w:
                 if w.getnchannels()!=1 or w.getframerate()!=16000 or w.getsampwidth()!=2 or not 5<=w.getnframes()/16000<=15:raise ValueError("Reference must be 5-15 s mono PCM16 at 16 kHz")
-            identity=("reference",sha(reference))
+            if youth_voice(id) and entry.get("source")!="synthetic" and entry.get("guardianConsent") is not True:
+                raise ValueError("Youth reference requires documented guardian consent or licensed synthetic source")
+            with wave.open(str(reference),"rb") as w:
+                identity=("reference",hashlib.sha256(w.readframes(w.getnframes())).hexdigest())
             item={"engine":engine,"model":str(model),"codec":str(codec),"reference":str(reference),"transcript":transcript}
         else:raise ValueError("Unknown engine")
         if identity in seen:raise ValueError("Do not reuse a voice identity under a different dialect/gender")

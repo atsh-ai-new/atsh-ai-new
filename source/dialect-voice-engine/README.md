@@ -1,7 +1,6 @@
 # Server dialect voices — staging runbook
 
-Ten independent stable IDs: Egyptian, Alexandrian, Saidi, Saudi, Gulf;
-each male and female. Neither pitch shifting nor relabeling one speaker is
+Twenty-two independent stable IDs: Egyptian (Cairene), Alexandrian and Saidi each have adult male/female, young child male/female and teen male/female (18 Egyptian identities). Saudi and Gulf adult male/female remain compatible. Neither pitch shifting nor relabeling one speaker is
 a substitute for a separately reviewed dialect and identity. The existing
 MSA provider remains separate. The browser sends the selected stable ID;
 the private server synthesizes it. Scene audio is never sent to a cloud API.
@@ -16,7 +15,7 @@ the private server synthesizes it. Scene audio is never sent to a cloud API.
   accent and speaker quality must be checked individually. NeuCodec is a
   separate dependency; review its Apache-2.0 license, accept gated access
   and pin a reviewed revision. No noncommercial models are included.
-- All ten reference slots require distinct consented voices with matching transcripts, or independently approved licensed models. No fake dialect or gender aliases. Egyptian, Alexandrian and Saidi male/female are the first six review targets.
+- All 22 reference slots require distinct consented voices with matching transcripts, or independently approved licensed models. No fake dialect or gender aliases. All 18 Egyptian roles are the priority review targets.
 
 Sources:
 https://huggingface.co/audarai/Audar-TTS-V1-Flash
@@ -90,3 +89,29 @@ Do not make recordings or the manifest publicly readable.
 
 ### Candidate rejection and speech quality gate (2026-11-27)
 KemeTone was rejected by the owner: whistle/no speech. The repeated control sentence failed spectral checks with high-band power 79.1%. Do not promote it, even if inference completes. All generated audio now passes a signal gate; trial artifacts additionally require independent Arabic transcription. The NAMAA candidate is an isolated CI-only study and is not sized for the current production VPS. No deployment is implied.
+
+### Egyptian age and gender expansion
+The existing adult IDs are unchanged. Each of egyptian, alexandrian and saidi now supports:
+male, female, child-male, child-female, teen-male, teen-female.
+Existing profiles are preserved; rerunning install_candidates.py adds missing unapproved slots.
+Use a genuinely distinct licensed voice for every slot. For real children/teens use
+documented guardian consent and speaker assent; add --guardian-record to the
+private registration command. Prefer designed fictional voices, using --synthetic
+only after source rights are reviewed. Do not use pitch-shifted adult audio as a child.
+No raw references or consent records go into GitHub. The production registry stays
+unavailable until the individual voice is approved after dialect, age, gender,
+intelligibility, stability, naturalness and resource review.
+
+### VoiceTut Egyptian-family audition (experimental, independent of deployment)
+A second Egyptian-first model candidate is VoiceTut-TTS (Apache-2.0):
+https://huggingface.co/mohammedaly22/VoiceTut-TTS
+The pinned candidate and the OmniVoice 0.2.1 runtime are tested on GitHub CI (no
+production endpoint, no customer data, no real child recordings). Six fictional
+age/gender identities are auditioned with a reference sentence and a different
+sentence using that reference, signal screening and independent Arabic ASR.
+Cairene is the default first test. Alexandrian and Saidi are separate evaluation
+choices, not claims of model accent support. OmniVoice's documented voice design
+training is Chinese/English; Arabic age/gender design may fail. Even successful
+ASR is not dialect or identity certification. Native listening and commercial
+source rights review are mandatory. Do not deploy this 2.47 GB model on the shared
+VPS until a dedicated host has passed memory/latency profiling.
