@@ -45,11 +45,11 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
     assert.match((await get("/en/customer-portal")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/catalog/hadnty/pricing")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/ar")).body,/<h1[^>]*>شركة تطوير المواقع في مصر<\/h1>/);
-    for(const [path,count] of [["/ar","١٬٢٣٤"],["/en","1,234"]]){
+    for(const [path,label,count] of [["/ar","عدد زوار هذا الشهر","١٬٢٣٤"],["/en","Visitors this month","1,234"]]){
       const page=await get(path);
       const header=page.body.match(/<header class="platform-header">[\s\S]*?<\/header>/)?.[0];
       assert.ok(header);
-      assert.match(header,new RegExp('class="home-monthly-visitors"[^>]*><span[^>]*>[^<]+</span><bdi>'+count+'</bdi>'));
+      assert.match(header,new RegExp('<span class="home-visitor-count-label">'+label+'</span><span class="home-monthly-visitors"><bdi>'+count+'</bdi>'));
       assert.equal((page.body.match(/class="home-monthly-visitors"/g)??[]).length,1);
     }
     monthly=0;
