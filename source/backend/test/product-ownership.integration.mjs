@@ -28,17 +28,17 @@ try{
  const selection={packageId:key,source:"configurator",ownershipMode:"rent",options:[host,addon],domainName:"example.test"};
  const created=await api(customerPath,"POST",{title:"Ownership test",draft:selection},cookie(account));assert.equal(created.status,201,JSON.stringify(created));
  const d=created.data.projectDraft;
- assert.equal(d.draft.draftInvoice.yearly,1845);assert.ok(d.draft.options.includes(host));
+ assert.equal(d.draft.draftInvoice.yearly,4110);assert.ok(d.draft.options.includes(host));
  const edit={expectedRevision:d.revision,patch:{...selection,ownershipMode:"code"}};
  const denied=await api(customerPath+"/"+d.id,"PATCH",edit,cookie(foreign));assert.equal(denied.status,409);
  const patched=await api(customerPath+"/"+d.id,"PATCH",edit,cookie(account));assert.equal(patched.status,200,JSON.stringify(patched));
  assert.equal(patched.data.projectDraft.id,d.id);assert.equal(patched.data.projectDraft.revision,d.revision+1);
- assert.equal(patched.data.projectDraft.draft.ownershipMode,"code");assert.equal(patched.data.projectDraft.draft.draftInvoice.yearly,225);
+ assert.equal(patched.data.projectDraft.draft.ownershipMode,"code");assert.equal(patched.data.projectDraft.draft.draftInvoice.yearly,2490);
  assert.ok(patched.data.projectDraft.draft.draftInvoice.fixed>=4750);
  assert.equal((await api(customerPath+"/"+d.id,"PATCH",edit,cookie(account))).status,409);
  const monthly=await api(customerPath+"/"+d.id,"PATCH",{expectedRevision:patched.data.projectDraft.revision,patch:{...selection,ownershipMode:"rent_monthly"}},cookie(account));
  assert.equal(monthly.status,200,JSON.stringify(monthly));assert.equal(monthly.data.projectDraft.draft.draftInvoice.monthly,180);
- assert.equal(monthly.data.projectDraft.draft.draftInvoice.yearly,225);assert.ok(monthly.data.projectDraft.draft.options.includes(host));
+ assert.equal(monthly.data.projectDraft.draft.draftInvoice.yearly,2490);assert.ok(monthly.data.projectDraft.draft.options.includes(host));
  const reset=await api(endpoint+"/reset","POST",{});assert.equal(reset.status,200,JSON.stringify(reset));assert.equal(reset.data.prices.copy.price,1250);assert.equal(reset.data.prices.rent.discount_percent,0);assert.equal(reset.data.prices.rent_monthly.price,75);
  console.log("PASS: tariff persistence, independent discounts, reset, server repricing and owner-only same-project edit");
 }finally{

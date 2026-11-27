@@ -24,9 +24,9 @@ export const packages: Array<{
   features: string[];
   recommended?: boolean;
 }> = [
-  { id: "landing", name: "موقع صفحة واحدة", short: "صفحة هبوط", description: "واجهة واضحة تركز على خدمة أو حملة واحدة.", price: 1000, includedPages: 1, features: ["صفحة واحدة", "3 أفكار تصميم", "5 اتجاهات لونية"] },
-  { id: "multi", name: "موقع متعدد الصفحات", short: "موقع تعريفي", description: "موقع أعمال متكامل حتى خمس صفحات أساسية.", price: 2500, includedPages: 5, features: ["حتى 5 صفحات", "3 أفكار تصميم", "5 اتجاهات لونية"] },
-  { id: "dynamic", name: "موقع بإدارة محتوى", short: "موقع ديناميكي", description: "موقع قابل للتحديث مع لوحة محتوى وقاعدة بيانات.", price: 6000, includedPages: 5, features: ["حتى 5 صفحات", "إدارة المحتوى", "قابل للتوسع التجاري"], recommended: true },
+  { id: "landing", name: "موقع صفحة واحدة", short: "صفحة هبوط", description: "صفحة هبوط متجاوبة لعرض واحد.", price: 2490, includedPages: 1, features: ["صفحة واحدة متجاوبة", "عرض واحد"] },
+  { id: "multi", name: "موقع متعدد الصفحات", short: "موقع تعريفي", description: "حتى خمس صفحات بتصميم موحّد وبالمحتوى الذي يقدّمه العميل.", price: 5250, includedPages: 5, features: ["حتى 5 صفحات", "تصميم موحّد", "المحتوى يقدّمه العميل"] },
+  { id: "dynamic", name: "موقع بإدارة محتوى", short: "موقع ديناميكي", description: "حتى خمس صفحات مع لوحة إدارة المحتوى وقاعدة بيانات.", price: 7940, includedPages: 5, features: ["حتى 5 صفحات", "لوحة إدارة المحتوى", "قاعدة بيانات"], recommended: true },
   { id: "enterprise", name: "حل مخصص", short: "مؤسسي", description: "نراجع التكاملات والنطاق ونعد عرضًا مناسبًا للمشروع.", price: null, includedPages: null, features: ["تحليل متطلبات", "تكاملات خاصة", "عرض نطاق مخصص"] }
 ];
 

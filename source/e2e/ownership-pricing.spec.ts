@@ -19,7 +19,7 @@ for(const kind of ["package","sector"] as const)test(kind+" ownership selector, 
   return route.fulfill({json:{}});
  });
  await page.goto(kind==="package"?"/configure?package=landing":direct);
- await expect(page.locator('input[value="rent"]')).toBeChecked();
+ await expect(page.locator('input[value="copy"]')).toBeChecked();
  await expect(page.getByText("استضافة أساسية",{exact:true})).toHaveCount(1);
  await expect(page.getByText(/معادل الشهر عند الدفع السنوي مقدمًا/)).toBeVisible();
  await page.locator('input[value="rent_monthly"]').check();
@@ -48,7 +48,27 @@ for(const locale of ["ar","en"] as const)test("homepage package tariff excludes 
  const card=page.locator(".package-card").first();
  await expect(card).toBeVisible();
  const price=card.locator(".package-price");
- await expect(price).toContainText(new Intl.NumberFormat(locale==="en"?"en-EG":"ar-EG").format(prices.rent.price));
- await expect(price).toContainText(locale==="ar"?"إيجار سنوي للنظام فقط — الاستضافة منفصلة":"Annual software rental only — hosting billed separately");
- await expect(price).not.toContainText(new Intl.NumberFormat(locale==="en"?"en-EG":"ar-EG").format(prices.rent.price+225));
+ await expect(price).toContainText(new Intl.NumberFormat(locale==="en"?"en-EG":"ar-EG").format(prices.copy.price));
+ await expect(price).toContainText(locale==="ar"?"نسخة تشغيلية، مرة واحدة. الاستضافة منفصلة.":"Licensed copy, one-time. Hosting billed separately.");
+ await expect(price).not.toContainText(new Intl.NumberFormat(locale==="en"?"en-EG":"ar-EG").format(prices.copy.price+225));
+});
+
+test("new system offer lists inclusions without selling the same panel again",async({page})=>{
+ const scoped={...system,slug:"eyadaty",name:"عيادتي",basePrice:28870,ownershipPrices:{copy:{...prices.copy,price:28870,list_price:28870}},features:["ملفات المرضى","الوصفات الطبية"],includedAddonCodes:["admin_dashboard"]};
+ const panel={...options[0],code:"admin_dashboard",name:"لوحة إدارة إضافية",price:2690};
+ await page.route("**/api/**",route=>{
+  const p=new URL(route.request().url()).pathname;
+  if(p==="/api/catalog")return route.fulfill({json:{packages:[pkg],sharedOptions:[...options,panel]}});
+  if(p==="/api/site-content/catalog")return route.fulfill({json:{vatRate:14,page:{content:{items:[scoped]}}}});
+  return route.fulfill({json:{}});
+ });
+ await page.goto("/catalog/eyadaty/pricing");
+ await expect(page.getByText("المشمول في سعر النظام")).toBeVisible();
+ await expect(page.getByText("ملفات المرضى",{exact:true})).toBeVisible();
+ await expect(page.getByRole("link",{name:"اطلب عرض سعر"})).toHaveCount(2);
+ await expect(page.locator('input[value="copy"]')).toBeChecked();
+ await expect(page.locator('input[value="code"]')).toHaveCount(0);
+ await page.locator('[data-addon-category="integrations"] summary').click();
+ await expect(page.getByText("لوحة إدارة إضافية",{exact:true})).toHaveCount(0);
+ await expect(page.getByText(/٢٨[٬,]٨٧٠/).first()).toBeVisible();
 });

@@ -27,7 +27,7 @@ import { readFile } from "node:fs/promises";
 import { buildJourneyInstructions, extractAssistantText } from "./journey-engine.js";
 import { buildVisitorInstructions } from "./visitor-assistant.js";
 import { priceSectorSelection } from "./sector-pricing.js";
-import { ensureOwnership,resolveOwnership,ownershipModes,ownershipLabels,sectorTariff,resetOwnership } from "./product-ownership.js";
+import {publicOwnership,isNewCatalogOffer, ensureOwnership,resolveOwnership,ownershipModes,ownershipLabels,sectorTariff,resetOwnership } from "./product-ownership.js";
 import { calculateUnifiedPricing } from "./pricing-engine.js";
 import { renderContractTemplate, makeContractContext } from "./contract-template-render.js";
 import { verifyInternalPaymentSignature } from "./payment-webhook.js";
@@ -97,6 +97,7 @@ await pool.query(await readFile(new URL("../db/content_studio_assets_20261126.sq
 await migrateDemoAssets(pool);
 startThumbnailWorker(pool);
 await seedCatalogIfAbsent(pool); // Only absent catalog page: never overwrite existing customer/editor data.
+await pool.query(await readFile(new URL("../db/catalog_offers_20261127.sql", import.meta.url), "utf8"));
 const origins = (process.env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim().replace(/\/$/, "")).filter(Boolean);
 // The public website is also an explicitly configured, trusted origin.
 // This prevents customer registration from failing when the canonical site URL
@@ -543,7 +544,7 @@ app.get("/api/catalog", route(async (_req,res) => {
     pool.query("SELECT a.*,'both' AS visibility,c.sort_order AS category_sort_order FROM shared_addons a JOIN addon_categories c ON c.code=a.category_code WHERE a.is_active=true ORDER BY c.sort_order,a.sort_order,a.code"),
     pool.query("SELECT * FROM addon_categories ORDER BY sort_order,code")
   ]);
-  res.set("Cache-Control","no-store").json({packages:await Promise.all(p.rows.map(async p=>({...p,ownershipPrices:p.is_custom_quote?null:await ensureOwnership(pool,"package",p.id,p.name,p.list_price)}))),options:o.rows,sharedOptions:shared.rows,addonCategories:categories.rows});
+  res.set("Cache-Control","no-store").json({packages:await Promise.all(p.rows.map(async p=>({...p,ownershipPrices:p.is_custom_quote?null:publicOwnership("package",p.id,await ensureOwnership(pool,"package",p.id,p.name,p.list_price))}))),options:o.rows,sharedOptions:shared.rows,addonCategories:categories.rows});
 }));
 // Unified template catalog. Previews are links to independently deployed builds, never invented demos.
 const templateWriteSchema=z.object({
@@ -666,9 +667,9 @@ async function pricedSectorCatalog(db,items){
   return Promise.all(items.map(async item=>{
     if(!item||typeof item!=="object")return item;
     const base=prices.get("sector:"+item.slug+":base");
-    const ownershipPrices=await ensureOwnership(db,"sector",item.slug,item.name,base?.amount??null);
+    const ownershipPrices=publicOwnership("sector",item.slug,await ensureOwnership(db,"sector",item.slug,item.name,base?.amount??null));
     return {...item,basePrice:sectorTariff(item.slug)?ownershipPrices?.copy.price??null:base?Number(base.amount):null,ownershipPrices,
-      pricedAddons:[...activeShared,...(Array.isArray(item.pricedAddons)?item.pricedAddons:[]).filter(a=>!centralCodes.has(a.code)&&!reservedAddonCodes.has(a.code)).map(addon=>{
+      pricedAddons:[...activeShared.filter(a=>!Array.isArray(item.includedAddonCodes)||!item.includedAddonCodes.includes(a.code)),...(Array.isArray(item.pricedAddons)?item.pricedAddons:[]).filter(a=>!centralCodes.has(a.code)&&!reservedAddonCodes.has(a.code)).map(addon=>{
         const price=prices.get("sector_addon:"+item.slug+":"+addon.code);
         return price&&price.amount!==null?{...addon,price:Number(price.amount),pricingType:price.pricing_type}:null;
       }).filter(Boolean)]};
@@ -690,7 +691,7 @@ async function priceOwnershipDraft(db,draft){
   const result=await db.query("SELECT id,name,list_price,is_custom_quote FROM packages WHERE id::text=$1 AND is_published=true AND deleted_at IS NULL",[draft.packageId]);
   const pkg=result.rows[0];if(!pkg||pkg.is_custom_quote)throw Error("Package price unavailable");
   title=pkg.name;
-  price=resolveOwnership(await ensureOwnership(db,"package",pkg.id,pkg.name,pkg.list_price),mode);
+  price=resolveOwnership(publicOwnership("package",pkg.id,await ensureOwnership(db,"package",pkg.id,pkg.name,pkg.list_price)),mode);
   const requested=new Set(draft.options??[]);
   const found=await db.query("SELECT id,code,name,price,pricing_type,is_required FROM package_options WHERE package_id=$1 AND is_active=true",[pkg.id]);
   if([...requested].some(id=>!found.rows.some(x=>x.id===id)))throw Error("Addon unavailable");
@@ -774,6 +775,9 @@ app.post("/api/orders", route(async (req,res) => {
     const p=await client.query("SELECT p.id,p.name,p.description,u.amount AS price,p.list_price,p.currency,p.is_custom_quote FROM packages p JOIN unified_price_items u ON u.scope='package' AND u.owner_key=p.id::text AND u.code='base' WHERE p.id=$1 AND p.is_published=true AND p.deleted_at IS NULL FOR SHARE OF p",[input.packageId]);
     if(!p.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"Package unavailable"});}
     const pkg=p.rows[0];
+    if(input.ownershipMode&&input.ownershipMode!=="copy"&&!input.sectorSlug&&isNewCatalogOffer("package",pkg.id)){
+      await client.query("ROLLBACK");return res.status(409).json({error:"اختيار الإيجار أو تسليم السورس يحتاج عرض سعر.",needsCustomQuote:true});
+    }
     let packagePeriod="fixed";
     if(input.ownershipMode&&!input.sectorSlug&&!pkg.is_custom_quote){const price=resolveOwnership(await ensureOwnership(client,"package",pkg.id,pkg.name,pkg.list_price),input.ownershipMode);pkg.price=price.price;pkg.ownershipMode=input.ownershipMode;packagePeriod=price.period;pkg.pricingPeriod=packagePeriod;}
     // Never interpret SQL NULL custom-price packages as free (Number(null) === 0).

@@ -1,4 +1,4 @@
-import {resolveOwnership,ownershipLabels} from "./product-ownership.js";
+import {resolveOwnership,ownershipLabels,isNewCatalogOffer} from "./product-ownership.js";
 import {MAX_ADDONS_PER_SELECTION} from "./addon-limits.js";
 import { calculateUnifiedPricing } from "./pricing-engine.js";
 // Server-owned sector pricing. Never accept numeric prices from browser input.
@@ -12,6 +12,7 @@ export function priceSectorSelection(catalog,slug,requestedCodes=[],quantities={
   const item=catalog.find(x=>x?.slug===slug && x.published===true && !x.archived);
   if(!item)throw new Error("Sector is not published");
   if(!Array.isArray(requestedCodes) || requestedCodes.length>MAX_ADDONS_PER_SELECTION || new Set(requestedCodes).size!==requestedCodes.length)throw new Error("Invalid sector extras");
+  if(mode&&mode!=="copy"&&isNewCatalogOffer("sector",slug)&&!item.ownershipPrices?.[mode])return {sectorSlug:slug,sectorName:item.name,needsCustomQuote:true,items:[],subtotal:0,monthly:0,yearly:0};
   const selectedPrice=mode?resolveOwnership(item.ownershipPrices,mode):null;
   if(!validMoney(selectedPrice?.price??item.basePrice))return {sectorSlug:slug,sectorName:item.name,needsCustomQuote:true,items:[],subtotal:0,monthly:0,yearly:0};
   const declared=Array.isArray(item.pricedAddons)?item.pricedAddons:[];
