@@ -6,7 +6,7 @@ import { once } from "node:events";
 const item = {slug:"hadnty",name:"حضانتي",category:"الحضانات",description:"إدارة الأطفال والحضور والمدفوعات",features:["الحضور","أولياء الأمور"],sectorId:"education",subcategoryId:"schools",published:true,modules:["Dashboard"],sampleStats:[],sampleRows:[]};
 test("SEO renders published CMS data in HTML and updates sitemap without indexing hidden systems or private pages", {timeout:120000}, async()=>{
   let aboutPublished=true;
-  let monthly=1234;
+  let monthly=1234,daily=59;
   let items=[item,{...item,slug:"archived-system",archived:true},{...item,slug:"hidden-system",published:false}];
   const backend=createServer((req,res)=>{
     const url=new URL(req.url,"http://localhost");
@@ -15,7 +15,7 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
     if(url.pathname==="/api/site-content/catalog") result={page:{updated_at:"2026-11-26T12:00:00Z",content:{items:english?items.filter(x=>x.slug==="hadnty").map(x=>({...x,name:"My Nursery",description:"Nursery attendance and parent communication",features:["Attendance","Parent communication"]})):items}}};
     if(url.pathname==="/api/site-content/home")result={page:{content:{marketingHeroTitle:english?"Web development in Egypt":"شركة تطوير المواقع في مصر"}}};
     if(url.pathname==="/api/site-content/about"&&aboutPublished)result={page:{content:{title:english?"About our company":"عن شركتنا",description:"Business software"}}};
-    if(url.pathname==="/api/visitor/monthly-count")result={monthly};
+    if(url.pathname==="/api/visitor/monthly-count")result={monthly,daily};
     if(url.pathname==="/api/site-pages")result={pages:[...(aboutPublished?[{slug:"about",title:"About"}]:[]),{slug:"assistant-knowledge",title:"Internal"},{slug:"catalog",title:"Catalog"}]};
     res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify(result));
   });
@@ -45,17 +45,26 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
     assert.match((await get("/en/customer-portal")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/catalog/hadnty/pricing")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/ar")).body,/<h1[^>]*>شركة تطوير المواقع في مصر<\/h1>/);
-    for(const [path,count] of [["/ar","١٬٢٣٤"],["/en","1,234"]]){
+    for(const [path,monthlyLabel,monthlyCount,dailyLabel,dailyCount] of [
+      ["/ar","عدد زوار هذا الشهر","١٬٢٣٤","زوار اليوم","٥٩"],
+      ["/en","Visitors this month","1,234","Visitors today","59"],
+    ]){
       const page=await get(path);
       const header=page.body.match(/<header class="platform-header">[\s\S]*?<\/header>/)?.[0];
       assert.ok(header);
-      assert.match(header,new RegExp('class="home-monthly-visitors"[^>]*><span[^>]*>[^<]+</span><bdi>'+count+'</bdi>'));
-      assert.equal((page.body.match(/class="home-monthly-visitors"/g)??[]).length,1);
+      for(const [period,label,count] of [["monthly",monthlyLabel,monthlyCount],["daily",dailyLabel,dailyCount]]){
+        assert.match(header,new RegExp('<span class="home-visitor-count-label">'+label+'</span><span class="home-visitor-count" data-period="'+period+'"><bdi>'+count+'</bdi>'));
+        assert.equal((page.body.match(new RegExp('data-period="'+period+'"','g'))??[]).length,1);
+      }
     }
-    monthly=0;
-    assert.match((await get("/en")).body,/<bdi>0<\/bdi>/);
+    daily=0;
+    assert.match((await get("/en")).body,/data-period="daily"><bdi>0<\/bdi>/);
+    daily=undefined;
+    const oldBackend=(await get("/ar")).body;
+    assert.match(oldBackend,/data-period="monthly"><bdi>١٬٢٣٤<\/bdi>/);
+    assert.doesNotMatch(oldBackend,/data-period="daily"/);
     monthly=null;
-    assert.doesNotMatch((await get("/ar")).body,/class="home-monthly-visitors"/);
+    assert.doesNotMatch((await get("/ar")).body,/class="home-visitor-stats"/);
     assert.match((await get("/about")).body,/<h1[^>]*>عن شركتنا<\/h1>/);
     assert.match((await get("/ar/services/ecommerce")).body,/<h1[^>]*>برمجة المتاجر الإلكترونية وأنظمة المبيعات<\/h1>/);
     assert.match((await get("/en/services/ecommerce")).body,/<h1[^>]*>E-commerce &amp; sales software development<\/h1>/);

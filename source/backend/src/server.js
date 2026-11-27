@@ -948,13 +948,13 @@ app.get("/api/visitor/monthly-count", route(async(_req,res)=>{
  // Cache the aggregate, including concurrent misses. Expose no analytics detail.
  if(!monthlyVisitorSnapshot || monthlyVisitorSnapshot.expires<=Date.now()){
    const snapshot={expires:Date.now()+60_000,value:null};
-   snapshot.value=pool.query(`WITH today AS (SELECT (now() AT TIME ZONE 'Africa/Cairo')::date AS d) SELECT ${monthlyVisitorCountSql} AS monthly`)
-     .then(result=>result.rows[0].monthly)
+   snapshot.value=pool.query(`WITH today AS (SELECT (now() AT TIME ZONE 'Africa/Cairo')::date AS d) SELECT count(DISTINCT visitor_id) FILTER (WHERE day=d)::int AS daily, count(DISTINCT visitor_id)::int AS monthly FROM visitor_analytics_daily,today WHERE day BETWEEN date_trunc('month',d)::date AND d`)
+     .then(result=>({monthly:result.rows[0].monthly,daily:result.rows[0].daily}))
      .catch(error=>{if(monthlyVisitorSnapshot===snapshot)monthlyVisitorSnapshot=undefined;throw error;});
    monthlyVisitorSnapshot=snapshot;
  }
- const monthly=await monthlyVisitorSnapshot.value;
- res.set("Cache-Control","public, max-age=60").set("X-Robots-Tag","noindex").json({monthly});
+ const counts=await monthlyVisitorSnapshot.value;
+ res.set("Cache-Control","public, max-age=60").set("X-Robots-Tag","noindex").json(counts);
 }));
 app.get("/api/admin/visitor-analytics",requireAdmin,requireRole("owner","admin"),route(async(_req,res)=>{
  const result=await pool.query(`WITH today AS (SELECT (now() AT TIME ZONE 'Africa/Cairo')::date AS d)
