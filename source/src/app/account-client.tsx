@@ -1,7 +1,8 @@
 "use client";
 import ProjectAddonPurchases from "@/components/project-addon-purchases";
 import {useCallback,useEffect,useRef,useState} from "react";
-import {useParams,useSearchParams} from "next/navigation";
+import Link from "next/link";
+import {useParams,useRouter,useSearchParams} from "next/navigation";
 import { syncCustomerWorkspace, loadGuestWorkspace, type CustomerWorkspace } from "@/lib/customer-workspace";
 import CustomerJourneyHub,{type HubTab} from "@/components/customer-journey-hub";
 import CustomerProjectAcceptance from "@/components/customer-project-acceptance";
@@ -27,6 +28,7 @@ type GoogleApi={accounts:{id:{initialize:(config:{client_id:string;callback:(dat
 declare global {interface Window {google?:GoogleApi}}
 
 export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const en=locale==="en";const base=en?"/en":"";const t=(ar:string,english:string)=>en?english:ar;
+ const router=useRouter();const authPending=useRef(false);const [signingIn,setSigningIn]=useState(false);
  const {action}=useParams<{action:string}>();const search=useSearchParams();const [email,setEmail]=useState("");const [name,setName]=useState("");const [password,setPassword]=useState("");const [notificationConsent,setNotificationConsent]=useState(false);const [message,setMessage]=useState("");const [deliverables,setDeliverables]=useState<Deliverable[]>([]);const [feedback,setFeedback]=useState<Record<string,string>>({});const [projects,setProjects]=useState<Project[]>([]);const [orders,setOrders]=useState<Order[]>([]);const [quotes,setQuotes]=useState<Quote[]>([]);const [contracts,setContracts]=useState<Contract[]>([]);const [invoices,setInvoices]=useState<Invoice[]>([]);const [invoicePayments,setInvoicePayments]=useState<Record<number,Payment[]>>({}),[openInvoice,setOpenInvoice]=useState<number|null>(null);const [projectId,setProjectId]=useState("");const [accessToken,setAccessToken]=useState("");const googleContainer=useRef<HTMLDivElement>(null);
  const [workspace,setWorkspace]=useState<CustomerWorkspace|null>(null);
  const [projectDrafts,setProjectDrafts]=useState<ProjectDraft[]>([]);
@@ -262,10 +264,16 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
  };
  const loadProjects=useCallback(async()=>{try{const r=await fetch("/api/customer/auth/projects",{credentials:"include",cache:"no-store"});if(!r.ok)throw Error();const d=await r.json();setProjects(d.projects);}catch{setMessage("سجّل الدخول لعرض مشروعاتك");}},[]);
  useEffect(()=>{if(action!=="dashboard"||accountStatus!=="authenticated" )return;const refresh=()=>{if(document.visibilityState==="visible"&&!submitInFlight.current){void loadProjects();void loadDrafts();}};const timer=window.setInterval(refresh,5000);window.addEventListener("focus",refresh);document.addEventListener("visibilitychange",refresh);return()=>{window.clearInterval(timer);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh);};},[action,accountStatus,loadProjects,loadDrafts]);
- const request=useCallback(async(path:string,data:Record<string,string>={})=>{setMessage("جارٍ التنفيذ...");try{const response=await fetch(`/api/customer/auth/${path}`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});const body=await response.json().catch(()=>({error:response.status>=500?"خدمة الحسابات غير متاحة حاليًا (HTTP "+response.status+"). راجع اتصال الواجهة بالخادم في Coolify.":"تعذر قراءة استجابة الخدمة (HTTP "+response.status+")."}));setMessage(response.ok&&(path==="register"||path==="verification/resend")
+ const request=useCallback(async(path:string,data:Record<string,string>={})=>{
+  const signIn=path==="login"||path==="google";
+  if(signIn&&authPending.current)return;
+  if(signIn){authPending.current=true;setSigningIn(true);}
+  let navigating=false;
+  setMessage(locale==="en"?"Processing...":"جارٍ التنفيذ...");
+  try{const response=await fetch(`/api/customer/auth/${path}`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});const body=await response.json().catch(()=>({error:response.status>=500?"خدمة الحسابات غير متاحة حاليًا (HTTP "+response.status+"). راجع اتصال الواجهة بالخادم في Coolify.":"تعذر قراءة استجابة الخدمة (HTTP "+response.status+")."}));setMessage(response.ok&&(path==="register"||path==="verification/resend")
   ?"لو البريد مؤهل، هتوصلك رسالة التأكيد. افتح الرابط المرسل ثم سجّل دخولك."
-  :response.ok?body.message||"تم بنجاح":body.error||"تعذر إتمام الطلب");if(response.ok&&(path==="login"||path==="google"))location.href=`${base}/account/dashboard`;if(response.ok&&path==="logout")location.href=`${base}/account/login`;}catch{setMessage("تعذر الوصول إلى خدمة الحسابات. تحقق من اتصال الموقع بالخادم ثم حاول مجددًا.");}},[loadProjects]);
- useEffect(()=>{if(action!=="dashboard")return;let cancelled=false;
+  :response.ok?body.message||"تم بنجاح":body.error||"تعذر إتمام الطلب");if(response.ok&&signIn){router.replace(`${base}/account/dashboard`);navigating=true;}if(response.ok&&path==="logout")location.href=`${base}/account/login`;}catch{setMessage("تعذر الوصول إلى خدمة الحسابات. تحقق من اتصال الموقع بالخادم ثم حاول مجددًا.");}finally{if(signIn&&!navigating){authPending.current=false;setSigningIn(false);}}},[base,locale,router]);
+ useEffect(()=>{if(action!=="dashboard"||accountStatus!=="authenticated")return;let cancelled=false;
   const resources=["orders","quotes","contracts","invoices","deliverables"] as const;
   void Promise.all(resources.map(async kind=>{
    const r=await fetch(kind==="deliverables"?"/api/customer/deliverables":`/api/customer/commercial/${kind}`,{credentials:"include",cache:"no-store"});
@@ -278,7 +286,7 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
    if(item.kind==="invoices")setInvoices(item.data.invoices||[]);
   }}).catch(()=>{if(!cancelled)setMessage("تعذر تحميل بعض المستندات؛ حاول تحديث الصفحة");});
   return()=>{cancelled=true;};
- },[action]);
+ },[action,accountStatus]);
  useEffect(()=>{if(action==="verify"&&search.get("token"))void request("verify",{token:search.get("token")!});},[action,search,request]);
  useEffect(()=>{if(action==="dashboard"){void loadProjects();void loadDrafts();}},[action,loadProjects,loadDrafts]);
  useEffect(()=>{if(action==="dashboard"&&selectedProjectDraft)void loadPreviews(selectedProjectDraft);},[action,selectedProjectDraft]);
@@ -296,12 +304,12 @@ export default function CustomerAccount({locale="ar"}:{locale?:"ar"|"en"}){const
  {action!=="reset-password"&&<label>{t("البريد الإلكتروني","Email address")}<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label>}
  {["register","login","reset-password"].includes(action)&&<label>{t("كلمة المرور","Password")}<input type="password" minLength={action==="login"?1:12} required value={password} onChange={e=>setPassword(e.target.value)}/></label>}
  {action==="register"&&<label style={{display:"flex",gap:10,alignItems:"flex-start",margin:"14px 0",lineHeight:1.6}}><input type="checkbox" checked={notificationConsent} onChange={e=>setNotificationConsent(e.target.checked)} style={{width:20,height:20,flexShrink:0,marginTop:3}}/><span>{t("أوافق اختياريًا على استقبال إشعارات الرسائل وتحديثات مشاريعي على هذا الجهاز بعد تفعيل الإشعارات. يمكنني إلغاء الاشتراك لاحقًا.","I optionally agree to receive messages and project updates on this device once notifications are enabled. I can opt out later.")}<small style={{display:"block",opacity:.8}}>{t("الموافقة هنا لا تفعّل إشعارات الهاتف تلقائيًا؛ سيُطلب إذن الجهاز بشكل منفصل بعد تسجيل الدخول.","This preference does not enable device push automatically; device permission will be requested separately after sign-in.")}</small></span></label>}
- <button type="submit">{t("متابعة","Continue")}</button></form>}
- {(action==="login"||action==="register")&&<><p><a href={`${base}/account/login`}>{t("لدي حساب · تسجيل الدخول","Already have an account? Sign in")}</a> · <a href={`${base}/account/register`}>{t("إنشاء حساب جديد","Create a new account")}</a> · <a href={`${base}/account/forgot`}>{t("نسيت كلمة المرور؟","Forgot password?")}</a> · <a href={`${base}/account/resend-verification`}>{t("إعادة إرسال التأكيد","Resend confirmation")}</a></p><div ref={googleContainer} aria-label={t("تسجيل الدخول باستخدام Google","Sign in with Google")}/></>}
+ <button type="submit" disabled={signingIn}>{signingIn?t("جارٍ تسجيل الدخول…","Signing in…"):t("متابعة","Continue")}</button></form>}
+ {(action==="login"||action==="register")&&<><p><Link href={`${base}/account/login`}>{t("لدي حساب · تسجيل الدخول","Already have an account? Sign in")}</Link> · <Link href={`${base}/account/register`}>{t("إنشاء حساب جديد","Create a new account")}</Link> · <Link href={`${base}/account/forgot`}>{t("نسيت كلمة المرور؟","Forgot password?")}</Link> · <Link href={`${base}/account/resend-verification`}>{t("إعادة إرسال التأكيد","Resend confirmation")}</Link></p><div ref={googleContainer} aria-label={t("تسجيل الدخول باستخدام Google","Sign in with Google")}/></>}
  {action==="dashboard"&&accountStatus!=="authenticated"&&<section style={{background:"white",border:"1px solid #dce5ee",borderRadius:16,padding:20}}>
    <h2>{accountStatus==="checking"?t("جارٍ التحقق من حسابك…","Checking account…"):t("سجل دخولك لعرض مشروعاتك","Sign in to view projects")}</h2>
    <p>{t("لحماية المشروعات والعروض والفواتير، لا تظهر لوحة العميل إلا بعد التحقق من الجلسة. اختياراتك غير المحفوظة تبقى على هذا المتصفح حتى تقرر نقلها.","Your projects, quotations and invoices are private. Sign in to securely access them. Unsaved selections remain on this device until you choose to import them.")}</p>
-   <div style={{display:"flex",flexWrap:"wrap",gap:11}}><a href={`${base}/account/login`} style={{padding:"11px 15px",background:"#203958",color:"white",borderRadius:10}}>{t("تسجيل الدخول","Sign in")}</a><a href={`${base}/account/register`} style={{padding:"11px 15px",border:"1px solid #cbd5e1",borderRadius:10}}>{t("إنشاء حساب","Create account")}</a></div>
+   <div style={{display:"flex",flexWrap:"wrap",gap:11}}><Link href={`${base}/account/login`} style={{padding:"11px 15px",background:"#203958",color:"white",borderRadius:10}}>{t("تسجيل الدخول","Sign in")}</Link><Link href={`${base}/account/register`} style={{padding:"11px 15px",border:"1px solid #cbd5e1",borderRadius:10}}>{t("إنشاء حساب","Create account")}</Link></div>
   </section>}
  {action==="dashboard"&&accountStatus==="authenticated"&&<>
  <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}><NotificationInbox customer /></div>
