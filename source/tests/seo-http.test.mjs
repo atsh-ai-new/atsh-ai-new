@@ -46,7 +46,7 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
     assert.match((await get("/catalog/hadnty/pricing")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/ar")).body,/<h1[^>]*>شركة تطوير المواقع في مصر<\/h1>/);
     for(const [path,monthlyLabel,monthlyCount,dailyLabel,dailyCount] of [
-      ["/ar","عدد زوار هذا الشهر","١٬٢٣٤","زوار اليوم","٥٩"],
+      ["/ar","زوار الشهر","١٬٢٣٤","زوارنا اليوم","٥٩"],
       ["/en","Visitors this month","1,234","Visitors today","59"],
     ]){
       const page=await get(path);
