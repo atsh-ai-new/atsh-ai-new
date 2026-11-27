@@ -101,6 +101,7 @@ test("admin moves the ticker, previews the draft, publishes and reloads its posi
  await expect(page.locator('[data-news-ticker-preview="below_header"]')).toBeVisible();
  await position.selectOption("before_footer");
  await page.getByRole("button",{name:"معاينة الموضع على الصفحة"}).click();
+ await expect(page.locator('iframe[title="معاينة الرئيسية"]')).toHaveAttribute("src",/^\/ar\?atshPreview=/);
  const preview=page.frameLocator('iframe[title="معاينة الرئيسية"]');
  await expect(preview.locator(".atsh-news-slot:has(+ .platform-footer) .atsh-news-ticker")).toBeVisible();
  expect(saves).toBe(0);
