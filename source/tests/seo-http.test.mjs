@@ -6,6 +6,7 @@ import { once } from "node:events";
 const item = {slug:"hadnty",name:"حضانتي",category:"الحضانات",description:"إدارة الأطفال والحضور والمدفوعات",features:["الحضور","أولياء الأمور"],sectorId:"education",subcategoryId:"schools",published:true,modules:["Dashboard"],sampleStats:[],sampleRows:[]};
 test("SEO renders published CMS data in HTML and updates sitemap without indexing hidden systems or private pages", {timeout:120000}, async()=>{
   let aboutPublished=true;
+  let monthly=1234;
   let items=[item,{...item,slug:"archived-system",archived:true},{...item,slug:"hidden-system",published:false}];
   const backend=createServer((req,res)=>{
     const url=new URL(req.url,"http://localhost");
@@ -14,6 +15,7 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
     if(url.pathname==="/api/site-content/catalog") result={page:{updated_at:"2026-11-26T12:00:00Z",content:{items:english?items.filter(x=>x.slug==="hadnty").map(x=>({...x,name:"My Nursery",description:"Nursery attendance and parent communication",features:["Attendance","Parent communication"]})):items}}};
     if(url.pathname==="/api/site-content/home")result={page:{content:{marketingHeroTitle:english?"Web development in Egypt":"شركة تطوير المواقع في مصر"}}};
     if(url.pathname==="/api/site-content/about"&&aboutPublished)result={page:{content:{title:english?"About our company":"عن شركتنا",description:"Business software"}}};
+    if(url.pathname==="/api/visitor/monthly-count")result={monthly};
     if(url.pathname==="/api/site-pages")result={pages:[...(aboutPublished?[{slug:"about",title:"About"}]:[]),{slug:"assistant-knowledge",title:"Internal"},{slug:"catalog",title:"Catalog"}]};
     res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify(result));
   });
@@ -43,6 +45,10 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
     assert.match((await get("/en/customer-portal")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/catalog/hadnty/pricing")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/ar")).body,/<h1[^>]*>شركة تطوير المواقع في مصر<\/h1>/);
+    assert.match((await get("/ar")).body,/زوار الموقع هذا الشهر: <strong>١٬٢٣٤<\/strong>/);
+    assert.match((await get("/en")).body,/Website visitors this month: <strong>1,234<\/strong>/);
+    monthly=0;
+    assert.doesNotMatch((await get("/ar")).body,/class="home-monthly-visitors"/);
     assert.match((await get("/about")).body,/<h1[^>]*>عن شركتنا<\/h1>/);
     assert.match((await get("/ar/services/ecommerce")).body,/<h1[^>]*>برمجة المتاجر الإلكترونية وأنظمة المبيعات<\/h1>/);
     assert.match((await get("/en/services/ecommerce")).body,/<h1[^>]*>E-commerce &amp; sales software development<\/h1>/);
