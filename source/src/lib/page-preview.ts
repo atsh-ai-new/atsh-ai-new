@@ -14,7 +14,7 @@ export function readPagePreview(slug:string,locale:string):PagePreviewDraft|null
 export function createPagePreviewUrl(draft:PagePreviewDraft):string{
  const token=crypto.randomUUID();
  window.sessionStorage.setItem(prefix+token,JSON.stringify(draft));
- const path=draft.slug==="home"?(draft.locale==="en"?"/en":"/"):`${draft.locale==="en"?"/en":""}/${encodeURIComponent(draft.slug)}`;
+ const path=draft.slug==="home"?(draft.locale==="en"?"/en":"/ar"):`${draft.locale==="en"?"/en":""}/${encodeURIComponent(draft.slug)}`;
  const url=path+(path.includes("?")?"&":"?")+"atshPreview="+token;
  return url;
 }

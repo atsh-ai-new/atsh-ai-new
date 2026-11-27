@@ -1099,3 +1099,9 @@ input,textarea,select,option,optgroup{font-weight:500}
 .addon-category-chevron{width:10px;height:10px;flex:none;margin-inline:4px;border-right:2px solid #52667b;border-bottom:2px solid #52667b;transform:rotate(45deg);transition:transform .15s}
 .addon-category-collapsible[open] .addon-category-chevron{transform:rotate(225deg)}
 @media(max-width:600px){.addon-category-collapsible .addon-category-count{padding:3px 5px;font-size:13px}.addon-category-label>strong{font-size:15px}.addon-category-selected{font-size:12px}.addon-category-collapsible .addon-category-index{width:28px;height:28px}}
+
+/* Keep the private CMS preview controls reachable on narrow screens. */
+.cms-preview-panel{min-width:0;max-width:100%;box-sizing:border-box}
+.cms-preview-panel .admin-content-title{flex-wrap:wrap}
+.cms-preview-panel .admin-content-title .admin-actions{flex-wrap:wrap;min-width:0;max-width:100%;justify-content:flex-start}
+@media(max-width:760px){.cms-preview-panel .admin-content-title{align-items:stretch;flex-direction:column}.cms-preview-panel .admin-content-title .admin-actions{width:100%;margin-top:0}}
