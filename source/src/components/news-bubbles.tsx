@@ -4,14 +4,14 @@ import styles from "./news-bubbles.module.css";
 const HEX_COLOR=/^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i;
 
 export function NewsBubbles({ticker,english}:{
- ticker:{text:string;url:string;speed:number;color:string;background:string};
+ ticker:{text:string;url:string;speed:number;color:string;background:string;bubbles?:{text:string;visible:boolean}[]};
  english:boolean;
 }){
  const [paused,setPaused]=useState(false);
  const [duration,setDuration]=useState(12);
  const list=useRef<HTMLUListElement>(null);
  const parts=ticker.text.split(/\r?\n|\s*[✦•|،]\s*|\s+[—–]\s+/).map(item=>item.trim()).filter(Boolean);
- const items=parts.length?parts:[ticker.text.trim()];
+ const items=Array.isArray(ticker.bubbles)?ticker.bubbles.filter(b=>b.visible&&b.text.trim()).map(b=>b.text.trim()):parts.length?parts:[ticker.text.trim()];
  const href=/^\/(?!\/)|^https:\/\//i.test(ticker.url||"")?ticker.url:undefined;
  const label=english?"Platform news":"أخبار المنصة";
  const isRtl=!english;
