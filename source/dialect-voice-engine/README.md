@@ -70,3 +70,26 @@ Tests: `python -m unittest -v test_voices` checks registry, unique
 identities, authorization, token protocol and refusal of unavailable voices.
 Actual model inference, container build and live integration still require
 a network-enabled staging host with approved assets.
+
+
+### Register a private reference without editing the JSON by hand
+
+Run in the model installation host, using a local recording, exact spoken
+transcript in UTF-8 and documented explicit commercial-synthesis consent:
+
+```sh
+python prepare_reference.py /srv/atsh/voices egyptian-male /private/clip.m4a \
+  --transcript-file /private/transcript.txt --consent-record /private/consent.txt
+```
+
+The command normalizes audio, rejects empty/short/long/duplicate PCM,
+prevents changing approved identities and stages the voice without enabling
+it. Consent is an operator responsibility; existence of the file does not
+prove its contents or the dialect. Keep private records outside Git.
+Repeat with the distinct IDs from the example registry. Use the offline
+audition step and human review before setting approved=true.
+
+The runtime UID/GID is 10001. Before running the container, make sure the
+private model tree is traversable and readable by that user (e.g. set
+the private tree's group to 10001 and grant group read/traverse permission).
+Do not make recordings or the manifest publicly readable.
