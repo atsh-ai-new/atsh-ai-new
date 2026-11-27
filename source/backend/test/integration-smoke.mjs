@@ -24,15 +24,18 @@ try{
  assert.equal(starter.result.page?.content?.sectors?.length,3);
  // Known catalog slugs now receive approved system-only tariffs from code,
  // even when their old CMS base price was empty; the demo status is unchanged.
- const starterTariffs={eyadaty:[1490,2490,7490],agzakhana:[2490,4490,10900],supermarket:[1090,2290,6490],avocato:[1790,3490,8490]};
+ const starterTariffs={eyadaty:28870,agzakhana:37520,supermarket:34190,avocato:25530};
  for(const item of starter.result.page.content.items){
   assert.equal(item.published,true);
-  const [rent,copy,code]=starterTariffs[item.slug];
+  const copy=starterTariffs[item.slug];
   assert.equal(item.basePrice,copy);
-  assert.equal(item.ownershipPrices.rent.price,rent);
-  assert.equal(item.ownershipPrices.rent_monthly.price,rent/10);
   assert.equal(item.ownershipPrices.copy.price,copy);
-  assert.equal(item.ownershipPrices.code.price,code);
+  assert.deepEqual(Object.keys(item.ownershipPrices),["copy"]);
+  for(const mode of ["rent","code","rent_monthly"]){
+    const quote=await req("/api/sector-price?slug="+item.slug+"&ownershipMode="+mode);
+    assert.equal(quote.status,200);
+    assert.equal(quote.result.needsCustomQuote,true);
+  }
  }
  const readiness=await req("/api/admin/integrations/status",{cookie:`atsh_admin=${ownerToken}`});
  assert.equal(readiness.status,200,JSON.stringify(readiness));
