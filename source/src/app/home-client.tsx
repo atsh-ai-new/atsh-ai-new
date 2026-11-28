@@ -59,7 +59,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     :null;
   const tickerPosition=normalizeNewsTickerPosition(rawTicker?.position);
   const newsAt=(position:NewsTickerPosition)=>homeTicker&&position===tickerPosition
-    ?<div className="atsh-news-slot" data-home-ticker-seeded><NewsBubbles ticker={homeTicker} english={isEnglish}/></div>
+    ?<div className="atsh-news-slot" data-home-ticker-seeded><NewsBubbles ticker={homeTicker} english={isEnglish} monthlyCount={visitorCounts?.monthly}/></div>
     :null;
   const [showOtherDetails,setShowOtherDetails]=useState(false);
   const [signedInCustomerName,setSignedInCustomerName]=useState("");
@@ -554,7 +554,6 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
           </nav>
         </details>
         <div className="platform-header-actions">{customerSignedIn&&<Link className="atsh-signed-in-badge" href={isEnglish?"/en/account/dashboard":"/account/dashboard"} aria-label={t(`حساب ${signedInCustomerName||"العميل"}`,`Account ${signedInCustomerName||"customer"}`)}><span className="atsh-signed-in-badge-icon" aria-hidden="true">●</span><span>{t("حساب","Account")} {signedInCustomerName||t("العميل","customer")}</span></Link>}<a className="language-pill header-language-switch" href={isEnglish?"/ar":"/en"} hrefLang={isEnglish?"ar":"en"} aria-label={isEnglish?"Switch to Arabic":"Switch to English"} onClick={(event) => { event.preventDefault(); window.location.assign(isEnglish ? "/ar" : "/en"); }}>🌐 {isEnglish?"العربية":"English"}</a><a className="button button-small" href={isEnglish?"/en#packages":"/#packages"}>{copy("navAction")} <span>←</span></a></div>
-        {(visitorCounts?.monthly!==undefined||visitorCounts?.daily!==undefined)&&<span className="home-visitor-stats">{([["monthly",t("زوار الشهر","Visitors this month")],["daily",t("زوارنا اليوم","Visitors today")]] as const).map(([period,label])=>{const count=visitorCounts[period];return count===undefined?null:<span key={period} className="home-visitor-stat"><span className="home-visitor-count-label">{label}</span><span className="home-visitor-count" data-period={period}><bdi>{count.toLocaleString(isEnglish?"en-EG":"ar-EG")}</bdi></span></span>;})}</span>}
       </header>}
       {newsAt("below_header")}
 
