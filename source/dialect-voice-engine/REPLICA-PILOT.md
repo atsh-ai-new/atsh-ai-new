@@ -7,9 +7,9 @@ inference slot and a 1.5 CPU quota, runs at reduced priority, has a 1,450 MiB
 Docker limit with no swap, and stops inference before its 160-second deadline.
 Do not run two Replica containers side by side on a small production host.
 
-This pilot advertises only the first reviewed adult profile and the reviewed girl profile. It always uses
+This pilot advertises six reviewed Cairo presets: two men, two women, one boy and one girl. The other child slots remain outside the registry until approved. It always uses
 Egyptian language `arz` with Arabic marks removed, without voice references.
-It does not expose the other audition profiles. A prompt describes a designed voice;
+It does not expose the other audition profiles. Native whisper is advertised by the pilot and passed through when supported. Other presets guide pauses and the duration estimate; they are not distinct emotions. A prompt describes a designed voice;
 it is not a fixed verified speaker embedding across scripts.
 
 ## Prepare and test before deployment
@@ -40,7 +40,7 @@ it is not a fixed verified speaker embedding across scripts.
    the voice token through Coolify as a secret; configure the same token on the
    backend. Set the backend's `CHARACTER_DIALECT_SERVICE_URL` to the service's
    private HTTP origin (usually `http://dialect-voice:8080`) and
-   `CHARACTER_DIALECT_VOICES` to `["egyptian-male","egyptian-child-female"]`. Disable public exposure
+   `CHARACTER_DIALECT_VOICES` to `["egyptian-male","egyptian-male-2","egyptian-female","egyptian-female-2","egyptian-child-male","egyptian-child-female"]`. Disable public exposure
    and check the private alias is not already used. Save current settings for rollback.
 4. Test the service first via bearer-authenticated `GET /voices` and
    `POST /voice-preview` from the backend network, and one preview in the studio.

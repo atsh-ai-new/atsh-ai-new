@@ -35,3 +35,27 @@ test("synthesis sends performance as provider-supported rate and text, not a new
  const res=await synthesizeStudioVoice({voiceId:"egyptian-male",text:"استنى، حد سامعنا؟",speed:1,performance:"horror"});
  assert.equal(res.length,44);
 });
+
+test("native whisper is never silently replaced by natural speech",async t=>{
+ for(const [key,value] of Object.entries({
+  CHARACTER_DIALECT_SERVICE_URL:"http://localhost:10003",CHARACTER_DIALECT_SERVICE_TOKEN:"test",
+  CHARACTER_DIALECT_VOICES:'["egyptian-female-2"]'
+ })){
+  const previous=process.env[key];process.env[key]=value;
+  t.after(()=>{if(previous===undefined)delete process.env[key];else process.env[key]=previous;});
+ }
+ let capability=false, renders=0;
+ t.mock.method(globalThis,"fetch",async (url,req)=>{
+  if(url.pathname==="/voices")return Response.json({voices:["egyptian-female-2"],expressive:capability?["egyptian-female-2"]:[]});
+  renders++;
+  assert.deepEqual(JSON.parse(req.body),{text:"استنى، حد سامعنا؟",speed:1,pitch:0,intonation:1,voiceId:"egyptian-female-2",performance:"whisper"});
+  const buf=Buffer.alloc(44);buf.write("RIFF");buf.write("WAVE",8);
+  return new Response(buf);
+ });
+ const req={voiceId:"egyptian-female-2",text:"استنى، حد سامعنا؟",speed:1,performance:"whisper"};
+ await assert.rejects(synthesizeStudioVoice(req),/الهمس غير مدعوم/);
+ assert.equal(renders,0);
+ capability=true;
+ assert.equal((await synthesizeStudioVoice(req)).length,44);
+ assert.equal(renders,1);
+});

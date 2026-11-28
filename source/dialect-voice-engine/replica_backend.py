@@ -8,6 +8,10 @@ import time
 
 APPROVED_PILOT = {
     "egyptian-male": ("male, young adult, low pitch", 12, None),
+    "egyptian-male-2": ("male, middle-aged, low pitch", 12, 307),
+    "egyptian-female": ("female, young adult, moderate pitch", 12, 318),
+    "egyptian-female-2": ("female, middle-aged, low pitch", 16, 136),
+    "egyptian-child-male": ("male, child, very high pitch", 32, 814),
     "egyptian-child-female": ("female, child, moderate pitch", 24, 472),
 }
 LIMIT_MIB = 1380
@@ -34,15 +38,21 @@ def runtime():
     return path
 
 
-def render(model, voice, text, target):
+def render(model, voice, text, target, speed=1, performance="natural"):
     text = plain(text)
     if not re.search(r"[\u0621-\u064a]", text):
         raise ValueError("Arabic speech required")
     prompt, steps, seed = APPROVED_PILOT[voice]
+    if performance not in ("natural", "whisper", "horror", "action", "suspense"):
+        raise ValueError("Invalid performance")
+    if performance == "whisper":
+        prompt += ", whisper"
     argv = [runtime(), "--task", "tts", "--family", "omnivoice", "--model", model,
             "--backend", "cpu", "--threads", "2", "--language", "arz",
             "--text", text, "--instruct", prompt,
             "--num-inference-steps", str(steps), "--out", str(target)]
+    if speed != 1:
+        argv += ["--request-option", f"speed={speed}"]
     if seed is not None:
         argv += ["--seed", str(seed)]
     for key, value in OPTS.items():

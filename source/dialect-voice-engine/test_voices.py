@@ -19,7 +19,7 @@ class VoiceTests(unittest.TestCase):
     def tearDown(self):self.dir.cleanup()
     def test_egyptian_voice_matrix(self):
         self.assertEqual(len(EGYPTIAN_IDS),18)
-        self.assertEqual(len(IDS),22)
+        self.assertEqual(len(IDS),24)
         profiles=json.loads(Path(__file__).with_name("profiles.example.json").read_text())
         self.assertEqual(set(profiles),IDS)
         self.assertTrue(all(p["approved"] is False for p in profiles.values()))

@@ -24,7 +24,7 @@ class ReplicaTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "digest mismatch"):
                 registry(tmp, {"egyptian-male": profile})
             with self.assertRaisesRegex(ValueError, "Unreviewed"):
-                registry(tmp, {"egyptian-female": profile})
+                registry(tmp, {"egyptian-teen-female": profile})
             with patch("service.REPLICA_Q4_SHA256",
                        "f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d"):
                 self.assertEqual(registry(tmp, {"egyptian-male": profile})["egyptian-male"]["engine"], "replica")

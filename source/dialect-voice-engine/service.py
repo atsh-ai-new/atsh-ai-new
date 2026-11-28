@@ -5,7 +5,8 @@ from threading import BoundedSemaphore
 from pathlib import Path
 from voice_quality import check_pcm16
 EGYPTIAN_IDS={f"{dialect}-{role}" for dialect in ("egyptian","alexandrian","saidi") for role in ("male","female","child-male","child-female","teen-male","teen-female")}
-IDS=EGYPTIAN_IDS | {f"{dialect}-{gender}" for dialect in ("saudi","gulf") for gender in ("male","female")}
+REPLICA_EXTRA_IDS={"egyptian-male-2","egyptian-female-2"}
+IDS=EGYPTIAN_IDS | REPLICA_EXTRA_IDS | {f"{dialect}-{gender}" for dialect in ("saudi","gulf") for gender in ("male","female")}
 def youth_voice(id):
     return "-child-" in id or "-teen-" in id
 def local_asset(root, value, suffix=None, directory=False):
@@ -26,6 +27,7 @@ def registry(root, config, candidates=False):
         # A candidate is never exposed to production even if the files exist.
         if not candidates and entry.get("approved") is not True and not (entry.get("engine")=="voicetut" and entry.get("provisional") is True and os.environ.get("ENABLE_PROVISIONAL_EGYPTIAN")=="1"):continue
         engine=entry.get("engine","piper")
+        if id in REPLICA_EXTRA_IDS and engine!="replica":raise ValueError("Dedicated Replica identity")
         if engine=="piper":
             model=local_asset(root,entry.get("model"),".onnx")
             local_asset(root,str(model)+".json",".json")
@@ -97,8 +99,8 @@ def synthesize(models,body):
             filters=[]
         elif entry["engine"]=="replica":
             from replica_backend import render
-            render(entry["model"],voice,text,target)
-            filters=[] if speed==1 else ["-af",f"atempo={speed}"]
+            render(entry["model"],voice,text,target,speed,body.get("performance","natural"))
+            filters=[]
         else:
             subprocess.run([sys.executable,str(Path(__file__).with_name("audar_backend.py")),str(target)],
                            input=json.dumps({"voice":entry,"text":text}).encode(),check=True,timeout=83,
@@ -148,7 +150,7 @@ def main():
         def do_GET(self):
             if not self.authorized():return self.reply(401)
             if self.path!="/voices":return self.reply(404)
-            self.reply(200,json.dumps({"voices":sorted(models),"provisional":[k for k,v in models.items() if v.get("provisional")]}).encode())
+            self.reply(200,json.dumps({"voices":sorted(models),"provisional":[k for k,v in models.items() if v.get("provisional")],"expressive":[k for k,v in models.items() if v["engine"]=="replica"]}).encode())
         def do_POST(self):
             if not self.authorized():return self.reply(401)
             if self.path!="/voice-preview":return self.reply(404)
