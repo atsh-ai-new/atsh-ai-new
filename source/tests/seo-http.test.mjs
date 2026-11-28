@@ -57,14 +57,15 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
       assert.doesNotMatch(page.body,/data-period="daily"/);
     }
     const topNews=(await get("/ar")).body;
-    assert.match(topNews,/<main[^>]*><div class="atsh-news-slot" data-home-ticker-seeded="true">/);
+    assert.match(topNews,/<main[^>]*><div class="atsh-news-slot" data-home-ticker-seeded="true" data-home-news-sticky="true">/);
     for(const [position,preceding] of [["below_header","</header>"],["after_hero","</section>"]]){
       newsPosition=position;
       const html=(await get("/ar")).body;
       assert.ok(html.includes(preceding+'<div class="atsh-news-slot" data-home-ticker-seeded="true">'),position);
+      assert.doesNotMatch(html,/data-home-news-sticky="true"/);
     }
     newsPosition="top";
-    assert.doesNotMatch((await get("/ar?atshPreview=83ab3c99-56e4-4d17-bccd-1c43f1667c52")).body,/<div class="atsh-news-slot" data-home-ticker-seeded="true">/);
+    assert.doesNotMatch((await get("/ar?atshPreview=83ab3c99-56e4-4d17-bccd-1c43f1667c52")).body,/<div class="atsh-news-slot" data-home-ticker-seeded="true"[^>]*>/);
     daily=undefined;
     assert.match((await get("/ar")).body,/<bdi dir="ltr">1,234<\/bdi>/);
     monthly=0;
