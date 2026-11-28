@@ -81,6 +81,19 @@ a.bubble:hover { text-decoration: underline; }
   color: var(--news-ink);
   cursor: pointer;
 }
+@media (max-width: 640px) {
+  /* Put the single badge just below the ticker, at the same physical left
+     edge in both languages, without reducing the moving headlines' width. */
+  .bar:has(> .visitBadge) {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    grid-template-areas: "news pause" "visits visits";
+    row-gap: 2px;
+  }
+  .viewport { grid-area: news; }
+  .toggle { grid-area: pause; }
+  .visitBadge { grid-area: visits; justify-self: left; }
+}
 @media (hover: hover) { .bar:hover .track { animation-play-state: paused; } }
 .bar[data-paused="true"] .track,
 .bar:has(.items a:focus-visible) .track { animation: none; width: 100%; }
