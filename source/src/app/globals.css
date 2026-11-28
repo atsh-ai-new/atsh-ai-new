@@ -1117,3 +1117,8 @@ input,textarea,select,option,optgroup{font-weight:500}
 
 .atsh-news-slot{min-height:0;min-width:0}
 .platform>.atsh-news-slot,.managed-page>.atsh-news-slot{width:100vw;margin-inline:calc((100% - 100vw)/2)}
+
+/* Keep top-positioned homepage news in flow until it reaches the mobile viewport edge. */
+@media (max-width:640px){
+ .atsh-news-slot[data-home-news-sticky="true"]{position:sticky;top:0;z-index:120}
+}

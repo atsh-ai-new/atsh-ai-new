@@ -15,8 +15,9 @@ export default function SocialHeader(){
  // Private workspaces always retain the requested top-of-page placement.
  const portal=/^\/(?:ar\/|en\/)?(?:admin|account|team)(?:\/|$)/.test(pathname);
  const position=portal?"top":normalizeNewsTickerPosition(ticker?.position);
+ const homepage=/^\/(?:ar|en)?\/?$/.test(pathname);
  useEffect(()=>{
-  const holder=document.createElement("div");holder.className="atsh-social-inline-slot";if(!/^\/(?:ar|en)?\/?$/.test(pathname)&&!/^\/(?:ar\/|en\/)?(?:admin|account|team)(?:\/|$)/.test(pathname))holder.dataset.internalPublic="true";const bar=document.createElement("div");bar.className="atsh-news-slot";
+  const holder=document.createElement("div");holder.className="atsh-social-inline-slot";if(!homepage&&!portal)holder.dataset.internalPublic="true";const bar=document.createElement("div");bar.className="atsh-news-slot";if(homepage&&position==="top")bar.dataset.homeNewsSticky="true";
   const placeAtPageTop=()=>{if(document.body.firstElementChild!==bar)document.body.prepend(bar);};
   const place=()=>{
    // A full-screen or embedded demo is its own viewport. Never insert the
@@ -48,7 +49,7 @@ export default function SocialHeader(){
   };
   place();const observer=new MutationObserver(place);observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["data-catalog-immersive"]});
   return ()=>{observer.disconnect();holder.remove();bar.remove();};
- },[pathname,position]);
+ },[pathname,position,homepage,portal]);
  return <>{ticker&&tickerHost&&createPortal(<NewsBubbles ticker={ticker} english={pathname.startsWith("/en")}/>,tickerHost)}{host&&createPortal(
  <nav className="atsh-social-header" aria-label="ATSH AI social media">
   <span className="pending" title="YouTube — قريبًا" aria-label="YouTube — قريبًا"><svg viewBox="0 0 24 24" fill="#ff0033" aria-hidden="true"><path d="M22 7.2a2.7 2.7 0 0 0-1.9-1.9C18.4 4.9 12 4.9 12 4.9s-6.4 0-8.1.4A2.7 2.7 0 0 0 2 7.2a28 28 0 0 0 0 9.6 2.7 2.7 0 0 0 1.9 1.9c1.7.4 8.1.4 8.1.4s6.4 0 8.1-.4a2.7 2.7 0 0 0 1.9-1.9 28 28 0 0 0 0-9.6ZM10 15.5v-7l6 3.5-6 3.5Z"/></svg></span>

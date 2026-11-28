@@ -59,7 +59,7 @@ export default function HomePage({locale="ar",configuratorOnly=false,pricingOnly
     :null;
   const tickerPosition=normalizeNewsTickerPosition(rawTicker?.position);
   const newsAt=(position:NewsTickerPosition)=>homeTicker&&position===tickerPosition
-    ?<div className="atsh-news-slot" data-home-ticker-seeded><NewsBubbles ticker={homeTicker} english={isEnglish} monthlyCount={visitorCounts?.monthly}/></div>
+    ?<div className="atsh-news-slot" data-home-ticker-seeded data-home-news-sticky={position==="top"?"true":undefined}><NewsBubbles ticker={homeTicker} english={isEnglish} monthlyCount={visitorCounts?.monthly}/></div>
     :null;
   const [showOtherDetails,setShowOtherDetails]=useState(false);
   const [signedInCustomerName,setSignedInCustomerName]=useState("");
