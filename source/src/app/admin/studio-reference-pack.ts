@@ -1,3 +1,4 @@
+import type {ArtImage,RigLayer} from "./cartoon-plan";
 // Imports references only; no execution of embedded code or remote URL fetch.
 export const angles={
  front:"أمام", "front-left":"أمام مائل يسارًا",left:"جانب يسار",
@@ -40,4 +41,22 @@ export function parseReferencePack(value:unknown):{name:string;referenceAngles:A
   return entries;
  })();
  return {name:value.name.trim(),referenceAngles,accessories,...(outfits?{outfits}:{})};
+}
+
+// Dedicated format for a registered render-ready character; reference packs
+// remain separate and continue to work unchanged.
+const rigParts=["torso","head","left-arm","right-arm","left-leg","right-leg","mouth-open","eyes-closed"] as const;
+export function parseRigPack(value:unknown):{name:string;images:ArtImage[];rig:RigLayer[]} {
+ const invalid=()=>{throw Error("حزمة التحريك غير صالحة. راجع صورة الوقوف والطبقات ومحاورها.");};
+ if(!plain(value)||value.format!=="atsh-character-rig-v1"||typeof value.name!=="string"||!value.name.trim()||value.name.trim().length>80||
+    !image(value.standing)||!Array.isArray(value.rig)||value.rig.length<7||value.rig.length>8)return invalid();
+ const rig:RigLayer[]=value.rig.map(x=>{
+   if(!plain(x)||typeof x.part!=="string"||!rigParts.includes(x.part as RigLayer["part"])||!image(x.image)||
+      typeof x.pivotX!=="number"||!Number.isFinite(x.pivotX)||x.pivotX<0||x.pivotX>1||
+      typeof x.pivotY!=="number"||!Number.isFinite(x.pivotY)||x.pivotY<0||x.pivotY>1)return invalid();
+   return {part:x.part as RigLayer["part"],image:x.image,pivotX:x.pivotX,pivotY:x.pivotY};
+ });
+ const keys=new Set(rig.map(p=>p.part));
+ if(keys.size!==rig.length||rigParts.slice(0,7).some(k=>!keys.has(k))||rig.reduce((n,p)=>n+p.image.length,value.standing.length)>3400000)return invalid();
+ return {name:value.name.trim(),images:[{pose:"stand",image:value.standing}],rig};
 }

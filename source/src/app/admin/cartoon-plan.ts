@@ -51,3 +51,23 @@ export function validateCartoon(p:CartoonPlan):string[]{
  return err;
 }
 
+
+// Preserve the user's dialogue, never send the optional stage direction to TTS.
+export function singleScriptPlan(character:Character,input:string,seconds:number):CartoonPlan {
+ const lines=input.trim().split(/\r?\n/);
+ const direction=lines[0]?.match(/^\[([^\[\]]{1,160})\]\s*$/u);
+ if(direction)lines.shift();
+ const text=lines.join(" ").replace(/\s+/gu," ").trim();
+ if(!character.artwork?.images.some(p=>p.pose==="stand"))throw Error("اختار شخصية بصورة وقوف من المكتبة.");
+ if(!text||text.length>90||!/\p{Script=Arabic}/u.test(text)||/[A-Za-z[\]]/u.test(text))throw Error("اكتب جملة حوار بالعربي لحد 90 حرف. لو فيه توجيه، حطه بين [ ] في أول سطر لوحده.");
+ if(!Number.isInteger(seconds)||seconds<3||seconds>8)throw Error("مدة اللقطة من 3 إلى 8 ثواني.");
+ const title=("مشهد "+character.name).slice(0,180);
+ const plan=localPlan({product:title,audience:"",benefit:"",cta:"",style:"story",background:"office",seconds,castCount:1});
+ const visual=direction?.[1].trim()||"لقطة كاملة ثابتة للشخصية";
+ const l={id:newId("l"),speakerId:character.id,text,pronunciation:"",start:.3};
+ return {...plan,concept:"لقطة من سيناريو مكتوب",musicAndSound:"الحوار فقط",scenes:[
+   {...plan.scenes[0],seconds,visual,characters:character.name,script:text,sound:text,caption:"",camera:"wide",motion:"static"}
+ ],animation:{...plan.animation,renderer:"layers-v1",music:false,subtitles:false,cast:[character],shots:[
+   {...plan.animation.shots[0],placements:[{characterId:character.id,position:"center",expression:"neutral",gesture:"idle",pose:"stand",action:"stand"}],dialogue:[l]}
+ ]}};
+}
