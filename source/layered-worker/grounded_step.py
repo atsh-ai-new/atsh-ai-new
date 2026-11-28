@@ -1,6 +1,7 @@
 """Opt-in directed single side step for registered 2D Studio rigs."""
 import math,re,unicodedata
 from PIL import Image
+from speech_motion import mouth_overlay
 PARTS=("left-leg","right-leg")
 CUE=re.compile(r"(?<!\w)خطو[ةه]\s+(?:(?:واحد[ةه]|جانبي[ةه])\s+)?(?:لناحي[ةه]\s+|ناحي[ةه]\s+|نحو\s+|إ?لى\s+|لل?\s*)?(?:ال)?(يمين|يسار|شمال)(?!\w)")
 ENG=re.compile(r"\b(?:a\s+|one\s+)?(?:side[ -]?step|step)\s+(?:(?:to\s+)?(?:the\s+)?)?(left|right)\b",re.I)
@@ -117,8 +118,11 @@ class Step:
         for i,leg in enumerate(self.legs):leg.draw(c,pelvis,feet[i])
         move=(round(pelvis[0]),round(pelvis[1]))
         for p in ("left-arm","torso","right-arm","head","eyes-closed","mouth-open"):
-            if p not in self.rig or p=="mouth-open" and amp<.15 or p=="eyes-closed" and not .25<t%4.2<.34:continue
+            if p not in self.rig or p=="mouth-open" and amp<.065 or p=="eyes-closed" and not .25<t%4.2<.34:continue
             im,x,y=self.rig[p]
+            if p=="mouth-open":
+                im=mouth_overlay(im,amp)
+                if im is None:continue
             arm=keys(t,[(0,0),(.43,-1.4),(.88,2.5),(1.44,0)])
             if p in ("left-arm","right-arm"):
                 im=im.rotate(arm*self.sign*(1 if p=="right-arm" else -1),resample=Image.Resampling.BICUBIC,center=(x,y))

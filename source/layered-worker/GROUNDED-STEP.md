@@ -20,3 +20,10 @@ its own first line in brackets. Choose a saved character, set 3–8 seconds,
 write the bracketed direction followed by dialogue, and open production review.
 The quoted dialogue is sent unchanged apart from whitespace normalization;
 the direction is never read aloud. Existing production review is required.
+
+For registered rig mouth layers, the worker also computes a continuous mouth
+opening signal once per line from canonical 16 kHz dialogue, before music.
+It uses energy and voice-band resonance to separate pauses and low-resonance
+consonant intervals from larger openings, and applies the line start once.
+This is acoustic aperture, not phoneme-to-viseme alignment; the mouth and body
+tracks are separate. Still-image characters retain their existing pose fallback.
