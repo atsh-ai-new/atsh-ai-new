@@ -1,5 +1,5 @@
 """Private CPU voice provider. Every identity requires a separately licensed, verified local model."""
-import hmac,hashlib,json,os,re,subprocess,tempfile,wave,sys
+import hmac,hashlib,json,logging,os,re,subprocess,tempfile,wave,sys
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from threading import BoundedSemaphore
 from pathlib import Path
@@ -16,6 +16,7 @@ def local_asset(root, value, suffix=None, directory=False):
     return path
 def sha(path):
     with path.open("rb") as f:return hashlib.file_digest(f,"sha256").hexdigest()
+REPLICA_Q4_SHA256="8583aa11b17f7851520bfc9cdc08f368737941f72b948b3bad6490ad628de03d"
 REJECTED_MODEL_HASHES={"1578a9b27d01a0626227225b148179628b770607dd61bdbbc41865bd399106b1"}
 def registry(root, config, candidates=False):
     root=Path(root).resolve(); result={}; seen=set()
@@ -37,6 +38,13 @@ def registry(root, config, candidates=False):
             if model_hash in REJECTED_MODEL_HASHES:raise ValueError("Model rejected by listening review")
             identity=(model_hash,speaker or 0)
             item={"engine":engine,"model":str(model),"speaker":speaker}
+        elif engine=="replica":
+            from replica_backend import APPROVED_PILOT
+            if id not in APPROVED_PILOT:raise ValueError("Unreviewed Replica identity")
+            model=local_asset(root,entry.get("model"),".gguf")
+            if sha(model)!=REPLICA_Q4_SHA256:raise ValueError("Replica model digest mismatch")
+            identity=(engine,id)
+            item={"engine":engine,"model":str(model)}
         elif engine=="audar":
             if entry.get("commercialRights") is not True:raise ValueError("Reference rights not confirmed")
             model=local_asset(root,entry.get("model"),".gguf")
@@ -87,6 +95,10 @@ def synthesize(models,body):
             from voicetut_backend import render
             render(entry,text,speed,target)
             filters=[]
+        elif entry["engine"]=="replica":
+            from replica_backend import render
+            render(entry["model"],voice,text,target)
+            filters=[] if speed==1 else ["-af",f"atempo={speed}"]
         else:
             subprocess.run([sys.executable,str(Path(__file__).with_name("audar_backend.py")),str(target)],
                            input=json.dumps({"voice":entry,"text":text}).encode(),check=True,timeout=83,
@@ -100,7 +112,7 @@ def synthesize(models,body):
 def main():
     root=os.environ.get("VOICE_MODEL_ROOT","/models")
     manifest=os.environ.get("VOICE_MODELS_JSON")
-    config=json.loads(manifest if manifest else (Path(root)/"profiles.json").read_text())
+    config=json.loads(manifest if manifest else Path(os.environ.get("VOICE_PROFILES_FILE",str(Path(root)/"profiles.json"))).read_text())
     if len(sys.argv)>1 and sys.argv[1]=="--audition":
         # Offline admin-only review, no candidate ever enters production API.
         from audition import samples
@@ -122,6 +134,9 @@ def main():
     if any(v["engine"]=="voicetut" for v in models.values()):
         from voicetut_backend import load_model
         for model in {v["model"] for v in models.values() if v["engine"]=="voicetut"}:load_model(model)
+    if any(v["engine"]=="replica" for v in models.values()):
+        from replica_backend import runtime
+        runtime()
     token=os.environ["CHARACTER_DIALECT_SERVICE_TOKEN"]
     if not re.fullmatch("[a-f0-9]{64}",token):raise ValueError("64 hex token required")
     slot=BoundedSemaphore(1)
@@ -147,8 +162,10 @@ def main():
                 try:audio=synthesize(models,body)
                 finally:slot.release()
             except ValueError:return self.reply(400)
-            except Exception:return self.reply(502)
+            except Exception as exc:
+                logging.warning("Voice synthesis failed: %s",type(exc).__name__)
+                return self.reply(502)
             self.reply(200,audio,"audio/wav")
-    ThreadingHTTPServer(("0.0.0.0",8080),Handler).serve_forever()
+    ThreadingHTTPServer((os.environ.get("VOICE_BIND_HOST","0.0.0.0"),int(os.environ.get("VOICE_PORT","8080"))),Handler).serve_forever()
 if __name__=="__main__":main()
 

@@ -1,6 +1,16 @@
 import {z} from "zod";
 export const voiceIds=["local-msa","egyptian-male","egyptian-female","egyptian-child-male","egyptian-child-female","egyptian-teen-male","egyptian-teen-female","alexandrian-male","alexandrian-female","alexandrian-child-male","alexandrian-child-female","alexandrian-teen-male","alexandrian-teen-female","saidi-male","saidi-female","saidi-child-male","saidi-child-female","saidi-teen-male","saidi-teen-female","saudi-male","saudi-female","gulf-male","gulf-female"];
 export const voiceIdSchema=z.enum(voiceIds);
+export const voicePerformanceSchema=z.enum(["natural","horror","action","suspense"]);
+const performanceSpeed={horror:.89,action:1.10,suspense:.94};
+export function prepareVoicePerformance({performance,...voice}){
+ if(!performance||performance==="natural")return voice;
+ const factor=performanceSpeed[performance];
+ if(!Object.hasOwn(performanceSpeed,performance))throw Error("Invalid voice performance");
+ const punctuate=text=>typeof text!=="string"?text:text.replace(/[،,][ \t]+/g,performance==="action"?"، ":"… ");
+ const text=punctuate(voice.text),pronunciation=punctuate(voice.pronunciation);
+ return {...voice,text,pronunciation,speed:Math.min(1.2,Math.max(.8,(voice.speed??1)*factor))};
+}
 function configuredIds(){
  try{const ids=JSON.parse(process.env.CHARACTER_DIALECT_VOICES||"[]");return new Set(Array.isArray(ids)?ids.filter(id=>voiceIds.includes(id)&&id!=="local-msa"):[]);}catch{return new Set();}
 }
@@ -24,7 +34,7 @@ export async function onlineVoiceCatalog(){
 }
 export function voiceAvailable(id){return voiceCatalog().some(v=>v.id===(id||"local-msa")&&v.available);}
 export async function synthesizeStudioVoice(input){
- const {voiceId="local-msa",...body}=input;
+ const {voiceId="local-msa",...body}=prepareVoicePerformance(input);
  if(!voiceAvailable(voiceId))throw Error("الصوت المحدد غير مجهز؛ اختر صوتًا متاحًا.");
  const local=voiceId==="local-msa";
  const base=local?process.env.CHARACTER_SERVICE_URL:process.env.CHARACTER_DIALECT_SERVICE_URL;

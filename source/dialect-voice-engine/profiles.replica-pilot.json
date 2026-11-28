@@ -1,0 +1,12 @@
+{
+  "egyptian-male": {
+    "engine": "replica",
+    "model": "replica-q4.gguf",
+    "approved": true
+  },
+  "egyptian-child-female": {
+    "engine": "replica",
+    "model": "replica-q4.gguf",
+    "approved": true
+  }
+}

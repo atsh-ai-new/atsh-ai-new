@@ -1,0 +1,29 @@
+services:
+  dialect-voice:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.replica
+    restart: "no"
+    cpus: 1.5
+    mem_limit: 1450m
+    memswap_limit: 1450m
+    pids_limit: 48
+    environment:
+      CHARACTER_DIALECT_SERVICE_TOKEN: ${CHARACTER_DIALECT_SERVICE_TOKEN:?Set secret}
+      VOICE_MODEL_ROOT: /models
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ${VOICE_MODELS_DIR:?Set verified models directory}/replica-q4.gguf:/models/replica-q4.gguf:ro
+    # No published ports. Join only the existing private backend network.
+    networks: [voice-backend]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+networks:
+  voice-backend:
+    external: true
+    name: ${VOICE_BACKEND_NETWORK:?Set existing backend network}
