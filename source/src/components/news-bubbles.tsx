@@ -1,12 +1,14 @@
 import {useEffect,useRef,useState,type CSSProperties} from "react";
 import styles from "./news-bubbles.module.css";
 
+const VISIT_COUNT_FORMAT=new Intl.NumberFormat("en-US");
 const HEX_COLOR=/^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i;
 
 export type NewsTickerData={text:string;url:string;speed:number;color:string;background:string;bubbles?:{text:string;visible:boolean}[]};
-export function NewsBubbles({ticker,english}:{
+export function NewsBubbles({ticker,english,monthlyCount}:{
  ticker:NewsTickerData;
  english:boolean;
+ monthlyCount?:number;
 }){
  const [paused,setPaused]=useState(false);
  const [duration,setDuration]=useState(12);
@@ -49,6 +51,11 @@ export function NewsBubbles({ticker,english}:{
     </ul>
    </div>
   </div>
+  {monthlyCount!==undefined&&<span className={styles.visitBadge} data-monthly-visit-badge
+   title={english?"Unique visitors this month":"الزوار الفريدون هذا الشهر"}>
+   <span>{english?"Visit count":"عدد الزيارات"}</span>
+   <bdi dir="ltr">{VISIT_COUNT_FORMAT.format(monthlyCount)}</bdi>
+  </span>}
   <button type="button" className={styles.toggle} aria-pressed={paused}
    aria-label={english?"Pause news scrolling":"إيقاف حركة شريط الأخبار"}
    onClick={()=>setPaused(p=>!p)}>
