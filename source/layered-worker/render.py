@@ -2,6 +2,7 @@
 import base64, io, math, os, subprocess, tempfile, wave, array, sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps
+from grounded_step import direction, Step
 FPS=25
 SLOTS={"left":.18,"center-left":.38,"center":.5,"center-right":.62,"right":.82}
 FONT=os.environ.get("STUDIO_FONT","/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
@@ -96,13 +97,17 @@ def rig_frame(rig,size,t,action,gesture,amp):
             im=im.rotate(angle,Image.Resampling.BILINEAR,center=(px*w,py*h))
         c.alpha_composite(im)
     return c
-def actor(canvas,placement,pictures,rig,amp,t,duration,n,medium=False):
+def actor(canvas,placement,pictures,rig,amp,t,duration,n,medium=False,step=None):
     w,h=canvas.size;action=placement.get("action") or placement.get("pose") or "stand";gesture=placement["gesture"];x=SLOTS[placement["position"]]*w;y=h*.87
     if medium:
         x=w*.5+(x-w*.5)*.72
         y=h*.93
     height=min(h*(.84 if medium else .70),w*.54/max(1,n*.55)*pictures["stand"].height/pictures["stand"].width)
     stand=pictures["stand"]
+    if step:
+        body=step.frame(t,amp)
+        canvas.alpha_composite(body,(round(x-body.width/2),round(y-body.height)))
+        return
     if action in ("enter","exit"):
         offset=(1-min(1,t/1.3)) if action=="enter" else min(1,max(0,(t-duration+1.3)/1.3))
         x+=(-1 if x<w/2 else 1)*w*.8*offset
@@ -137,6 +142,17 @@ def render(plan,voice,folder,cancelled,stage=lambda _:None,resolution=1080):
         if cancelled():raise RuntimeError("cancelled")
         bg=background(size,shot); full=shot.get("artwork",{}).get("mode")=="full"
         actors=[] if full else [(p,*art_for(next(c for c in a["cast"] if c["id"]==p["characterId"]),p)) for p in shot["placements"]]
+        grounded={}
+        cue=direction(scene.get("visual"))
+        if cue and len(actors)==1 and scene["seconds"]>=2 and scene.get("camera")!="medium":
+            p,pics,rig=actors[0]
+            if rig and (p.get("action") or p.get("pose") or "stand") in ("stand","walk"):
+                w,h=size;art=pics["stand"]
+                height=min(h*.70,w*.54*art.height/art.width)
+                dimensions=(max(1,round(height*art.width/art.height)),max(1,round(height)))
+                if 0<=SLOTS[p["position"]]*w-dimensions[0]*.67 and SLOTS[p["position"]]*w+dimensions[0]*.67<=w:
+                    try:grounded[p["characterId"]]=Step(rig,cue,dimensions)
+                    except ValueError:pass
         props=[(p,img(p["image"]),img(p["stateImage"]) if p.get("stateImage") else None) for p in shot.get("props",[])]
         out=folder/("scene-"+str(shot["sceneIndex"])+".mp4")
         cmd=["ffmpeg","-nostdin","-loglevel","error","-y","-f","rawvideo","-pix_fmt","rgba","-s",f"{size[0]}x{size[1]}","-r",str(FPS),"-i","-","-i",str(audio),"-c:v","libx264","-threads","2","-preset","veryfast","-crf","23","-pix_fmt","yuv420p","-c:a","aac","-shortest","-movflags","+faststart",str(out)]
@@ -155,7 +171,7 @@ def render(plan,voice,folder,cancelled,stage=lambda _:None,resolution=1080):
                         height=min(h*p["size"],w*p["size"]*im.height/im.width);place(c,im,w*x,h*p["y"],height)
                 draw_props(False)
                 medium=scene.get("camera")=="medium" and not full and len(actors)<=2
-                for p,pics,rig in actors:actor(c,p,pics,rig,speech_at(lines,p["characterId"],t,a["mouthIntensity"]),t,scene["seconds"],len(actors),medium)
+                for p,pics,rig in actors:actor(c,p,pics,rig,speech_at(lines,p["characterId"],t,a["mouthIntensity"]),t,scene["seconds"],len(actors),medium,grounded.get(p["characterId"]))
                 draw_props(True)
                 # Medium presentation framing, focused on faces and upper bodies.
                 if medium:
@@ -163,7 +179,7 @@ def render(plan,voice,folder,cancelled,stage=lambda _:None,resolution=1080):
                     enlarged=c.resize((cw,ch),Image.Resampling.LANCZOS)
                     left=(cw-w)//2;top=round((ch-h)*.18)
                     c=enlarged.crop((left,top,left+w,top+h))
-                if scene["motion"]!="static":
+                if scene["motion"]!="static" and not grounded:
                     f=1+.06*(t/scene["seconds"] if scene["motion"]=="zoom-in" else 1-t/scene["seconds"]);c=ImageOps.fit(c.resize((round(w*f),round(h*f)),Image.Resampling.BILINEAR),size) if f==1 else c.resize((round(w*f),round(h*f)),Image.Resampling.BILINEAR).crop(((round(w*f)-w)//2,(round(h*f)-h)//2,(round(w*f)+w)//2,(round(h*f)+h)//2))
                 if scene.get("caption"):label(c,scene["caption"],"top")
                 for s in shot.get("screenTexts",[]):
