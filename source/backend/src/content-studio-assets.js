@@ -16,29 +16,45 @@ export function validWebp(s){
 export const artImage=z.string().max(245760).refine(validWebp,"صورة WebP غير صالحة أو أكبر من الحد المسموح");
 const pose=z.enum(["stand","walk-a","walk-b","talk-open","sit","enter","exit","eat","wave","point","explain","think","tablet","closed","open"]);
 export const heroImage=z.object({pose,image:artImage}).strict();
-export const imagesSchema=z.array(heroImage).min(1).max(15).refine(x=>new Set(x.map(p=>p.pose)).size===x.length,"لا تكرر وضعية الصورة");
+const uniquePoseImages=z.array(heroImage).max(15);
+const distinctPoses=x=>new Set(x.map(p=>p.pose)).size===x.length;
+export const imagesSchema=uniquePoseImages.min(1).refine(distinctPoses,"لا تكرر وضعية الصورة");
+const heroLibraryImages=uniquePoseImages.refine(distinctPoses,"لا تكرر وضعية الصورة");
 const rigParts=["torso","head","left-arm","right-arm","left-leg","right-leg","mouth-open","eyes-closed"];
 export const rigSchema=z.array(z.object({part:z.enum(rigParts),image:artImage,pivotX:z.number().min(0).max(1),pivotY:z.number().min(0).max(1)}).strict()).min(7).max(8).refine(v=>new Set(v.map(x=>x.part)).size===v.length&&rigParts.slice(0,7).every(k=>v.some(x=>x.part===k)),"أضف طبقات الجسم والرأس والذراعين والساقين والفم دون تكرار");
 export const outfitSchema=z.object({id:z.string().uuid(),name:z.string().trim().min(1).max(40),images:imagesSchema,rig:rigSchema.optional()}).strict();
 export const outfitsSchema=z.array(outfitSchema).max(3).refine(x=>new Set(x.map(o=>o.id)).size===x.length);
+const viewAngle=z.enum(["front","front-left","left","rear-left","back","rear-right","right","front-right"]);
+export const referenceAnglesSchema=z.array(z.object({angle:viewAngle,image:artImage}).strict()).max(8)
+ .refine(v=>new Set(v.map(a=>a.angle)).size===v.length,"لا تكرر زاوية الشخصية");
+const libraryOutfitSchema=z.object({id:z.string().uuid(),name:z.string().trim().min(1).max(40),
+ images:heroLibraryImages,rig:rigSchema.optional(),referenceAngles:referenceAnglesSchema.optional(),
+}).strict().refine(o=>o.images.length>0||!!o.referenceAngles?.length,"أضف صور الطقم قبل الحفظ");
+const libraryOutfitsSchema=z.array(libraryOutfitSchema).max(3).refine(v=>new Set(v.map(o=>o.id)).size===v.length);
+export const accessoriesSchema=z.array(z.object({
+ id:z.string().uuid(),name:z.string().trim().min(1).max(40),image:artImage,
+}).strict()).max(12).refine(v=>new Set(v.map(a=>a.id)).size===v.length,"لا تكرر الإكسسوار");
 const voice=z.object({voiceId:voiceIdSchema.optional(),pitch:z.number().min(-3).max(3),speed:z.number().min(.8).max(1.2),intonation:z.number().min(.8).max(1.2)}).strict();
 export const audioData=z.string().max(1400000).refine(s=>{const b=Buffer.from(s,"base64");return b.length>=12&&b.toString("base64")===s&&((b.toString("ascii",0,4)==="RIFF"&&b.toString("ascii",8,12)==="WAVE")||b.toString("ascii",0,3)==="ID3"||(b[0]===255&&(b[1]&224)===224));},"اختر صوت WAV أو MP3 صالحًا");
 export const assetSchema=z.discriminatedUnion("kind",[
- z.object({kind:z.literal("hero"),name:z.string().trim().min(1).max(80),category:z.enum(["human","animal"]).optional(),images:imagesSchema,voice,rig:rigSchema.optional(),outfits:outfitsSchema.optional()}).strict(),
+ z.object({kind:z.literal("hero"),name:z.string().trim().min(1).max(80),category:z.enum(["human","animal"]).optional(),images:heroLibraryImages,voice,rig:rigSchema.optional(),outfits:libraryOutfitsSchema.optional(),referenceAngles:referenceAnglesSchema.optional(),accessories:accessoriesSchema.optional()}).strict(),
  z.object({kind:z.enum(["background","prop"]),name:z.string().trim().min(1).max(80),category:z.enum(["background","vehicle","door","object"]).optional(),locationType:z.enum(["restaurant","school","clinic","shop","office","home","street","workshop","hospital","other"]).optional(),images:z.array(heroImage).min(1).max(3).refine(v=>new Set(v.map(x=>x.pose)).size===v.length)}).strict()
 ,
  z.object({kind:z.literal("music"),name:z.string().trim().min(1).max(80),category:z.enum(["music","effect"]),images:z.array(heroImage).length(0),audio:audioData}).strict()
-]).superRefine((asset,ctx)=>{if(asset.kind==="music")return;if(asset.kind!=="hero"){if(asset.kind!=="background"&&asset.locationType)ctx.addIssue({code:"custom",message:"تصنيف المكان للخلفيات فقط"});if(!asset.images.some(i=>i.pose==="stand"))ctx.addIssue({code:"custom",message:"أضف الصورة الأساسية"});if(asset.kind==="background"&&asset.images.length!==1)ctx.addIssue({code:"custom",message:"الخلفية صورة واحدة"});}else{const size=[asset,...(asset.outfits||[])].reduce((n,a)=>n+a.images.reduce((m,i)=>m+i.image.length,0)+(a.rig||[]).reduce((m,i)=>m+i.image.length,0),0);if(size>3400000)ctx.addIssue({code:"custom",message:"حجم أصل الشخصية أكبر من الحد المسموح"});}});
+]).superRefine((asset,ctx)=>{if(asset.kind==="music")return;if(asset.kind!=="hero"){if(asset.kind!=="background"&&asset.locationType)ctx.addIssue({code:"custom",message:"تصنيف المكان للخلفيات فقط"});if(!asset.images.some(i=>i.pose==="stand"))ctx.addIssue({code:"custom",message:"أضف الصورة الأساسية"});if(asset.kind==="background"&&asset.images.length!==1)ctx.addIssue({code:"custom",message:"الخلفية صورة واحدة"});}else{if(!asset.images.length&&!asset.referenceAngles?.length)ctx.addIssue({code:"custom",message:"أضف مرجع زاوية أو صورة وضعية"});const size=[asset,...(asset.outfits||[])].reduce((n,a)=>n+a.images.reduce((m,i)=>m+i.image.length,0)+(a.rig||[]).reduce((m,i)=>m+i.image.length,0),0);const refs=[...(asset.referenceAngles||[]),...(asset.accessories||[]),...(asset.outfits||[]).flatMap(o=>o.referenceAngles||[])].reduce((n,a)=>n+a.image.length,0);if(size+refs>3400000)ctx.addIssue({code:"custom",message:"حجم أصل الشخصية أكبر من الحد المسموح"});}});
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function registerStudioAssetRoutes(app,{pool,requireAdmin,requirePermission,requireRole,roles,route}){
  const auth=[requireAdmin,requirePermission("assistant"),requireRole(...roles)],path="/api/admin/content-studio/assets";
  app.get(path,...auth,route(async(req,res)=>{
-  const q=await pool.query("SELECT id,kind,name,archived,revision,updated_at,payload->>'category' AS category,payload->>'locationType' AS \"locationType\" FROM content_studio_assets ORDER BY archived,updated_at DESC LIMIT 200");
+  const q=await pool.query(`SELECT id,kind,name,archived,revision,updated_at,
+    payload->>'category' AS category,payload->>'locationType' AS "locationType",
+    (kind<>'hero' OR COALESCE(jsonb_array_length(payload->'images'),0)>0) AS "renderReady"
+    FROM content_studio_assets ORDER BY archived,updated_at DESC LIMIT 200`);
   res.json({assets:q.rows});
  }));
  app.get(path+"/:id/thumbnail",...auth,route(async(req,res)=>{
   if(!uuid.test(req.params.id))return res.status(404).end();
-  const q=await pool.query("SELECT payload->'images'->0->>'image' AS image FROM content_studio_assets WHERE id=$1",[req.params.id]);
+  const q=await pool.query("SELECT COALESCE(payload->'images'->0->>'image',payload->'referenceAngles'->0->>'image') AS image FROM content_studio_assets WHERE id=$1",[req.params.id]);
   const image=q.rows[0]?.image;
   if(!validWebp(image))return res.status(404).end();
   res.set("Cache-Control","private, max-age=300").type("image/webp").send(Buffer.from(image,"base64"));
