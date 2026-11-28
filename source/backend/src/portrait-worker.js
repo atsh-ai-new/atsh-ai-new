@@ -28,7 +28,7 @@ export function portraitInput(plan){
     throw Error("الصورة الناطقة تحتاج مشهدًا ثابتًا واحدًا (3–8 ثوانٍ)، صورة بطل واحد، وجملة عربية حتى 90 حرفًا دون إضافات المشهد أو الموسيقى أو الترجمة.");
   }
   const {pitch,speed,intonation,voiceId}=c.voice;
-  return {image,seconds:scene.seconds,start:line.start,speechVolume:a.speechVolume,voice:{text:line.text,pronunciation:line.pronunciation||"",pitch,speed,intonation,...(voiceId?{voiceId}:{})}};
+  return {image,seconds:scene.seconds,start:line.start,speechVolume:a.speechVolume,voice:{text:line.text,pronunciation:line.pronunciation||"",performance:line.performance,pitch,speed,intonation,...(voiceId?{voiceId}:{})}};
 }
 export const portraitCancelSQL="UPDATE content_studio_drafts SET status='reviewed',updated_at=now(),production_plan=(production_plan-'_jobToken'-'_jobProgress'-'_rendererJobId'-'_cancelRequested')||jsonb_build_object('_productionError','character_cancelled') WHERE id=$1 AND status='generating' AND production_plan->>'_jobProgress' IN ('portrait_queued','portrait_running') RETURNING id";
 async function synthesize(input){return (await synthesizeStudioVoice(input.voice)).toString("base64");}

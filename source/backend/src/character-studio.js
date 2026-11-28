@@ -1,7 +1,7 @@
 import {artImage,heroImage,rigSchema,outfitsSchema,audioData} from "./content-studio-assets.js";
 import { z } from "zod";
 import {registerPortraitRoutes,portraitCancelSQL} from "./portrait-worker.js";
-import {onlineVoiceCatalog,voiceIdSchema,synthesizeStudioVoice} from "./studio-voices.js";
+import {onlineVoiceCatalog,voiceIdSchema,voicePerformanceSchema,synthesizeStudioVoice} from "./studio-voices.js";
 import {registerLayeredRoutes,layeredCancelSQL} from "./layered-worker.js";
 import { createHash } from "node:crypto";
 const color=z.string().regex(/^#[0-9a-f]{6}$/i);
@@ -14,7 +14,7 @@ const propArt=z.object({id:z.string().uuid(),revision:z.number().int().min(1),im
 const audioSnapshot=z.object({id:z.string().uuid(),revision:z.number().int().min(1),audio:audioData}).strict();
 const character=z.object({id,name:z.string().trim().min(1).max(30),skin:color,shirt:color,hairColor:color,hair:z.enum(["short","long","bald"]),glasses:z.boolean(),beard:z.boolean(),voice,artwork:snapshot.optional()}).strict();
 const placement=z.object({characterId:id,position:z.enum(["left","center-left","center","center-right","right"]),expression:z.enum(["neutral","happy","curious","serious"]),gesture:z.enum(["idle","wave","point","explain"]),outfitId:z.string().uuid().optional(),pose:z.enum(["sit","stand","walk"]).optional(),action:z.enum(["stand","walk","sit","stairs-up","stairs-down","enter","exit","eat","think","tablet"]).optional()}).strict();
-const line=z.object({id,speakerId:id,text:z.string().trim().min(1).max(180),pronunciation:z.string().max(180),start:z.number().min(0).max(8)}).strict();
+const line=z.object({id,speakerId:id,text:z.string().trim().min(1).max(180),pronunciation:z.string().max(180),performance:voicePerformanceSchema.optional(),start:z.number().min(0).max(8)}).strict();
 export const characterAnimationSchema=z.object({version:z.literal(1),mode:z.literal("cartoon"),renderer:z.literal("layers-v1").optional(),cast:z.array(character).min(1).max(4),shots:z.array(z.object({sceneIndex:z.number().int().min(0).max(3),background:z.enum(["studio","office","technology"]),placements:z.array(placement).min(1).max(4),dialogue:z.array(line).min(1).max(4),artwork:sceneArt.optional(),props:z.array(propArt).max(2).optional(),effect:audioSnapshot.optional(),screenTexts:z.array(z.object({text:z.string().trim().min(1).max(90),start:z.number().min(0).max(8),end:z.number().min(0).max(8),position:z.enum(["top","middle","bottom"])}).strict()).max(3).optional()}).strict()).min(1).max(4),subtitles:z.boolean(),music:z.boolean(),musicTrack:audioSnapshot.optional(),musicVolume:z.number().min(0).max(.3),speechVolume:z.number().min(.5).max(1.5),mouthIntensity:z.number().min(.5).max(1.5)}).strict();
 export function refineCharacterPlan(plan,ctx){
   const a=plan.animation;if(!a)return;
@@ -61,7 +61,7 @@ export function registerCharacterRoutes(app,{pool,requireAdmin,requirePermission
  }));
  app.get("/api/admin/content-studio/voices",...auth,route(async(_req,res)=>res.set("Cache-Control","no-store").json({voices:await onlineVoiceCatalog()})));
  app.post("/api/admin/content-studio/voice-preview",...auth,rateLimit({windowMs:60000,limit:5,standardHeaders:"draft-8",legacyHeaders:false}),route(async(req,res)=>{
-  const p=z.object({text:z.string().trim().min(1).max(90),pronunciation:z.string().max(90),voiceId:voiceIdSchema.optional(),pitch:z.number().min(-3).max(3),speed:z.number().min(.8).max(1.2),intonation:z.number().min(.8).max(1.2)}).strict().safeParse(req.body);if(!p.success||/[A-Za-z]/.test(p.data.pronunciation||p.data.text))return res.status(400).json({error:"اكتب نصًا عربيًا قصيرًا."});
+  const p=z.object({text:z.string().trim().min(1).max(90),pronunciation:z.string().max(90),performance:voicePerformanceSchema.optional(),voiceId:voiceIdSchema.optional(),pitch:z.number().min(-3).max(3),speed:z.number().min(.8).max(1.2),intonation:z.number().min(.8).max(1.2)}).strict().safeParse(req.body);if(!p.success||/[A-Za-z]/.test(p.data.pronunciation||p.data.text))return res.status(400).json({error:"اكتب نصًا عربيًا قصيرًا."});
   try{const audio=await synthesizeStudioVoice(p.data);res.type("audio/wav").set("Cache-Control","no-store").send(audio);}catch{return res.status(502).json({error:"الصوت غير متاح أو تعذرت معاينته."})}
  }));
  app.post("/api/integrations/content-studio/:id/progress",route(async(req,res)=>{

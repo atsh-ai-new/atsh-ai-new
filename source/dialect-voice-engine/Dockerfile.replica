@@ -1,0 +1,22 @@
+FROM python:3.12-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+RUN curl -fsSL --retry 2 -o runtime.tar.gz https://github.com/0xShug0/audio.cpp/releases/download/v0.9.6/audio-v0.9.6-bin-ubuntu-x64-cpu-portable.tar.gz && \
+    echo '7e447eb6b6c5dffbde9c972c11ff6f4b70442d2301ada2e10e1d9c5ec9c8ac8c  runtime.tar.gz' | sha256sum -c - && \
+    mkdir -p /opt/replica/runtime && tar -xzf runtime.tar.gz -C /opt/replica/runtime \
+        ./audiocpp_cli ./libggml-cpu-haswell.so ./libggml-base.so.0 ./libggml.so.0 ./LICENSE
+RUN curl -fsSL --retry 2 -o libc.deb https://deb.debian.org/debian/pool/main/g/glibc/libc6_2.43-7_amd64.deb && \
+    echo '5c71715c51103beb4fbba9fe9f8dff604af6610dfa71c70bff342f54a7860803  libc.deb' | sha256sum -c - && \
+    dpkg-deb -x libc.deb /opt/replica/libc
+
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libgomp1 libstdc++6 && rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir numpy==2.3.5
+COPY --from=runtime /opt/replica /opt/replica
+COPY --chmod=0755 replica-launch.sh /opt/replica/bin/run
+WORKDIR /app
+COPY service.py voice_quality.py replica_backend.py profiles.replica-pilot.json ./
+USER 10001:10001
+ENV OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=1 VOICE_PROFILES_FILE=/app/profiles.replica-pilot.json
+RUN /opt/replica/bin/run --help >/dev/null
+CMD ["python","-u","service.py"]

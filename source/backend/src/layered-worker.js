@@ -76,7 +76,7 @@ export function registerLayeredRoutes(app,{pool,auth,route,rateLimit,auditChange
   if(!line||!c)return res.status(404).end();
   try{
    const {pitch,speed,intonation,voiceId}=c.voice;
-   const audio=await synthesizeStudioVoice({text:line.text,pronunciation:line.pronunciation||"",pitch,speed,intonation,voiceId});
+   const audio=await synthesizeStudioVoice({text:line.text,pronunciation:line.pronunciation||"",performance:line.performance,pitch,speed,intonation,voiceId});
    res.type("audio/wav").set("Cache-Control","no-store").send(audio);
   }catch{return res.status(502).end();}
  }));

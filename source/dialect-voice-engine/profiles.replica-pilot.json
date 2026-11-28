@@ -1,0 +1,32 @@
+{
+  "egyptian-male": {
+    "engine": "replica",
+    "model": "replica-q4.gguf",
+    "approved": true
+  },
+  "egyptian-child-female": {
+    "engine": "replica",
+    "model": "replica-q4.gguf",
+    "approved": true
+  },
+  "egyptian-male-2": {
+    "engine": "replica",
+    "model": "replica-q4.gguf",
+    "approved": true
+  },
+  "egyptian-female-2": {
+    "engine": "replica",
+    "model": "replica-q4.gguf",
+    "approved": true
+  },
+  "egyptian-female": {
+    "engine": "replica",
+    "model": "replica-q4.gguf",
+    "approved": true
+  },
+  "egyptian-child-male": {
+    "engine": "replica",
+    "model": "replica-q4.gguf",
+    "approved": true
+  }
+}
