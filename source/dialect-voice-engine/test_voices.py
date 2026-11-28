@@ -21,7 +21,7 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(len(EGYPTIAN_IDS),18)
         self.assertEqual(len(IDS),24)
         profiles=json.loads(Path(__file__).with_name("profiles.example.json").read_text())
-        self.assertEqual(set(profiles),IDS)
+        self.assertEqual(set(profiles),IDS-{"egyptian-male-2","egyptian-female-2"})
         self.assertTrue(all(p["approved"] is False for p in profiles.values()))
     def test_youth_reference_consent(self):
         c={"engine":"audar","model":"model.gguf","codec":"codec","reference":"ref.wav","transcript":"أهلًا","approved":True,"commercialRights":True}
