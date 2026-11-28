@@ -14,3 +14,9 @@ unrigged characters, medium shots and group shots on their existing renderer
 path. Speech timing/visemes are not part of this change.
 
 Run `python -m unittest discover -s source/layered-worker` from the repo root.
+
+The first screen's **لقطة من سيناريو جاهز** also accepts the stage direction on
+its own first line in brackets. Choose a saved character, set 3–8 seconds,
+write the bracketed direction followed by dialogue, and open production review.
+The quoted dialogue is sent unchanged apart from whitespace normalization;
+the direction is never read aloud. Existing production review is required.
