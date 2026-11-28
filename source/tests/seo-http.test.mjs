@@ -45,17 +45,16 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
     assert.match((await get("/en/customer-portal")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/catalog/hadnty/pricing")).headers.get("x-robots-tag")||"",/noindex/);
     assert.match((await get("/ar")).body,/<h1[^>]*>شركة تطوير المواقع في مصر<\/h1>/);
-    for(const [path,monthlyLabel,monthlyCount,dailyLabel,dailyCount] of [
-      ["/ar","زوار الشهر","١٬٢٣٤","زوارنا اليوم","٥٩"],
-      ["/en","Visitors this month","1,234","Visitors today","59"],
-    ]){
+    for(const [path,label] of [["/ar","عدد الزيارات"],["/en","Visit count"]]){
       const page=await get(path);
       const header=page.body.match(/<header class="platform-header">[\s\S]*?<\/header>/)?.[0];
+      const news=page.body.match(/<section[^>]*data-news-bubbles="true"[^>]*>[\s\S]*?<\/section>/)?.[0];
       assert.ok(header);
-      for(const [period,label,count] of [["monthly",monthlyLabel,monthlyCount],["daily",dailyLabel,dailyCount]]){
-        assert.match(header,new RegExp('<span class="home-visitor-count-label">'+label+'</span><span class="home-visitor-count" data-period="'+period+'"><bdi>'+count+'</bdi>'));
-        assert.equal((page.body.match(new RegExp('data-period="'+period+'"','g'))??[]).length,1);
-      }
+      assert.ok(news);
+      assert.doesNotMatch(header,/data-monthly-visit-badge|home-visitor-stats/);
+      assert.match(news,new RegExp('</ul></div></div><span[^>]+data-monthly-visit-badge="true"[^>]*><span>'+label+'</span><bdi dir="ltr">1,234</bdi>'));
+      assert.equal((page.body.match(/data-monthly-visit-badge="true"/g)??[]).length,1);
+      assert.doesNotMatch(page.body,/data-period="daily"/);
     }
     const topNews=(await get("/ar")).body;
     assert.match(topNews,/<main[^>]*><div class="atsh-news-slot" data-home-ticker-seeded="true">/);
@@ -66,14 +65,12 @@ test("SEO renders published CMS data in HTML and updates sitemap without indexin
     }
     newsPosition="top";
     assert.doesNotMatch((await get("/ar?atshPreview=83ab3c99-56e4-4d17-bccd-1c43f1667c52")).body,/<div class="atsh-news-slot" data-home-ticker-seeded="true">/);
-    daily=0;
-    assert.match((await get("/en")).body,/data-period="daily"><bdi>0<\/bdi>/);
     daily=undefined;
-    const oldBackend=(await get("/ar")).body;
-    assert.match(oldBackend,/data-period="monthly"><bdi>١٬٢٣٤<\/bdi>/);
-    assert.doesNotMatch(oldBackend,/data-period="daily"/);
+    assert.match((await get("/ar")).body,/<bdi dir="ltr">1,234<\/bdi>/);
+    monthly=0;
+    assert.match((await get("/en")).body,/<bdi dir="ltr">0<\/bdi>/);
     monthly=null;
-    assert.doesNotMatch((await get("/ar")).body,/class="home-visitor-stats"/);
+    assert.doesNotMatch((await get("/ar")).body,/data-monthly-visit-badge="true"/);
     assert.match((await get("/about")).body,/<h1[^>]*>عن شركتنا<\/h1>/);
     assert.match((await get("/ar/services/ecommerce")).body,/<h1[^>]*>برمجة المتاجر الإلكترونية وأنظمة المبيعات<\/h1>/);
     assert.match((await get("/en/services/ecommerce")).body,/<h1[^>]*>E-commerce &amp; sales software development<\/h1>/);
