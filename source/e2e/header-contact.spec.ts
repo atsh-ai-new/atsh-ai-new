@@ -22,7 +22,7 @@ for (const locale of ["ar","en"]) {
  });
 }
 
-test("news ticker stays at the very top above the homepage header rather than covering the viewport",async({page})=>{
+test("top homepage ticker sticks on mobile and scrolls away on desktop",async({page})=>{
  await page.route("**/api/site-content/home?locale=*",route=>route.fulfill({json:{page:{content:{newsTicker:{enabled:true,text:"Test news",speed:25,background:"#fff",color:"#14243C",url:""}}}}}));
  await page.goto("/ar");
  const header=page.locator(".platform-header");
@@ -34,7 +34,12 @@ test("news ticker stays at the very top above the homepage header rather than co
  expect(Math.abs(initial!.y)).toBeLessThan(2);
  expect(Math.abs(initial!.y+initial!.height-headerBounds!.y)).toBeLessThan(2);
  await page.evaluate(()=>window.scrollBy(0,500));
- await expect.poll(async()=>ticker.evaluate(el=>el.getBoundingClientRect().bottom)).toBeLessThan(0);
+ await expect.poll(async()=>page.evaluate(()=>window.scrollY)).toBeGreaterThan(300);
+ if(page.viewportSize()!.width<=640){
+  await expect.poll(async()=>Math.abs((await ticker.boundingBox())!.y)).toBeLessThan(2);
+ }else{
+  await expect.poll(async()=>ticker.evaluate(el=>el.getBoundingClientRect().bottom)).toBeLessThan(0);
+ }
 });
 
 test("localized administration links resolve to their existing canonical pages",async({request})=>{
