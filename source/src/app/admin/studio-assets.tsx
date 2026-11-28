@@ -1,7 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import type {ArtImage,ArtPose,Voice,Outfit,RigPart,RigLayer} from "./cartoon-plan";
-import {angles,parseReferencePack,type ViewAngle,type AngleImage,type Accessory} from "./studio-reference-pack";
+import {angles,parseReferencePack,parseRigPack,type ViewAngle,type AngleImage,type Accessory} from "./studio-reference-pack";
 import VoiceIdentity from "./studio-voices";
 import {starterArtwork,locations,type LocationType} from "./studio-starter";
 export type AssetKind="hero"|"background"|"prop"|"music";
@@ -103,11 +103,11 @@ export default function StudioAssets(){
  {kind==="hero"&&<nav className="cartoon-mode" aria-label="أقسام الشخصية" style={{flexWrap:"wrap",gridColumn:"1 / -1"}}>{Object.entries(characterTabs).map(([key,title])=><button key={key} type="button" className={characterTab===key?"active":""} aria-pressed={characterTab===key} onClick={()=>setCharacterTab(key as CharacterTab)}>{title}</button>)}</nav>}
  {kind==="hero"&&characterTab==="voice"&&<><VoiceIdentity voice={data.voice||{pitch:0,speed:1,intonation:1}} onChange={voiceId=>setData({...data,voice:{...data.voice||{pitch:0,speed:1,intonation:1},voiceId}})}/><label className="admin-field">طبقة الصوت (الصوت المحلي الأساسي)<input type="number" min={-3} max={3} step={.5} value={data.voice?.pitch??0} onChange={e=>setData({...data,voice:{...data.voice!,pitch:Number(e.target.value)}})}/></label><label className="admin-field">سرعة الصوت<input type="number" min={.8} max={1.2} step={.05} value={data.voice?.speed??1} onChange={e=>setData({...data,voice:{...data.voice!,speed:Number(e.target.value)}})}/></label><label className="admin-field">تنغيم الصوت<input type="number" min={.8} max={1.2} step={.05} value={data.voice?.intonation??1} onChange={e=>setData({...data,voice:{...data.voice!,intonation:Number(e.target.value)}})}/></label></>}
  {kind==="hero"&&characterTab==="angles"&&<><p>مراجع شكل الشخصية، منفصلة عن صور الحركة المستخدمة في الفيديو.</p>
- {(!id&&!data.name&&!data.referenceAngles?.length)&&<label className="admin-field">فتح حزمة زوايا شخصية (.json)<input type="file" accept=".json,application/json" onChange={e=>{
+ {(!id&&!data.name&&!data.referenceAngles?.length)&&<label className="admin-field">فتح حزمة شخصية أو تحريك (.json)<input type="file" accept=".json,application/json" onChange={e=>{
   const file=e.target.files?.[0];e.target.value="";if(!file)return;
   void run(async()=>{if(file.size>3400000)throw Error("حزمة الشخصية أكبر من الحد.");
    const value:unknown=JSON.parse(await file.text());
-   const art=parseReferencePack(value);
+   const art=typeof value==="object"&&value!==null&&"format" in value&&value.format==="atsh-character-rig-v1"?parseRigPack(value):parseReferencePack(value);
    setData({...initial("hero"),category:"human",...art});setOutfit("");setStatus("تم تجهيز الحزمة للمعاينة. اضغط حفظ الأصل لإضافتها إلى المكتبة.");
   });
  }}/></label>}
